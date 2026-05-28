@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -22,6 +23,19 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    if (isDev) mainWindow.webContents.openDevTools()
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error('[main] did-fail-load', code, desc, url)
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[main] render-process-gone', details)
+  })
+
+  mainWindow.webContents.on('console-message', (_e, level, message) => {
+    if (level >= 2) console.error('[renderer]', message)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -29,7 +43,7 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
@@ -37,7 +51,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.yourpoker.app')
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.yourpoker.app')
+  }
 
   ipcMain.on('minimize-window', () => BrowserWindow.getFocusedWindow()?.minimize())
   ipcMain.on('maximize-window', () => {
@@ -47,10 +63,6 @@ app.whenReady().then(() => {
   })
   ipcMain.on('close-window', () => BrowserWindow.getFocusedWindow()?.close())
 
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
   createWindow()
 
   app.on('activate', function () {
@@ -59,7 +71,5 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  if (process.platform !== 'darwin') app.quit()
 })

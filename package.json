@@ -1,62 +1,62 @@
 {
-  "name": "yourpoker",
-  "version": "1.0.0",
-  "description": "Poker Elite Coach - Desktop App",
-  "type": "module",
-  "main": "dist-electron/main/index.js",
-  "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "preview": "electron-vite preview",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
-  },
-  "keywords": [
-    "poker",
-    "education",
-    "coach"
-  ],
-  "author": "Hicham",
-  "license": "MIT",
-  "dependencies": {
-    "@electron-toolkit/preload": "^3.0.2",
-    "@electron-toolkit/utils": "^4.0.0",
-    "@supabase/supabase-js": "^2.45.0",
-    "framer-motion": "^11.3.0",
-    "lucide-react": "^1.16.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0",
-    "zustand": "^4.5.4"
-  },
-  "devDependencies": {
-    "@electron-toolkit/tsconfig": "^2.0.0",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.19",
-    "electron": "^31.3.1",
-    "electron-builder": "^24.13.3",
-    "electron-vite": "^2.3.0",
-    "postcss": "^8.4.40",
-    "tailwindcss": "^3.4.7",
-    "typescript": "^5.5.3",
-    "vite": "^5.3.4"
-  },
-  "build": {
-    "appId": "com.yourpoker.app",
-    "productName": "YourPoker",
-    "directories": {
-      "output": "release"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "resources/icon.ico"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "resources/icon.icns"
-    }
-  }
+    "name":  "yourpoker",
+    "version":  "1.0.0",
+    "description":  "Poker Elite Coach - Desktop App",
+    "main":  "out/main/index.js",
+    "scripts":  {
+                    "dev":  "node scripts/dev.cjs",
+                    "build":  "electron-vite build",
+                    "preview":  "electron-vite preview",
+                    "build:win":  "electron-vite build \u0026\u0026 electron-builder --win",
+                    "build:mac":  "electron-vite build \u0026\u0026 electron-builder --mac",
+                    "build:linux":  "electron-vite build \u0026\u0026 electron-builder --linux"
+                },
+    "keywords":  [
+                     "poker",
+                     "education",
+                     "coach"
+                 ],
+    "author":  "Hicham",
+    "license":  "MIT",
+    "dependencies":  {
+                         "@supabase/supabase-js":  "^2.45.0",
+                         "framer-motion":  "^11.3.0",
+                         "lucide-react":  "^1.16.0",
+                         "react":  "^18.3.1",
+                         "react-dom":  "^18.3.1",
+                         "react-router-dom":  "^6.26.0",
+                         "zustand":  "^4.5.4"
+                     },
+    "devDependencies":  {
+                            "@electron-toolkit/tsconfig":  "^2.0.0",
+                            "@types/react":  "^18.3.3",
+                            "@types/react-dom":  "^18.3.0",
+                            "@vitejs/plugin-react":  "^4.3.1",
+                            "autoprefixer":  "^10.4.19",
+                            "concurrently":  "^9.2.1",
+                            "cross-env":  "^10.1.0",
+                            "electron":  "^28.3.3",
+                            "electron-builder":  "^24.13.3",
+                            "electron-vite":  "^2.3.0",
+                            "postcss":  "^8.4.40",
+                            "tailwindcss":  "^3.4.7",
+                            "typescript":  "^5.5.3",
+                            "vite":  "^5.3.4",
+                            "wait-on":  "^9.0.10"
+                        },
+    "build":  {
+                  "appId":  "com.yourpoker.app",
+                  "productName":  "YourPoker",
+                  "directories":  {
+                                      "output":  "release"
+                                  },
+                  "win":  {
+                              "target":  "nsis",
+                              "icon":  "resources/icon.ico"
+                          },
+                  "mac":  {
+                              "target":  "dmg",
+                              "icon":  "resources/icon.icns"
+                          }
+              }
 }

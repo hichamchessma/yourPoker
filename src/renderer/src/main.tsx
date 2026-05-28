@@ -6,9 +6,11 @@ import './assets/styles/globals.css'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 
-// Bootstrap: restore session on launch
+// Bootstrap: restore session on launch (no-op if Supabase not configured yet)
 supabase.auth.getSession().then(({ data }) => {
   useAuthStore.getState().setSession(data.session)
+}).catch(() => {
+  useAuthStore.getState().setSession(null)
 })
 
 supabase.auth.onAuthStateChange((_event, session) => {

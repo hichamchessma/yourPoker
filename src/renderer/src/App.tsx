@@ -5,7 +5,15 @@ import AppLayout from './layouts/AppLayout'
 import { useAuthStore } from './store/authStore'
 
 function App(): JSX.Element {
-  const { session } = useAuthStore()
+  const { session, loading } = useAuthStore()
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-poker-darker">
+        <div className="w-8 h-8 border-2 border-poker-teal border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <Routes>
