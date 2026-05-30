@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   root: resolve(__dirname, 'src/renderer'),
+  envDir: resolve(__dirname, '.'),
   plugins: [react()],
   css: {
     postcss: resolve(__dirname, 'postcss.config.js')

@@ -1,10 +1,41 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
+let mainWindow: BrowserWindow | null = null
+
+// Register yourpoker:// protocol — in dev mode include the app path so Windows
+// launches the existing instance correctly instead of trying to load the URL as a module
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient('yourpoker', process.execPath, [resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient('yourpoker')
+}
+
+// Windows: single instance lock so deep link redirects reach the existing window
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+    const deepLink = argv.find(arg => arg.startsWith('yourpoker://'))
+    if (deepLink) mainWindow?.webContents.send('auth-deep-link', deepLink)
+  })
+}
+
+// macOS: deep link comes via open-url event
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  mainWindow?.webContents.send('auth-deep-link', url)
+})
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1100,
@@ -22,8 +53,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-    if (isDev) mainWindow.webContents.openDevTools()
+    mainWindow!.show()
   })
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
@@ -35,7 +65,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.on('console-message', (_e, level, message) => {
-    if (level >= 2) console.error('[renderer]', message)
+    if (level >= 1) console.log('[renderer]', message)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -63,9 +93,14 @@ app.whenReady().then(() => {
   })
   ipcMain.on('close-window', () => BrowserWindow.getFocusedWindow()?.close())
 
+  // Open system browser for OAuth (can't open external URLs from renderer directly)
+  ipcMain.handle('open-external', (_event, url: string) => {
+    shell.openExternal(url)
+  })
+
   createWindow()
 
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })

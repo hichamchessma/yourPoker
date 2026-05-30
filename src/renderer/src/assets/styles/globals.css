@@ -43,6 +43,11 @@
   }
 }
 
+@layer utilities {
+  .app-drag { -webkit-app-region: drag; }
+  .app-drag-none { -webkit-app-region: no-drag; }
+}
+
 @layer components {
   .btn-gold {
     @apply bg-gold-gradient text-poker-darker font-bold uppercase tracking-widest

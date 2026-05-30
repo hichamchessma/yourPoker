@@ -5,5 +5,7 @@ interface Window {
     minimizeWindow: () => void
     maximizeWindow: () => void
     closeWindow: () => void
+    openExternal: (url: string) => Promise<void>
+    onAuthDeepLink: (callback: (url: string) => void) => () => void
   }
 }

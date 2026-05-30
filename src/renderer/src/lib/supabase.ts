@@ -18,7 +18,9 @@ function createNoopClient(): SupabaseClient {
 }
 
 export const supabase: SupabaseClient = isConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false }
+    })
   : createNoopClient()
 
 export const isSupabaseConfigured = isConfigured

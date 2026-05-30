@@ -7,6 +7,86 @@ import WindowControls from '../components/layout/WindowControls'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 
+function PokerChip({ id, color = 'gold', size = 120 }: { id: string; color?: 'gold' | 'teal'; size?: number }) {
+  const g = color === 'gold'
+    ? { outer: '#c9a227', mid: '#8B6810', inner: '#f0d060', dark: '#1a2840', text: '#0a0f1a' }
+    : { outer: '#00d4ff', mid: '#006688', inner: '#66eeff', dark: '#0a1e2e', text: '#003344' }
+
+  const notches = Array.from({ length: 8 }).map((_, i) => {
+    const angle = (i * 45 - 22.5) * (Math.PI / 180)
+    return { x: 50 + 39 * Math.cos(angle), y: 50 + 39 * Math.sin(angle) }
+  })
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" style={{ filter: `drop-shadow(0 8px 24px ${color === 'gold' ? 'rgba(201,162,39,0.5)' : 'rgba(0,212,255,0.5)'})` }}>
+      <defs>
+        <radialGradient id={`rg-${id}`} cx="38%" cy="32%" r="65%">
+          <stop offset="0%" stopColor={g.inner} />
+          <stop offset="60%" stopColor={g.outer} />
+          <stop offset="100%" stopColor={g.mid} />
+        </radialGradient>
+        <radialGradient id={`rgi-${id}`} cx="38%" cy="32%" r="65%">
+          <stop offset="0%" stopColor={g.inner} stopOpacity="0.8" />
+          <stop offset="100%" stopColor={g.outer} />
+        </radialGradient>
+        <filter id={`blur-${id}`}>
+          <feGaussianBlur stdDeviation="1.5" />
+        </filter>
+      </defs>
+      {/* Drop shadow */}
+      <ellipse cx="52" cy="55" rx="42" ry="12" fill="rgba(0,0,0,0.5)" filter={`url(#blur-${id})`} />
+      {/* Outer rim */}
+      <circle cx="50" cy="50" r="47" fill={`url(#rg-${id})`} />
+      {/* Notch cutouts */}
+      {notches.map((n, i) => (
+        <rect key={i} x={n.x - 5} y={n.y - 3.5} width="10" height="7" rx="1.5"
+          fill={g.dark} transform={`rotate(${i * 45 - 22.5} ${n.x} ${n.y})`} />
+      ))}
+      {/* Inner ring */}
+      <circle cx="50" cy="50" r="32" fill={g.mid} />
+      <circle cx="50" cy="50" r="30" fill={`url(#rgi-${id})`} />
+      {/* Dark center */}
+      <circle cx="50" cy="50" r="22" fill={g.dark} />
+      <circle cx="50" cy="50" r="20" fill={g.dark} stroke={g.outer} strokeWidth="1" />
+      {/* Center spade */}
+      <text x="50" y="57" textAnchor="middle" fill={g.outer} fontSize="18" fontFamily="serif" fontWeight="bold">♠</text>
+      {/* Top shine */}
+      <ellipse cx="38" cy="34" rx="11" ry="7" fill="white" opacity="0.18" transform="rotate(-25 38 34)" />
+    </svg>
+  )
+}
+
+function PlayingCard({ rank, suit, rotation = 0, glowColor = '#c9a227' }: { rank: string; suit: string; rotation?: number; glowColor?: string }) {
+  return (
+    <svg width="72" height="104" viewBox="0 0 72 104" style={{ transform: `rotate(${rotation}deg)`, filter: `drop-shadow(0 6px 20px ${glowColor}66)` }}>
+      <defs>
+        <linearGradient id={`cardGrad-${rank}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#1e3050" />
+          <stop offset="100%" stopColor="#0d1a2e" />
+        </linearGradient>
+      </defs>
+      {/* Shadow */}
+      <rect x="4" y="6" width="66" height="96" rx="7" fill="rgba(0,0,0,0.4)" />
+      {/* Card body */}
+      <rect x="2" y="2" width="68" height="100" rx="7" fill={`url(#cardGrad-${rank})`} />
+      {/* Gold border */}
+      <rect x="2" y="2" width="68" height="100" rx="7" fill="none" stroke="#c9a227" strokeWidth="1.5" />
+      {/* Inner border */}
+      <rect x="6" y="6" width="60" height="92" rx="5" fill="none" stroke="rgba(201,162,39,0.25)" strokeWidth="0.5" />
+      {/* Top-left rank + suit */}
+      <text x="10" y="22" fill="#c9a227" fontSize="15" fontWeight="bold" fontFamily="Georgia, serif">{rank}</text>
+      <text x="10" y="36" fill="#c9a227" fontSize="13" fontFamily="Georgia, serif">{suit}</text>
+      {/* Center large suit */}
+      <text x="36" y="64" textAnchor="middle" fill="#c9a227" fontSize="36" fontFamily="Georgia, serif">{suit}</text>
+      {/* Bottom-right (rotated) */}
+      <text x="62" y="92" textAnchor="middle" fill="#c9a227" fontSize="15" fontWeight="bold" fontFamily="Georgia, serif"
+        transform="rotate(180 62 88)">{rank}</text>
+      {/* Card shine */}
+      <rect x="6" y="6" width="60" height="46" rx="5" fill="white" opacity="0.04" />
+    </svg>
+  )
+}
+
 export default function AuthPage(): JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
@@ -21,10 +101,7 @@ export default function AuthPage(): JSX.Element {
     setError(null)
     setIsLoading(true)
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: identifier,
-        password
-      })
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: identifier, password })
       if (authError) throw authError
       setSession(data.session)
     } catch (err: unknown) {
@@ -34,179 +111,256 @@ export default function AuthPage(): JSX.Element {
     }
   }
 
-  const handleSocialLogin = async (provider: 'google' | 'discord' | 'facebook') => {
-    await supabase.auth.signInWithOAuth({ provider })
+  const handleGoogleLogin = async () => {
+    setError(null)
+    console.warn('[google] signInWithOAuth start')
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: 'yourpoker://auth/callback',
+        skipBrowserRedirect: true
+      }
+    })
+    console.warn('[google] result url:', data?.url, 'error:', error?.message)
+    if (error) { setError(`Google: ${error.message}`); return }
+    if (!data?.url) { setError('URL Google null — activez Google dans Supabase Auth → Providers'); return }
+    await window.api.openExternal(data.url)
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-poker-darker">
-      {/* Sidebar */}
+    <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar activeItem="lobby" />
 
-      {/* Main content */}
-      <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-        {/* Background poker chips / cards visual */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute -left-10 top-1/2 -translate-y-1/2 w-96 h-96 opacity-60">
-            <img src="/assets/chips-cards.png" alt="" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none' }} />
-          </div>
-          {/* Ambient glow */}
-          <div className="absolute top-1/4 left-1/3 w-64 h-64 bg-poker-teal/5 rounded-full blur-3xl" />
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-poker-gold/5 rounded-full blur-3xl" />
+      <div className="flex-1 relative overflow-hidden">
+        {/* ── BACKGROUND ── */}
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 60% 40%, #0d2545 0%, #080e1c 55%, #040810 100%)' }} />
+
+        {/* Casino floor atmosphere */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-[-10%] left-[20%] w-[500px] h-[300px] opacity-25"
+            style={{ background: 'radial-gradient(ellipse, #005577 0%, transparent 70%)' }} />
+          <div className="absolute bottom-[-5%] left-[5%] w-[350px] h-[250px] opacity-20"
+            style={{ background: 'radial-gradient(ellipse, #003355 0%, transparent 70%)' }} />
+          <div className="absolute top-[30%] left-[35%] w-[200px] h-[200px] opacity-10"
+            style={{ background: 'radial-gradient(ellipse, #c9a227 0%, transparent 70%)' }} />
+          {/* Subtle bokeh dots */}
+          {[
+            { left: '8%', top: '12%', size: 3, opacity: 0.3 },
+            { left: '22%', top: '78%', size: 4, opacity: 0.2 },
+            { left: '38%', top: '8%', size: 2, opacity: 0.25 },
+            { left: '15%', top: '55%', size: 5, opacity: 0.15 },
+            { left: '30%', top: '88%', size: 3, opacity: 0.2 },
+          ].map((dot, i) => (
+            <div key={i} className="absolute rounded-full bg-poker-teal"
+              style={{ left: dot.left, top: dot.top, width: dot.size * 4, height: dot.size * 4, opacity: dot.opacity, filter: 'blur(2px)' }} />
+          ))}
         </div>
 
-        {/* Window controls (frameless window) */}
-        <WindowControls />
+        {/* ── LEFT VISUAL — Chips & Cards ── */}
+        <div className="absolute left-0 top-0 bottom-0 w-[46%] flex items-center justify-center pointer-events-none select-none">
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="relative z-10 w-full max-w-md mx-8"
-        >
-          {/* Title */}
-          <div className="text-center mb-8">
-            <h1 className="font-display text-4xl font-bold text-white tracking-widest uppercase">
-              Poker Elite Coach
-            </h1>
-            <p className="text-poker-teal text-sm tracking-[0.3em] uppercase mt-2 font-medium">
-              Page d'Authentification
-            </p>
-            <div className="w-32 h-px bg-gradient-to-r from-transparent via-poker-teal/50 to-transparent mx-auto mt-3" />
+          {/* Scattered background chips */}
+          <motion.div className="absolute" style={{ left: '6%', top: '12%', opacity: 0.45 }}
+            animate={{ y: [-6, 8, -6], rotate: [-5, 5, -5] }}
+            transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}>
+            <PokerChip id="bg1" color="teal" size={55} />
+          </motion.div>
+
+          <motion.div className="absolute" style={{ right: '8%', top: '18%', opacity: 0.35 }}
+            animate={{ y: [8, -6, 8], rotate: [8, -3, 8] }}
+            transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}>
+            <PokerChip id="bg2" color="gold" size={45} />
+          </motion.div>
+
+          <motion.div className="absolute" style={{ left: '12%', bottom: '15%', opacity: 0.4 }}
+            animate={{ y: [4, -8, 4], rotate: [0, 10, 0] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 3 }}>
+            <PokerChip id="bg3" color="teal" size={40} />
+          </motion.div>
+
+          {/* Main central composition */}
+          <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
+
+            {/* Card A♠ — right, slightly back */}
+            <motion.div className="absolute z-10"
+              style={{ right: 10, top: 20 }}
+              animate={{ y: [6, -6, 6], rotate: [14, 17, 14] }}
+              transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}>
+              <PlayingCard rank="A" suit="♠" rotation={15} glowColor="#00d4ff" />
+            </motion.div>
+
+            {/* Card K♠ — left, slightly back */}
+            <motion.div className="absolute z-10"
+              style={{ left: 10, top: 20 }}
+              animate={{ y: [-6, 6, -6], rotate: [-17, -14, -17] }}
+              transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}>
+              <PlayingCard rank="K" suit="♠" rotation={-15} glowColor="#c9a227" />
+            </motion.div>
+
+            {/* Main gold chip — front center */}
+            <motion.div className="absolute z-20"
+              style={{ top: 50, left: '50%', transform: 'translateX(-50%)' }}
+              animate={{ y: [-12, 12, -12] }}
+              transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}>
+              <PokerChip id="main" color="gold" size={155} />
+            </motion.div>
+
+            {/* Teal chip — lower left, slightly behind */}
+            <motion.div className="absolute z-10"
+              style={{ bottom: 10, left: 20 }}
+              animate={{ y: [10, -8, 10] }}
+              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}>
+              <PokerChip id="sec" color="teal" size={105} />
+            </motion.div>
+
+            {/* Small gold chip — lower right */}
+            <motion.div className="absolute z-10"
+              style={{ bottom: 25, right: 15, opacity: 0.8 }}
+              animate={{ y: [-8, 10, -8], rotate: [0, 15, 0] }}
+              transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 2 }}>
+              <PokerChip id="sm" color="gold" size={70} />
+            </motion.div>
           </div>
+        </div>
 
-          {/* Auth card */}
-          <div className="glass-card p-8">
-            <form onSubmit={handleLogin} className="space-y-5">
-              {/* Email / Username */}
-              <div>
-                <label className="block text-xs font-semibold text-white/60 uppercase tracking-widest mb-2">
-                  E-mail ou Nom d'Utilisateur
-                </label>
-                <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30">
-                    <KeyRound size={16} />
+        {/* ── RIGHT — Title + Form ── */}
+        <div className="absolute right-0 top-0 bottom-0 w-[57%] flex flex-col items-center justify-center px-6">
+          <WindowControls />
+
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            className="w-full max-w-md"
+          >
+            {/* Title */}
+            <div className="text-center mb-6">
+              <h1 className="font-display text-4xl font-bold text-white tracking-widest uppercase leading-tight">
+                Poker Elite Coach
+              </h1>
+              <p className="text-poker-teal text-xs tracking-[0.35em] uppercase mt-2 font-semibold">
+                Page d'Authentification
+              </p>
+              <div className="w-28 h-px bg-gradient-to-r from-transparent via-poker-teal/60 to-transparent mx-auto mt-3" />
+            </div>
+
+            {/* Auth card */}
+            <div className="glass-card p-7">
+              <form onSubmit={handleLogin} className="space-y-4">
+                {/* Email */}
+                <div>
+                  <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
+                    E-mail ou Nom d'Utilisateur
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
+                      <KeyRound size={15} />
+                    </div>
+                    <input
+                      type="text"
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      className="input-dark pl-10"
+                      autoComplete="username"
+                    />
                   </div>
-                  <input
-                    type="text"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    className="input-dark pl-10"
-                    placeholder=""
-                    autoComplete="username"
-                  />
                 </div>
-              </div>
 
-              {/* Password */}
-              <div>
-                <label className="block text-xs font-semibold text-white/60 uppercase tracking-widest mb-2">
-                  Mot de Passe
-                </label>
-                <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30">
-                    <Lock size={16} />
+                {/* Password */}
+                <div>
+                  <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
+                    Mot de Passe
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
+                      <Lock size={15} />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="input-dark pl-10 pr-24"
+                      placeholder="••••••••••"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/40 hover:text-white/80 transition-colors text-[10px] font-bold tracking-wider uppercase"
+                    >
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                      <span>Afficher</span>
+                    </button>
                   </div>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input-dark pl-10 pr-20"
-                    placeholder="••••••••••"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors text-xs font-semibold tracking-wider uppercase"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    <span className="ml-1">Afficher</span>
+                </div>
+
+                {/* Remember + Forgot */}
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer" onClick={() => setRememberMe(!rememberMe)}>
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${rememberMe ? 'bg-poker-teal border-poker-teal' : 'border-white/30'}`}>
+                      {rememberMe && (
+                        <svg className="w-2.5 h-2.5 text-poker-darker" fill="none" stroke="currentColor" viewBox="0 0 12 12">
+                          <path d="M2 6l3 3 5-5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-white/50 uppercase tracking-wider select-none">Se souvenir de moi</span>
+                  </label>
+                  <button type="button" className="text-[10px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wider font-semibold">
+                    Mot de passe oublié ?
                   </button>
                 </div>
-              </div>
 
-              {/* Remember me + Forgot password */}
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <div
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className={`w-4 h-4 rounded border flex items-center justify-center transition-all cursor-pointer ${
-                      rememberMe
-                        ? 'bg-poker-teal border-poker-teal'
-                        : 'border-white/30 bg-transparent'
-                    }`}
-                  >
-                    {rememberMe && (
-                      <svg className="w-2.5 h-2.5 text-poker-darker" fill="currentColor" viewBox="0 0 12 12">
-                        <path d="M10 3L5 8.5 2 5.5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </div>
-                  <span className="text-xs text-white/50 uppercase tracking-wider">Se souvenir de moi</span>
-                </label>
-                <button type="button" className="text-xs text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wider font-medium">
-                  Mot de passe oublié ?
-                </button>
-              </div>
-
-              {/* Error message */}
-              {error && (
-                <motion.p
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-4 py-2 text-center"
-                >
-                  {error}
-                </motion.p>
-              )}
-
-              {/* Submit button */}
-              <motion.button
-                type="submit"
-                disabled={isLoading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full btn-gold py-4 text-sm relative overflow-hidden"
-              >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Connexion...
-                  </span>
-                ) : (
-                  'Se Connecter'
+                {error && (
+                  <motion.p initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                    className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-4 py-2 text-center">
+                    {error}
+                  </motion.p>
                 )}
-              </motion.button>
-            </form>
 
-            {/* Divider */}
-            <div className="flex items-center gap-4 my-6">
-              <div className="flex-1 h-px bg-white/10" />
-              <span className="text-xs text-white/30 uppercase tracking-widest">Ou se connecter avec</span>
-              <div className="flex-1 h-px bg-white/10" />
+                <motion.button
+                  type="submit"
+                  disabled={isLoading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full btn-gold py-3.5 text-sm mt-1"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                      Connexion...
+                    </span>
+                  ) : 'Se Connecter'}
+                </motion.button>
+              </form>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-[10px] text-white/30 uppercase tracking-widest">Ou se connecter avec</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+
+              {/* Social */}
+              <div className="flex justify-center gap-3">
+                <SocialButton provider="google" onClick={handleGoogleLogin} />
+                <SocialButton provider="apple" />
+                <SocialButton provider="discord" />
+                <SocialButton provider="facebook" />
+              </div>
+
+              <p className="text-center mt-5 text-[10px] text-white/40 uppercase tracking-wider">
+                Pas encore de compte ?{' '}
+                <button className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
+                  S'inscrire ici
+                </button>
+              </p>
             </div>
-
-            {/* Social buttons */}
-            <div className="flex justify-center gap-4">
-              <SocialButton provider="google" onClick={() => handleSocialLogin('google')} />
-              <SocialButton provider="apple" />
-              <SocialButton provider="discord" onClick={() => handleSocialLogin('discord')} />
-              <SocialButton provider="facebook" onClick={() => handleSocialLogin('facebook')} />
-            </div>
-
-            {/* Sign up link */}
-            <p className="text-center mt-6 text-xs text-white/40 uppercase tracking-wider">
-              Pas encore de compte ?{' '}
-              <button className="text-poker-teal hover:text-poker-gold transition-colors font-semibold underline underline-offset-2">
-                S'inscrire ici
-              </button>
-            </p>
-          </div>
-        </motion.div>
+          </motion.div>
+        </div>
       </div>
     </div>
   )

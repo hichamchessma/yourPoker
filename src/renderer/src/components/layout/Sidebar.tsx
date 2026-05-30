@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion'
+import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Home,
@@ -7,8 +8,11 @@ import {
   BarChart2,
   User,
   Trophy,
-  HeadphonesIcon
+  HeadphonesIcon,
+  LogOut
 } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 
 interface NavItem {
   id: string
@@ -34,8 +38,16 @@ interface SidebarProps {
 export default function Sidebar({ activeItem }: SidebarProps): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
+  const { signOut } = useAuthStore()
+  const [confirmLogout, setConfirmLogout] = useState(false)
 
   const currentPath = location.pathname
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    signOut()
+    navigate('/auth', { replace: true })
+  }
 
   return (
     <aside className="w-[220px] flex-shrink-0 bg-poker-darker border-r border-poker-border flex flex-col">
@@ -93,9 +105,54 @@ export default function Sidebar({ activeItem }: SidebarProps): JSX.Element {
         })}
       </nav>
 
-      {/* Bottom version */}
-      <div className="p-4 text-center">
-        <p className="text-white/20 text-[10px] uppercase tracking-widest">v1.0.0</p>
+      {/* Bottom — logout + version */}
+      <div className="p-3 space-y-2">
+        <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+        <AnimatePresence>
+          {confirmLogout ? (
+            <motion.div
+              key="confirm"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 space-y-2"
+            >
+              <p className="text-[10px] text-white/60 text-center uppercase tracking-wider">
+                Se déconnecter ?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmLogout(false)}
+                  className="flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                >
+                  Oui
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.button
+              key="logout-btn"
+              onClick={() => setConfirmLogout(true)}
+              whileHover={{ x: 4 }}
+              whileTap={{ scale: 0.97 }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 group"
+            >
+              <LogOut size={18} />
+              <span className="font-display font-semibold text-xs tracking-wide uppercase">
+                Déconnexion
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        <p className="text-white/20 text-[10px] uppercase tracking-widest text-center">v1.0.0</p>
       </div>
     </aside>
   )
