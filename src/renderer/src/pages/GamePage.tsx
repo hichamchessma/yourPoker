@@ -2,6 +2,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react'
+import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Suit = '♠' | '♥' | '♦' | '♣'
@@ -289,8 +290,8 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 }
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25 }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number
 }) {
   const [bgD,bgL] = LGRAD[seat.level] ?? LGRAD[3]
   const initial = seat.name[0].toUpperCase()
@@ -323,7 +324,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy }: {
   }
 
   return (
-    <div className="absolute flex flex-col items-center gap-0.5 transition-all duration-500"
+    <div className={`absolute flex flex-col items-center gap-0.5 transition-all duration-500 ${seat.isSittingOut?'opacity-50':''}`}
       style={{...style,zIndex:seat.isActive?20:8}}>
       {/* Hole cards — only the cards are dimmed when folded; name & stack stay readable */}
       <div className={`flex relative mb-0.5 transition-all duration-500 ${seat.isFolded?'opacity-20 grayscale':''}`}
@@ -365,13 +366,13 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy }: {
         {seat.isActive&&(
           <div className="mx-2.5 mt-1.5 h-[3px] rounded-full bg-white/8 overflow-hidden">
             <motion.div className="h-full rounded-full bg-[#00d4ff]"
-              initial={{width:'100%'}} animate={{width:'0%'}} transition={{duration:25,ease:'linear'}}/>
+              initial={{width:'100%'}} animate={{width:'0%'}} transition={{duration:turnSeconds,ease:'linear'}}/>
           </div>
         )}
         <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm border border-white/15 relative shrink-0"
-            style={{background:`linear-gradient(135deg,${bgL}55,${bgD})`,color:'white'}}>
-            {initial}
+          <div className="relative shrink-0 rounded-full"
+            style={{boxShadow:seat.isActive?'0 0 0 2px rgba(0,212,255,0.6)':'0 0 0 1px rgba(255,255,255,0.12)'}}>
+            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero)} size={42}/>
             {seat.isActive&&(
               <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#00d4ff] border-2 border-[#040a18]">
                 <div className="w-full h-full rounded-full bg-[#00d4ff] animate-ping opacity-70"/>
@@ -379,10 +380,16 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy }: {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-[10px] font-bold font-display truncate transition-colors duration-500 ${isLoser?'text-white/55':'text-white'}`}>{seat.name}</p>
-            <div className="flex items-center gap-1">
-              <span className="text-[8px] font-bold px-1 rounded text-[#c9a227]/90 bg-[#c9a227]/10 border border-[#c9a227]/20">{seat.position}</span>
-              <span className={`text-[9px] font-mono ${isLoser?'text-white/45':'text-white/45'}`}>${seat.stack.toLocaleString()}</span>
+            <div className="flex items-center gap-1.5">
+              <p className={`text-[11px] font-bold font-display truncate transition-colors duration-500 ${isLoser?'text-white/60':'text-white'}`}>{seat.name}</p>
+              <span className="text-[8px] font-bold px-1 rounded text-[#c9a227] bg-[#c9a227]/12 border border-[#c9a227]/25 shrink-0">{seat.position}</span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.7)]"/>
+              <span className={`text-[12px] font-bold font-mono tabular-nums tracking-tight ${isLoser?'text-emerald-300/60':'text-emerald-300'}`}
+                style={{textShadow:'0 1px 3px rgba(0,0,0,0.9)'}}>
+                ${seat.stack.toLocaleString()}
+              </span>
             </div>
           </div>
         </div>
@@ -591,19 +598,19 @@ function HandHistoryModal({ records, onClose }: {
   const visibleActions = record.actions.slice(0, stepIdx + 1)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:'rgba(0,0,0,0.88)'}}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{background:'rgba(0,0,0,0.9)'}}>
       <motion.div initial={{opacity:0,scale:0.94,y:16}} animate={{opacity:1,scale:1,y:0}}
-        className="w-full max-w-5xl h-[85vh] flex flex-col rounded-2xl border border-white/10 overflow-hidden"
+        className="w-full max-w-[1480px] h-[94vh] flex flex-col rounded-2xl border border-white/10 overflow-hidden"
         style={{background:'#070d1a'}}>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/8 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Historique des mains</span>
-            <span className="text-[10px] text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
+            <span className="text-sm font-bold text-white/70 uppercase tracking-widest">Historique des mains</span>
+            <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
           </div>
           <button onClick={onClose}
-            className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 text-sm">
+            className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 text-lg">
             ✕
           </button>
         </div>
@@ -611,18 +618,18 @@ function HandHistoryModal({ records, onClose }: {
         <div className="flex flex-1 min-h-0">
 
           {/* Hand list */}
-          <div className="w-36 flex-shrink-0 border-r border-white/8 overflow-y-auto">
+          <div className="w-52 flex-shrink-0 border-r border-white/8 overflow-y-auto">
             {[...records].reverse().map(r => {
               const profit = r.heroProfit
               return (
                 <button key={r.id} onClick={() => setSelectedId(r.id)}
-                  className={`w-full text-left px-3 py-2.5 border-b border-white/5 transition-all
+                  className={`w-full text-left px-4 py-3 border-b border-white/5 transition-all
                     ${r.id===selectedId?'bg-[#c9a227]/10 border-l-2 border-l-[#c9a227]':'hover:bg-white/5'}`}>
-                  <div className="text-[10px] font-bold text-white/70">Main #{r.handNum}</div>
-                  <div className={`text-[9px] font-mono font-bold ${profit>0?'text-emerald-400':profit<0?'text-red-400':'text-white/30'}`}>
+                  <div className="text-[13px] font-bold text-white/80">Main #{r.handNum}</div>
+                  <div className={`text-xs font-mono font-bold ${profit>0?'text-emerald-400':profit<0?'text-red-400':'text-white/30'}`}>
                     {profit>0?'+':''}{profit} BB
                   </div>
-                  <div className="text-[8px] text-white/25">{r.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>
+                  <div className="text-[10px] text-white/30">{r.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>
                 </button>
               )
             })}
@@ -632,16 +639,16 @@ function HandHistoryModal({ records, onClose }: {
           <div className="flex-1 flex min-w-0 min-h-0">
 
             {/* Mini table view */}
-            <div className="flex-1 flex flex-col min-w-0 p-3 gap-2">
-              <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+            <div className="flex-1 flex flex-col min-w-0 p-5 gap-3">
+              <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
                 Main #{record.handNum} — {record.date.toLocaleDateString('fr')} {record.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}
               </div>
 
               {/* Table area */}
-              <div className="relative flex-1 min-h-0" style={{minHeight:240}}>
+              <div className="relative flex-1 min-h-0" style={{minHeight:380}}>
                 {/* Table SVG bg */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div style={{width:'100%',maxWidth:420,opacity:0.7}}>
+                  <div style={{width:'100%',maxWidth:720,opacity:0.75}}>
                     <TableSVG/>
                   </div>
                 </div>
@@ -666,48 +673,48 @@ function HandHistoryModal({ records, onClose }: {
                       }}>
                       {/* Cards */}
                       {(pl.holeCards[0] || pl.holeCards[1]) && (
-                        <div className="flex gap-0.5 mb-0.5">
+                        <div className="flex gap-0.5 mb-1">
                           {[0,1].map(ci => {
                             const card = pl.holeCards[ci as 0|1]
                             if (!card) return null
                             if (showCards && card) {
-                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={22} h={31}/>
+                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={34} h={48}/>
                             }
-                            return <FaceDown key={ci} w={18} h={26}/>
+                            return <FaceDown key={ci} w={28} h={40}/>
                           })}
                         </div>
                       )}
                       {/* Name badge */}
-                      <div className={`px-1.5 py-0.5 rounded-lg border text-[8px] font-bold whitespace-nowrap
+                      <div className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold whitespace-nowrap
                         ${pl.isHero?'border-[#00d4ff]/50 bg-[#00d4ff]/10 text-[#00d4ff]'
                         :isWinner?'border-[#c9a227]/60 bg-[#c9a227]/10 text-[#c9a227]'
-                        :'border-white/10 bg-black/40 text-white/60'}`}>
+                        :'border-white/10 bg-black/40 text-white/70'}`}>
                         {pl.isHero ? 'Vous' : pl.name}
                       </div>
-                      <div className="text-[7px] text-white/35 font-mono">${stack}</div>
-                      {isWinner && <div className="text-[8px]">🏆</div>}
+                      <div className="text-[10px] font-bold text-emerald-300/90 font-mono mt-0.5">${stack}</div>
+                      {isWinner && <div className="text-base">🏆</div>}
                     </div>
                   )
                 })}
 
                 {/* Board cards */}
                 <div className="absolute left-1/2 -translate-x-1/2" style={{top:'42%',transform:'translate(-50%,-50%)'}}>
-                  <div className="flex gap-1 items-center">
+                  <div className="flex gap-1.5 items-center">
                     {stepState.board.map((card, i) => (
                       <div key={i}>
                         {card
-                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={28} h={40}/>
-                          : <EmptySlot w={28} h={40}/>}
+                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={46} h={64}/>
+                          : <EmptySlot w={46} h={64}/>}
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* Pot */}
-                <div className="absolute left-1/2 top-[58%] -translate-x-1/2 -translate-y-1/2">
-                  <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-lg px-2 py-0.5">
-                    <span className="text-[8px] text-white/40">POT</span>
-                    <span className="text-[10px] font-bold text-[#c9a227]">${stepState.pot}</span>
+                <div className="absolute left-1/2 top-[60%] -translate-x-1/2 -translate-y-1/2">
+                  <div className="flex items-center gap-1.5 bg-black/65 border border-[#c9a227]/30 rounded-lg px-3 py-1">
+                    <span className="text-[10px] text-white/45 uppercase tracking-wide">Pot</span>
+                    <span className="text-sm font-bold text-[#c9a227] font-mono">${stepState.pot}</span>
                   </div>
                 </div>
               </div>
@@ -715,12 +722,12 @@ function HandHistoryModal({ records, onClose }: {
               {/* Step controls */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button onClick={() => setStepIdx(0)}
-                  className="px-2 py-1 rounded bg-white/5 border border-white/10 text-[9px] text-white/50 hover:bg-white/10 disabled:opacity-30"
+                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={stepIdx===0}>|◀</button>
                 <button onClick={() => setStepIdx(s => Math.max(0, s-1))}
-                  className="px-2 py-1 rounded bg-white/5 border border-white/10 text-[9px] text-white/50 hover:bg-white/10 disabled:opacity-30"
+                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={stepIdx===0}>◀</button>
-                <div className="flex-1 h-1.5 bg-white/8 rounded-full overflow-hidden cursor-pointer"
+                <div className="flex-1 h-2 bg-white/8 rounded-full overflow-hidden cursor-pointer"
                   onClick={e => {
                     const rect = e.currentTarget.getBoundingClientRect()
                     const ratio = (e.clientX - rect.left) / rect.width
@@ -730,28 +737,28 @@ function HandHistoryModal({ records, onClose }: {
                     style={{width:`${record.actions.length>1?(stepIdx/(record.actions.length-1))*100:100}%`}}/>
                 </div>
                 <button onClick={() => setStepIdx(s => Math.min(record.actions.length-1, s+1))}
-                  className="px-2 py-1 rounded bg-white/5 border border-white/10 text-[9px] text-white/50 hover:bg-white/10 disabled:opacity-30"
+                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={isEnd}>▶</button>
                 <button onClick={() => setStepIdx(record.actions.length-1)}
-                  className="px-2 py-1 rounded bg-white/5 border border-white/10 text-[9px] text-white/50 hover:bg-white/10 disabled:opacity-30"
+                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={isEnd}>▶|</button>
-                <span className="text-[8px] text-white/30 font-mono">{stepIdx+1}/{record.actions.length}</span>
+                <span className="text-xs text-white/40 font-mono">{stepIdx+1}/{record.actions.length}</span>
               </div>
 
               {/* Summary */}
               {isEnd && (
-                <div className="flex-shrink-0 bg-[#c9a227]/8 border border-[#c9a227]/20 rounded-xl p-2.5 flex items-center gap-4">
+                <div className="flex-shrink-0 bg-[#c9a227]/8 border border-[#c9a227]/20 rounded-xl p-4 flex items-center gap-8">
                   <div>
-                    <span className="text-[8px] text-white/40 uppercase tracking-wide">Gagnant</span>
-                    <p className="text-[10px] font-bold text-[#c9a227]">{record.winnerNames.join(', ')}</p>
+                    <span className="text-[10px] text-white/40 uppercase tracking-wide">Gagnant</span>
+                    <p className="text-sm font-bold text-[#c9a227]">{record.winnerNames.join(', ')}</p>
                   </div>
                   <div>
-                    <span className="text-[8px] text-white/40 uppercase tracking-wide">Pot final</span>
-                    <p className="text-[10px] font-bold text-white/70">${record.finalPot}</p>
+                    <span className="text-[10px] text-white/40 uppercase tracking-wide">Pot final</span>
+                    <p className="text-sm font-bold text-white/70">${record.finalPot}</p>
                   </div>
                   <div>
-                    <span className="text-[8px] text-white/40 uppercase tracking-wide">Votre résultat</span>
-                    <p className={`text-[10px] font-bold ${record.heroProfit>0?'text-emerald-400':record.heroProfit<0?'text-red-400':'text-white/50'}`}>
+                    <span className="text-[10px] text-white/40 uppercase tracking-wide">Votre résultat</span>
+                    <p className={`text-sm font-bold ${record.heroProfit>0?'text-emerald-400':record.heroProfit<0?'text-red-400':'text-white/50'}`}>
                       {record.heroProfit>0?'+':''}{record.heroProfit} BB
                     </p>
                   </div>
@@ -760,18 +767,18 @@ function HandHistoryModal({ records, onClose }: {
             </div>
 
             {/* Action log */}
-            <div className="w-52 flex-shrink-0 border-l border-white/8 flex flex-col min-h-0">
-              <div className="px-3 py-2 border-b border-white/8 flex-shrink-0">
-                <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Journal des actions</span>
+            <div className="w-72 flex-shrink-0 border-l border-white/8 flex flex-col min-h-0">
+              <div className="px-4 py-3 border-b border-white/8 flex-shrink-0">
+                <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Journal des actions</span>
               </div>
-              <div ref={logRef} className="flex-1 overflow-y-auto p-2 space-y-0.5">
+              <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-1">
                 {visibleActions.map((a, i) => {
                   const isCurrentStep = i === stepIdx
                   if (a.seatIdx === -1) {
                     // Phase divider
                     return (
-                      <div key={i} className={`text-center py-1 ${isCurrentStep?'text-[#c9a227]':'text-white/25'}`}>
-                        <span className="text-[8px] font-bold uppercase tracking-widest border-t border-b border-current px-2">
+                      <div key={i} className={`text-center py-1.5 ${isCurrentStep?'text-[#c9a227]':'text-white/30'}`}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest border-t border-b border-current px-2">
                           — {PHASE_LABEL[a.phase] ?? a.phase} —
                         </span>
                       </div>
@@ -781,9 +788,9 @@ function HandHistoryModal({ records, onClose }: {
                   const isHero = pl?.isHero ?? false
                   return (
                     <div key={i} onClick={() => setStepIdx(i)}
-                      className={`px-2 py-1 rounded cursor-pointer transition-all text-[8px] flex items-center gap-1.5
+                      className={`px-2.5 py-1.5 rounded-lg cursor-pointer transition-all text-[12px] flex items-center gap-2
                         ${isCurrentStep?'bg-[#c9a227]/15 border border-[#c9a227]/30':'hover:bg-white/5 border border-transparent'}`}>
-                      <span className={`font-bold truncate max-w-[60px] ${isHero?'text-[#00d4ff]':'text-white/60'}`}>
+                      <span className={`font-bold truncate max-w-[90px] ${isHero?'text-[#00d4ff]':'text-white/70'}`}>
                         {pl?.name ?? `Seat${a.seatIdx}`}
                       </span>
                       <span className={`font-bold uppercase
@@ -793,8 +800,8 @@ function HandHistoryModal({ records, onClose }: {
                         :'text-emerald-400'}`}>
                         {a.actionType}
                       </span>
-                      {a.amount > 0 && <span className="text-white/40 font-mono">${a.amount}</span>}
-                      <span className="ml-auto text-white/20 font-mono text-[7px]">pot${a.potAfter}</span>
+                      {a.amount > 0 && <span className="text-white/50 font-mono">${a.amount}</span>}
+                      <span className="ml-auto text-white/25 font-mono text-[10px]">pot${a.potAfter}</span>
                     </div>
                   )
                 })}
@@ -822,6 +829,7 @@ export default function GamePage(): JSX.Element {
   const anteAmt = cfg.ante ?? 0
   const displayName = cfg.displayName ?? 'Hero'
   const slots = cfg.slots ?? Array.from({length: numPlayers - 1}, () => ({type:'bot', level:3}))
+  const decisionTimer = cfg.decisionTimer && cfg.decisionTimer > 0 ? cfg.decisionTimer : 25
 
   // ─── State ───────────────────────────────────────────────────────────────
   const [gs, setGs] = useState<GState>(() => ({
@@ -837,10 +845,15 @@ export default function GamePage(): JSX.Element {
   const [showLog, setShowLog] = useState(false)
   const [sitOut, setSitOut] = useState(false)
   const [rebuyAmt, setRebuyAmt] = useState(stackBB * bbAmt)
+  // Pre-action ("check box") queued while waiting for the hero's turn.
+  const [preAction, setPreActionState] = useState<'none' | 'fold' | 'checkcall'>('none')
+  const preActionRef = useRef<'none' | 'fold' | 'checkcall'>('none')
+  function setPreAction(v: 'none' | 'fold' | 'checkcall') { preActionRef.current = v; setPreActionState(v) }
 
   const gsRef = useRef<GState>(gs)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextHandTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dealTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const sitOutRef = useRef(false)
   const chipIdRef = useRef(0)
   const currentHandActionsRef = useRef<HistoryAction[]>([])
@@ -1508,6 +1521,7 @@ export default function GamePage(): JSX.Element {
   function advanceToNextHand() {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
     const cur = gsRef.current
     const newDealerIdx = (cur.dealerIdx + 1) % numPlayers
     startHand(cur.seats, newDealerIdx, cur.handNum)
@@ -1523,9 +1537,10 @@ export default function GamePage(): JSX.Element {
   function scheduleNextHand() {
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     // Don't deal a new hand while the hero is busted (waiting on a rebuy).
+    // Sitting out does NOT halt the table — the hero is simply dealt out.
     if (heroIsBusted(gsRef.current)) return
     nextHandTimeoutRef.current = setTimeout(() => {
-      if (gsRef.current.paused || sitOutRef.current || heroIsBusted(gsRef.current)) return
+      if (gsRef.current.paused || heroIsBusted(gsRef.current)) return
       advanceToNextHand()
     }, 3800)
   }
@@ -1579,63 +1594,87 @@ export default function GamePage(): JSX.Element {
     setGs(newState)
     gsRef.current = newState
 
-    // Deal hole cards after short delay
-    setTimeout(() => startHandContinue(newState), 600)
+    // Deal hole cards after a short delay (blinds settle first)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+    const t = setTimeout(() => startHandContinue(newState), 450)
+    dealTimeoutsRef.current.push(t)
   }
 
   function startHandContinue(state: GState) {
     const deck = [...state.deck]
-    const seats = state.seats.map(s => {
-      // Sitting-out / busted players are not dealt in.
-      if (s.isSittingOut) return { ...s, holeCards: [null, null] as [Card|null, Card|null] }
-      const c1 = deck.pop() ?? null
-      const c2 = deck.pop() ?? null
-      return { ...s, holeCards: [c1, c2] as [Card|null, Card|null] }
-    })
-
-    const { bbIdx } = findBlinds(seats, state.dealerIdx)
     const numSeats = state.seats.length
 
-    // First to act preflop = UTG (left of BB) for 3+ players, or dealer/SB for HU
-    let firstToAct: number
-    if (numSeats === 2) {
-      firstToAct = state.dealerIdx // dealer/SB acts first preflop in HU
-    } else {
-      firstToAct = (bbIdx + 1) % numSeats
+    // Build the deal order: one card at a time, going clockwise from the SB
+    // (dealer+1), two rounds — exactly how a live dealer pitches the cards.
+    const order: number[] = []
+    for (let i = 1; i <= numSeats; i++) {
+      const idx = (state.dealerIdx + i) % numSeats
+      if (!state.seats[idx].isSittingOut) order.push(idx)
+    }
+    const assigns: { seatIdx: number; cardIdx: 0 | 1; card: Card }[] = []
+    for (let round = 0; round < 2; round++) {
+      for (const idx of order) {
+        const c = deck.pop()
+        if (c) assigns.push({ seatIdx: idx, cardIdx: round as 0 | 1, card: c })
+      }
     }
 
-    const queue = buildActQueue(seats, firstToAct)
+    // Start from an empty (no hole cards) dealing state; deck already holds the
+    // remainder for the board.
+    const dealingSeats = state.seats.map(s => ({ ...s, holeCards: [null, null] as [Card|null, Card|null] }))
+    const dealingState: GState = { ...state, deck, seats: dealingSeats, phase: 'dealing' }
+    setGs(dealingState)
+    gsRef.current = dealingState
 
-    // Record phase event for preflop
-    recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: 'PREFLOP', amount: 0 }, state.pot)
+    // Clear any leftover deal timers, then pitch the cards one by one.
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t))
+    dealTimeoutsRef.current = []
 
-    const newState: GState = {
-      ...state,
-      deck, seats,
-      phase: 'preflop',
-      actQueue: queue,
-    }
-    setGs(newState)
-    gsRef.current = newState
-    scheduleAutoNext(newState, 300)
+    const STEP = 80
+    assigns.forEach((a, i) => {
+      const t = setTimeout(() => {
+        const cur = gsRef.current
+        const seats = cur.seats.map(s => {
+          if (s.idx !== a.seatIdx) return s
+          const hc = [...s.holeCards] as [Card|null, Card|null]
+          hc[a.cardIdx] = a.card
+          return { ...s, holeCards: hc }
+        })
+        const ns = { ...cur, seats }
+        setGs(ns); gsRef.current = ns
+      }, i * STEP)
+      dealTimeoutsRef.current.push(t)
+    })
+
+    // Once every card is dealt, open the pre-flop betting round.
+    const finishT = setTimeout(() => {
+      const cur = gsRef.current
+      const { bbIdx } = findBlinds(cur.seats, cur.dealerIdx)
+      const firstToAct = numSeats === 2 ? cur.dealerIdx : (bbIdx + 1) % numSeats
+      const queue = buildActQueue(cur.seats, firstToAct)
+
+      recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: 'PREFLOP', amount: 0 }, cur.pot)
+
+      const newState: GState = { ...cur, phase: 'preflop', actQueue: queue }
+      setGs(newState); gsRef.current = newState
+      scheduleAutoNext(newState, 300)
+    }, assigns.length * STEP + 220)
+    dealTimeoutsRef.current.push(finishT)
   }
 
   function stopGame() {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
     setGs(prev => ({ ...prev, phase: 'idle', autoRunning: false, actQueue: [] }))
   }
 
+  // Sit out / sit in always takes effect on the NEXT hand — you can't leave in
+  // the middle of a hand. The flag just controls whether the hero is dealt in.
   function toggleSitOut() {
-    setSitOut(v => {
-      const nv = !v
-      sitOutRef.current = nv
-      // Re-joining mid-showdown resumes the continuous flow.
-      if (!nv && gsRef.current.phase === 'showdown' && !gsRef.current.paused) scheduleNextHand()
-      // Sitting out cancels a pending auto-deal.
-      if (nv && nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
-      return nv
-    })
+    const nv = !sitOutRef.current
+    sitOutRef.current = nv
+    setSitOut(nv)
   }
 
   function rebuyPlayer(seatIdx: number) {
@@ -1663,18 +1702,27 @@ export default function GamePage(): JSX.Element {
   }
 
   function togglePause() {
-    setGs(prev => {
-      const paused = !prev.paused
-      if (!paused) {
-        // Resume — either the action loop, or the next-hand countdown at showdown
-        if (gsRef.current.phase === 'showdown') { if (!sitOutRef.current) scheduleNextHand() }
-        else scheduleAutoNext(gsRef.current, 400)
-      } else {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current)
-        if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    const cur = gsRef.current
+    const paused = !cur.paused
+    // Update the ref synchronously so the (un)paused state is visible to any
+    // timer we schedule right now — relying on gsRef after setGs would read the
+    // stale (still-paused) value and silently skip resuming.
+    const ns = { ...cur, paused }
+    setGs(ns)
+    gsRef.current = ns
+
+    if (paused) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+      dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+    } else {
+      // Resume: at showdown restart the next-hand countdown, otherwise the action loop.
+      if (ns.phase === 'showdown') {
+        if (!heroIsBusted(ns)) scheduleNextHand()
+      } else if (ns.phase !== 'idle' && ns.phase !== 'dealing') {
+        scheduleAutoNext(ns, 300)
       }
-      return { ...prev, paused }
-    })
+    }
   }
 
   // ─── Hero actions ────────────────────────────────────────────────────────
@@ -1708,7 +1756,16 @@ export default function GamePage(): JSX.Element {
   const hero = gs.seats.find(s => s.isHero)
   const isHeroTurn = hero?.isActive ?? false
   const heroBusted = !!hero && hero.stack <= 0
+  const heroOut = !!hero && hero.isSittingOut          // actually dealt out this hand
+  const sitOutPending = sitOut && !heroOut             // queued for the next hand
   const isShowdown = gs.phase === 'showdown'
+  // Hero is live in the current hand (has cards, not folded/out) — used to show
+  // the pre-action check boxes while waiting for other players.
+  const heroInHand = !!hero && !hero.isFolded && !hero.isSittingOut && !heroBusted
+    && (hero.holeCards[0] !== null || hero.holeCards[1] !== null)
+    && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
+  const preCanCheck = !!hero && gs.currentBet <= hero.bet          // no bet to call → check
+  const preCallAmt = hero ? Math.min(gs.currentBet - hero.bet, hero.stack) : 0
   const canCheck = isHeroTurn && gs.currentBet === (hero?.bet ?? 0)
   const callAmt = isHeroTurn ? Math.min((gs.currentBet - (hero?.bet ?? 0)), hero?.stack ?? 0) : 0
   // Raise sizing (all "raise to" totals): minimum legal raise, all-in cap, and
@@ -1735,11 +1792,51 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.handNum, gs.currentBet])
 
+  // Decision clock: when the hero's time runs out, auto-act. Facing a bet that
+  // must be called/raised → auto-fold and sit out next hand. Otherwise (a free
+  // check is available) → auto-check and the hand continues normally.
+  useEffect(() => {
+    if (!isHeroTurn || gs.paused) return
+    const t = setTimeout(() => {
+      const cur = gsRef.current
+      const h = cur.seats.find(s => s.isHero)
+      if (!h || !h.isActive || cur.paused) return
+      const toCall = cur.currentBet - h.bet
+      if (toCall <= 0) {
+        heroAction('CHECK')
+      } else {
+        sitOutRef.current = true
+        setSitOut(true)
+        heroAction('FOLD')
+      }
+    }, decisionTimer * 1000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHeroTurn, gs.paused, gs.handNum, gs.currentBet])
+
+  // Apply a queued pre-action ("check box") the instant it's the hero's turn.
+  useEffect(() => {
+    if (!isHeroTurn || preActionRef.current === 'none') return
+    const pa = preActionRef.current
+    setPreAction('none')
+    const cur = gsRef.current
+    const h = cur.seats.find(s => s.isHero)
+    if (!h) return
+    const toCall = cur.currentBet - h.bet
+    if (pa === 'fold') heroAction('FOLD')
+    else { if (toCall <= 0) heroAction('CHECK'); else heroAction('CALL', Math.min(toCall, h.stack)) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHeroTurn])
+
+  // A new hand clears any queued pre-action.
+  useEffect(() => { setPreAction('none') }, [gs.handNum])
+
   // ─── Cleanup on unmount ──────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+      dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
     }
   }, [])
 
@@ -1778,27 +1875,22 @@ export default function GamePage(): JSX.Element {
           </button>
         )}
 
-        {/* Sit out toggle — stops the continuous flow without leaving the table */}
+        {/* Sit out / sit in — always applies on the next hand */}
         {gs.phase !== 'idle' && (
           <button onClick={toggleSitOut}
+            title={sitOut ? 'Revenir à la prochaine main' : 'Sortir à la prochaine main'}
             className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
-              ${sitOut ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
-            {sitOut ? 'Assis (revenir)' : 'Sit Out'}
+              ${sitOut ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
+            {sitOut ? 'Sit In' : 'Sit Out'}
           </button>
         )}
 
-        {/* Game controls */}
+        {/* Game controls — flow is automatic; Pause halts it (incl. at showdown) */}
         {gs.phase === 'idle' ? (
           <button onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), gs.dealerIdx, gs.handNum)}
             className="app-drag-none flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
             style={{background:'linear-gradient(135deg,#c9a227,#8B6810)',color:'#0a0a0a'}}>
             <Play size={12}/> Démarrer
-          </button>
-        ) : gs.phase === 'showdown' ? (
-          <button onClick={advanceToNextHand}
-            className="app-drag-none flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
-            style={{background:'linear-gradient(135deg,#22aa44,#145c22)',color:'white'}}>
-            <Play size={12}/> Main suivante
           </button>
         ) : (
           <div className="app-drag-none flex items-center gap-2">
@@ -1911,6 +2003,7 @@ export default function GamePage(): JSX.Element {
                   style={{ left: pos.left, top: pos.top, transform: pos.transform }}
                   isWinner={isWinner}
                   isShowdown={isShowdown}
+                  turnSeconds={decisionTimer}
                   onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
                 />
               )
@@ -1992,8 +2085,13 @@ export default function GamePage(): JSX.Element {
                 <div className="h-3 w-px bg-white/10"/>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] text-white/40">Stack</span>
-                  <span className="text-[11px] font-mono font-bold text-white/80">${hero.stack.toLocaleString()}</span>
+                  <span className="text-[12px] font-mono font-bold text-emerald-300 tabular-nums" style={{textShadow:'0 1px 3px rgba(0,0,0,0.8)'}}>${hero.stack.toLocaleString()}</span>
                 </div>
+                {sitOutPending && (
+                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold uppercase tracking-wide">
+                    Sit out à la prochaine main
+                  </span>
+                )}
                 {hero.holeCards[0] && hero.holeCards[1] && (
                   <>
                     <div className="h-3 w-px bg-white/10"/>
@@ -2168,14 +2266,48 @@ export default function GamePage(): JSX.Element {
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center gap-3">
-                {gs.phase === 'showdown' ? (
-                  <div className="text-center">
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest mb-2">Main terminée</p>
-                    <button onClick={advanceToNextHand}
-                      className="px-6 py-2 rounded-xl font-bold text-sm tracking-widest uppercase transition-all"
-                      style={{background:'linear-gradient(135deg,#c9a227,#8B6810)',color:'#0a0a0a'}}>
-                      Main suivante →
+                {heroOut ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"/>
+                      <p className="text-[10px] text-amber-300/80 uppercase tracking-widest">
+                        {sitOut ? 'Vous êtes absent — cliquez sur Sit In pour revenir' : 'Vous reviendrez à la prochaine main'}
+                      </p>
+                    </div>
+                    <button onClick={toggleSitOut}
+                      className="px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all"
+                      style={{background:sitOut?'linear-gradient(135deg,#22aa44,#145c22)':'linear-gradient(135deg,#c9a227,#8B6810)',color:sitOut?'white':'#0a0a0a'}}>
+                      {sitOut ? 'Sit In' : 'Sit Out'}
                     </button>
+                  </div>
+                ) : heroInHand ? (
+                  /* Pre-action check boxes — clickable while it's not yet our turn */
+                  <div className="w-full flex items-center gap-3">
+                    <div className="flex items-center gap-2 mr-1">
+                      <div className="w-2 h-2 rounded-full bg-[#00d4ff] animate-ping opacity-60"/>
+                      <p className="text-[9px] text-white/35 uppercase tracking-widest whitespace-nowrap">En attente — pré-sélection</p>
+                    </div>
+                    <button onClick={() => setPreAction(preAction==='fold'?'none':'fold')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all
+                        ${preAction==='fold' ? 'border-red-500 bg-red-600/30 text-red-200 shadow-[0_0_16px_rgba(220,40,40,0.35)]' : 'border-red-700/40 bg-red-900/15 text-red-400/80 hover:bg-red-900/30'}`}>
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${preAction==='fold'?'bg-red-500 border-red-400 text-white':'border-red-500/50'}`}>{preAction==='fold'?'✓':''}</span>
+                      Fold
+                    </button>
+                    <button onClick={() => setPreAction(preAction==='checkcall'?'none':'checkcall')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all
+                        ${preAction==='checkcall'
+                          ? (preCanCheck ? 'border-sky-400 bg-sky-600/30 text-sky-100 shadow-[0_0_16px_rgba(40,140,220,0.35)]' : 'border-emerald-400 bg-emerald-600/30 text-emerald-100 shadow-[0_0_16px_rgba(40,200,120,0.35)]')
+                          : (preCanCheck ? 'border-sky-700/40 bg-sky-900/15 text-sky-400/80 hover:bg-sky-900/30' : 'border-emerald-700/40 bg-emerald-900/15 text-emerald-400/80 hover:bg-emerald-900/30')}`}>
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${preAction==='checkcall'?(preCanCheck?'bg-sky-400 border-sky-300 text-white':'bg-emerald-400 border-emerald-300 text-white'):(preCanCheck?'border-sky-500/50':'border-emerald-500/50')}`}>{preAction==='checkcall'?'✓':''}</span>
+                      {preCanCheck ? 'Check' : `Call $${preCallAmt.toLocaleString()}`}
+                    </button>
+                  </div>
+                ) : gs.phase === 'showdown' ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[#c9a227] animate-pulse"/>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">
+                      {gs.paused ? 'En pause' : 'Main terminée — prochaine main…'}
+                    </p>
                   </div>
                 ) : gs.phase === 'dealing' ? (
                   <p className="text-[10px] text-white/30 uppercase tracking-widest animate-pulse">Distribution des cartes...</p>
@@ -2195,9 +2327,9 @@ export default function GamePage(): JSX.Element {
               <div key={s.idx} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border flex-shrink-0 text-[8px] transition-all
                 ${s.isActive?'border-[#00d4ff]/40 bg-[#00d4ff]/8':'border-white/8 bg-white/3'}`}>
                 <div className={`w-2 h-2 rounded-full ${s.isFolded?'bg-red-500/40':s.isAllIn?'bg-purple-500':'bg-white/20'}`}/>
-                <span className={`font-bold ${s.isActive?'text-[#00d4ff]':'text-white/50'}`}>{s.name}</span>
-                <span className="text-white/25 font-mono">${s.stack.toLocaleString()}</span>
-                <span className="text-[7px] text-white/20 italic">{botStyle(s.level)}</span>
+                <span className={`font-bold ${s.isActive?'text-[#00d4ff]':'text-white/65'}`}>{s.name}</span>
+                <span className="text-[9px] font-bold font-mono tabular-nums text-emerald-300/90">${s.stack.toLocaleString()}</span>
+                <span className="text-[7px] text-white/25 italic">{botStyle(s.level)}</span>
                 {s.lastAction && (
                   <span className={`px-1 rounded font-bold uppercase ${s.lastAction==='FOLD'?'text-red-400/60':s.lastAction.startsWith('RAISE')||s.lastAction.startsWith('BET')?'text-yellow-300':'text-emerald-400'}`}>
                     {s.lastAction}
