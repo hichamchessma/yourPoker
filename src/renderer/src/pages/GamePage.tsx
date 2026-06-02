@@ -1,8 +1,10 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Sparkles } from 'lucide-react'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
+import RangeAssistant from '../components/RangeAssistant'
+import type { Scenario } from '../lib/preflopRanges'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Suit = '♠' | '♥' | '♦' | '♣'
@@ -290,8 +292,8 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 }
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25 }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, onAssist, turnNonce }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; onAssist?:()=>void; turnNonce?:string
 }) {
   const [bgD,bgL] = LGRAD[seat.level] ?? LGRAD[3]
   const initial = seat.name[0].toUpperCase()
@@ -365,7 +367,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25 
         )}
         {seat.isActive&&(
           <div className="mx-2.5 mt-1.5 h-[3px] rounded-full bg-white/8 overflow-hidden">
-            <motion.div className="h-full rounded-full bg-[#00d4ff]"
+            <motion.div key={turnNonce} className="h-full rounded-full bg-[#00d4ff]"
               initial={{width:'100%'}} animate={{width:'0%'}} transition={{duration:turnSeconds,ease:'linear'}}/>
           </div>
         )}
@@ -377,6 +379,13 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25 
               <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#00d4ff] border-2 border-[#040a18]">
                 <div className="w-full h-full rounded-full bg-[#00d4ff] animate-ping opacity-70"/>
               </div>
+            )}
+            {onAssist&&(
+              <button onClick={onAssist} title="Assistant de range (préflop)"
+                className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center border border-[#c9a227]/60 shadow-lg hover:scale-110 transition-transform"
+                style={{background:'radial-gradient(circle at 35% 30%, #f0d060, #c9a227 60%, #8B6810)'}}>
+                <Sparkles size={11} className="text-[#1a1206]"/>
+              </button>
             )}
           </div>
           <div className="flex-1 min-w-0">
@@ -842,6 +851,7 @@ export default function GamePage(): JSX.Element {
   const [heroBetAmt, setHeroBetAmt] = useState(bbAmt * 2)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [assistOpen, setAssistOpen] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [sitOut, setSitOut] = useState(false)
   const [rebuyAmt, setRebuyAmt] = useState(stackBB * bbAmt)
@@ -1024,12 +1034,15 @@ export default function GamePage(): JSX.Element {
       isSittingOut: (s.isHero && sitOutRef.current) || s.stack <= 0 || s.isEliminated,
     }))
     const { sbIdx, bbIdx } = findBlinds(prepared, dealerIdx)
+    const n = prepared.length
     return prepared.map((s, i) => ({
       ...s,
       isDealer: i === dealerIdx,
       isSB: i === sbIdx,
       isBB: i === bbIdx,
-      position: positions[i] ?? `S${i+1}`,
+      // Position is relative to the dealer button: offset 0 = BTN, then SB, BB,
+      // UTG … so the labels rotate every hand as the button moves.
+      position: positions[((i - dealerIdx) % n + n) % n] ?? `S${i+1}`,
       holeCards: [null, null],
       bet: 0, totalBet: 0,
       isFolded: s.isSittingOut, isAllIn: false,
@@ -1040,6 +1053,18 @@ export default function GamePage(): JSX.Element {
   }
 
   // ─── Bot AI ──────────────────────────────────────────────────────────────
+  // Anti-cheat: hand a bot a BLINDED view of the game — every other player's
+  // hole cards are stripped, and the deck is emptied. A bot physically cannot
+  // see opponents' cards or future board cards, no matter how the AI evolves.
+  function blindStateForBot(state: GState, actingIdx: number): GState {
+    return {
+      ...state,
+      deck: [],
+      seats: state.seats.map(s =>
+        s.idx === actingIdx ? s : { ...s, holeCards: [null, null] as [Card | null, Card | null] }),
+    }
+  }
+
   function decideBotAction(seat: Seat, state: GState): { action: string; amount: number } {
     const lvl = seat.level
     const c1 = seat.holeCards[0], c2 = seat.holeCards[1]
@@ -1500,7 +1525,8 @@ export default function GamePage(): JSX.Element {
         scheduleAutoNext(ns, 100)
         return
       }
-      const { action, amount } = decideBotAction(botSeat, cur)
+      // Decide from a blinded view — the bot can't see anyone else's cards.
+      const { action, amount } = decideBotAction(botSeat, blindStateForBot(cur, nextIdx))
       let newState = executeAction(nextIdx, action, amount, cur)
       newState = { ...newState, actQueue: nextQueueAfter(newState, nextIdx, cur) }
 
@@ -1766,6 +1792,53 @@ export default function GamePage(): JSX.Element {
     && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
   const preCanCheck = !!hero && gs.currentBet <= hero.bet          // no bet to call → check
   const preCallAmt = hero ? Math.min(gs.currentBet - hero.bet, hero.stack) : 0
+
+  // Situation detection from the RECORDED actions of this hand (robust: a raiser
+  // who later folded/re-acted is still counted correctly).
+  const handActions = currentHandActionsRef.current
+  const preflopRaiseActions = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+  const heroScenario: Scenario | 'postflop' =
+    gs.phase !== 'preflop' ? 'postflop'
+    : preflopRaiseActions >= 2 ? 'vs3bet'
+    : preflopRaiseActions === 1 ? 'vsopen'
+    : 'rfi'
+  // Villain aggression → range-aware equity. Count opponents' bets/raises this
+  // hand; barrels = how many post-flop streets they've fired.
+  const villainAggro = handActions.filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
+  const heroAggression = Math.min(0.85, villainAggro.length * 0.28)
+  const heroBarrels = new Set(villainAggro.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
+  // Range width is driven by how many *active* players (still in the hand, dealt
+  // in, not folded / sitting out / busted) remain to act after the hero — NOT by
+  // the static table size. So a fold-around to the SB becomes a true blind-vs-
+  // blind spot, and eliminations/sit-outs shrink the effective table.
+  const seatsN = gs.seats.length
+  const bbOffsetN = seatsN === 2 ? 1 : 2
+  const firstOffsetN = (bbOffsetN + 1) % seatsN
+  const actIndexOf = (seatIdx: number) =>
+    ((((seatIdx - gs.dealerIdx) % seatsN + seatsN) % seatsN) - firstOffsetN + seatsN) % seatsN
+  const inHand = (s: Seat) => !s.isSittingOut && !s.isEliminated && (s.holeCards[0] !== null || s.holeCards[1] !== null)
+  const heroActiveCount = gs.seats.filter(s => inHand(s) && !s.isFolded).length // players still live in the hand
+  const heroPlayersBehind = hero
+    ? gs.seats.filter(s => s.idx !== hero.idx && inHand(s) && !s.isFolded && actIndexOf(s.idx) > actIndexOf(hero.idx)).length
+    : 1
+  // Postflop action order starts left of the button (offset 1), button acts last
+  // → hero is "in position" if no live opponent acts after them postflop.
+  const postActIndexOf = (seatIdx: number) =>
+    ((((seatIdx - gs.dealerIdx) % seatsN + seatsN) % seatsN) - 1 + seatsN) % seatsN
+  const heroInPosition = hero
+    ? !gs.seats.some(s => s.idx !== hero.idx && inHand(s) && !s.isFolded && postActIndexOf(s.idx) > postActIndexOf(hero.idx))
+    : true
+  // Effective stack (chips that can actually be played for) = min of hero's and
+  // the biggest live opponent's total chips → drives SPR / commit decisions.
+  const heroEffStack = (() => {
+    if (!hero) return 0
+    const live = gs.seats.filter(s => s.idx !== hero.idx && inHand(s) && !s.isFolded)
+    const heroTotal = hero.stack + hero.bet
+    const maxVill = live.length ? Math.max(...live.map(s => s.stack + s.bet)) : heroTotal
+    return Math.min(heroTotal, maxVill)
+  })()
+  const heroMultiway = heroActiveCount > 2
+  const heroRaiseToBB = bbAmt > 0 ? gs.currentBet / bbAmt : 2.5
   const canCheck = isHeroTurn && gs.currentBet === (hero?.bet ?? 0)
   const callAmt = isHeroTurn ? Math.min((gs.currentBet - (hero?.bet ?? 0)), hero?.stack ?? 0) : 0
   // Raise sizing (all "raise to" totals): minimum legal raise, all-in cap, and
@@ -1796,7 +1869,8 @@ export default function GamePage(): JSX.Element {
   // must be called/raised → auto-fold and sit out next hand. Otherwise (a free
   // check is available) → auto-check and the hand continues normally.
   useEffect(() => {
-    if (!isHeroTurn || gs.paused) return
+    // The clock freezes while the coach window is open (and resumes on close).
+    if (!isHeroTurn || gs.paused || assistOpen) return
     const t = setTimeout(() => {
       const cur = gsRef.current
       const h = cur.seats.find(s => s.isHero)
@@ -1812,7 +1886,7 @@ export default function GamePage(): JSX.Element {
     }, decisionTimer * 1000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHeroTurn, gs.paused, gs.handNum, gs.currentBet])
+  }, [isHeroTurn, gs.paused, assistOpen, gs.handNum, gs.currentBet])
 
   // Apply a queued pre-action ("check box") the instant it's the hero's turn.
   useEffect(() => {
@@ -1979,14 +2053,16 @@ export default function GamePage(): JSX.Element {
               </div>
             )}
 
-            {/* Pot display (collected pot only — live bets are shown in front of players) */}
-            {gs.phase !== 'idle' && collectedPot > 0 && (
+            {/* Pot display — always shows the TOTAL pot (incl. live bets). The
+                central chip pile represents what's already collected; live bets
+                still sit in front of players until the street ends. */}
+            {gs.phase !== 'idle' && gs.pot > 0 && (
               <div className="absolute left-1/2 -translate-x-1/2" style={{top:`${POT_POS.y}%`,transform:'translate(-50%,-50%)'}}>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/70 border border-[#c9a227]/30 backdrop-blur-sm">
-                  <ChipStack amount={collectedPot} sz={20} maxVisible={6}/>
+                  {collectedPot > 0 && <ChipStack amount={collectedPot} sz={20} maxVisible={6}/>}
                   <div className="flex flex-col leading-none">
-                    <span className="text-[7px] text-white/40 uppercase tracking-widest">Pot</span>
-                    <span className="text-[12px] font-bold text-[#c9a227] font-mono">${collectedPot.toLocaleString()}</span>
+                    <span className="text-[7px] text-white/40 uppercase tracking-widest">Pot total</span>
+                    <span className="text-[13px] font-bold text-[#c9a227] font-mono">${gs.pot.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -2004,7 +2080,9 @@ export default function GamePage(): JSX.Element {
                   isWinner={isWinner}
                   isShowdown={isShowdown}
                   turnSeconds={decisionTimer}
+                  turnNonce={`${gs.handNum}:${gs.currentBet}:${assistOpen ? 'p' : 'r'}`}
                   onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
+                  onAssist={seat.isHero && heroInHand ? () => setAssistOpen(true) : undefined}
                 />
               )
             })}
@@ -2346,6 +2424,33 @@ export default function GamePage(): JSX.Element {
       <AnimatePresence>
         {historyOpen && handHistory.length > 0 && (
           <HandHistoryModal records={handHistory} onClose={() => setHistoryOpen(false)}/>
+        )}
+      </AnimatePresence>
+
+      {/* ── PREFLOP RANGE ASSISTANT ── */}
+      <AnimatePresence>
+        {assistOpen && hero && (
+          <RangeAssistant
+            card1={hero.holeCards[0]}
+            card2={hero.holeCards[1]}
+            position={hero.position}
+            scenario={heroScenario}
+            activePlayers={heroActiveCount}
+            playersBehind={heroPlayersBehind}
+            board={gs.community.filter(Boolean) as Card[]}
+            pot={gs.pot}
+            toCall={Math.max(0, gs.currentBet - hero.bet)}
+            heroStack={hero.stack}
+            effStack={heroEffStack}
+            inPosition={heroInPosition}
+            aggression={heroAggression}
+            barrels={heroBarrels}
+            bb={bbAmt}
+            raiseToBB={heroRaiseToBB}
+            multiway={heroMultiway}
+            actionRecap={gs.log.slice(-10)}
+            onClose={() => setAssistOpen(false)}
+          />
         )}
       </AnimatePresence>
 

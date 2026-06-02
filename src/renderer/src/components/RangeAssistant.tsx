@@ -1,0 +1,284 @@
+import { useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
+import {
+  GRID_RANKS, buildRangeMap, handKeyFromCards, cellKey,
+  ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
+} from '../lib/preflopRanges'
+import { getPostflopAdvice, monteCarloEquity, type AdviceAction } from '../lib/postflopAdvisor'
+
+interface Card { rank: string; suit: string }
+
+const ACTION_COLOR: Record<RangeAction, { bg: string; fg: string }> = {
+  raise: { bg: '#c9a227', fg: '#1a1206' },
+  '3bet': { bg: '#dc2626', fg: '#fff' },
+  '4bet': { bg: '#b91c1c', fg: '#fff' },
+  call:  { bg: '#1f7a4d', fg: '#eafff3' },
+  fold:  { bg: '#1a2230', fg: '#5b6675' },
+}
+const ADVICE_COLOR: Record<AdviceAction, string> = {
+  BET: '#c9a227', RAISE: '#c9a227', CALL: '#1f9d5e', CHECK: '#3aa0d8', FOLD: '#c0392b',
+}
+
+interface UnifiedAdvice {
+  actionText: string
+  color: string
+  sizingText: string
+  equity: number
+  potOdds: number
+  madeHand: string
+  draws: string[]
+  reasons: string[]
+  confidence: 'haute' | 'moyenne' | 'basse'
+}
+
+export default function RangeAssistant({
+  card1, card2, position, scenario, activePlayers, playersBehind,
+  board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
+  raiseToBB, multiway, actionRecap, onClose,
+}: {
+  card1: Card | null
+  card2: Card | null
+  position: string
+  scenario: Scenario | 'postflop'
+  activePlayers: number
+  playersBehind: number
+  board: Card[]
+  pot: number
+  toCall: number
+  heroStack: number
+  effStack: number
+  inPosition: boolean
+  aggression: number
+  barrels: number
+  bb: number
+  raiseToBB: number
+  multiway: boolean
+  actionRecap: string[]
+  onClose: () => void
+}) {
+  const isPreflop = scenario !== 'postflop'
+  const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
+  const effBB = bb > 0 ? effStack / bb : 100
+  const rangeMap = isPreflop ? buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway }) : null
+  const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
+  const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
+
+  const boardSig = board.map(c => c.rank + c.suit).join('')
+  const opponents = Math.max(1, activePlayers - 1)
+
+  // Unified advice — preflop (chart action + raw equity) or postflop (full sim).
+  const advice = useMemo<UnifiedAdvice | null>(() => {
+    if (!card1 || !card2) return null
+    const pct = (x: number) => `${Math.round(x * 100)}%`
+    if (isPreflop) {
+      const chart = heroChartAction ?? 'fold'
+      const equity = monteCarloEquity([card1, card2], [], opponents, 1000)
+      const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
+      const sizingText = chart === 'fold' ? 'couche-toi'
+        : chart === 'call' ? 'suis la mise'
+        : chart === '3bet' ? 'relance (3-bet ≈ 3×)'
+        : chart === '4bet' ? 'sur-relance (4-bet)'
+        : 'ouvre / relance (≈ 2.5–3 BB)'
+      const reasons = [
+        `Selon la range de ta position (${position} — ${SCENARIO_LABEL[scenario as Scenario].toLowerCase()}), ${heroKey} se joue : ${ACTION_LABEL[chart]}.`,
+        `Équité brute estimée : ${pct(equity)} face à ${opponents} adversaire${opponents > 1 ? 's' : ''}.`,
+        inPosition ? 'Tu es en position : tu peux jouer un peu plus large.' : 'Tu es hors de position : resserre légèrement.',
+      ]
+      if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet/fold (peu de calls).`)
+      else if (effBB > 80) reasons.push(`Tapis profond (~${Math.round(effBB)} BB) : les mains assorties/connectées gagnent en valeur.`)
+      if (scenario === 'vsopen' && raiseToBB > 3.2) reasons.push(`Grosse relance (~${raiseToBB.toFixed(1)} BB) : resserre tes calls.`)
+      if (multiway) reasons.push('Plusieurs joueurs déjà dans le coup : resserre (surtout les mains dépareillées).')
+      return {
+        actionText: ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
+        equity, potOdds, madeHand: heroKey ?? '—', draws: [], reasons,
+        confidence: chart === 'fold' && equity < 0.35 ? 'haute' : (chart === 'raise' || chart === '3bet') && equity > 0.55 ? 'haute' : 'moyenne',
+      }
+    }
+    if (board.length < 3) return null
+    const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack])
+
+  const [answer, setAnswer] = useState<string | null>(null)
+
+  function ask(q: string) {
+    if (!advice) return
+    const pct = (x: number) => `${Math.round(x * 100)}%`
+    if (q === 'why') setAnswer(advice.reasons.join(' '))
+    else if (q === 'equity') setAnswer(`Tu as environ ${pct(advice.equity)} de chances de gagner le coup. ${toCall > 0 ? `Pour payer, il te faut au moins ${pct(advice.potOdds)} : ${advice.equity >= advice.potOdds ? 'tu es au-dessus → payer est rentable.' : 'tu es en dessous → payer perd de l’argent sur le long terme.'}` : 'Personne n’a misé : tu peux checker gratuitement ou miser pour la valeur.'}`)
+    else if (q === 'raise') setAnswer(advice.equity >= 0.6 ? `Avec ${pct(advice.equity)} d’équité, relancer pour la valeur est excellent : tu fais payer les mains plus faibles et les tirages.` : advice.draws.length ? `Relancer en semi-bluff est jouable : même battu maintenant, ton ${advice.draws.join(' / ')} peut te faire gagner gros.` : `Relancer ici est risqué : avec seulement ${pct(advice.equity)} d’équité, tu te fais payer surtout par mieux.`)
+    else if (q === 'hand') setAnswer(`Ta main : ${advice.madeHand}${advice.draws.length ? `, avec ${advice.draws.join(' et ')}` : ''}.`)
+    else if (q === 'equity_calc') setAnswer(`Je le calcule par simulation (Monte-Carlo) : je rejoue ce coup ~1000–1500 fois en distribuant au hasard les cartes manquantes du board et les mains des ${opponents} adversaire(s), puis je compare ta main à la leur à chaque fois. Le % de fois où tu gagnes (les partages comptent en fraction) = ton équité, soit ~${pct(advice.equity)} ici. Plus je fais de simulations, plus le chiffre est précis.`)
+    else if (q === 'potodds_calc') {
+      if (toCall <= 0) { setAnswer(`Personne n’a misé : tu n’as rien à payer, donc pas de cote du pot à atteindre.`); return }
+      setAnswer(`C’est purement mathématique : tu dois payer ${toCall} pour tenter de remporter le pot. Équité requise = mise à payer ÷ (pot total après ton call) = ${toCall} ÷ (${pot} + ${toCall}) ≈ ${pct(advice.potOdds)}. Il faut donc gagner le coup au moins ${pct(advice.potOdds)} du temps pour que payer soit rentable. Toi tu gagnes ~${pct(advice.equity)} → ${advice.equity >= advice.potOdds ? 'au-dessus, donc call rentable.' : 'en dessous, donc payer perd à long terme.'}`)
+    }
+    else if (q === 'bluff') {
+      const betSize = Math.max(1, Math.round(pot * 0.66))
+      const fe = betSize / (pot + betSize)
+      const semi = advice.draws.length > 0
+      setAnswer(`Pour bluffer, ${toCall > 0 ? 'il faudrait relancer' : 'tu mises'} pour faire abandonner l’adversaire. Une taille d’environ ⅔ pot (~$${betSize}) est crédible : tu risques $${betSize} pour gagner $${pot}, donc il faut qu’il se couche au moins ~${pct(fe)} du temps (mise ÷ (pot + mise)) pour que le bluff soit gagnant. ⚠️ Risque : s’il paie, tu n’as plus que ~${pct(advice.equity)} d’équité — tu perds ta mise la plupart du temps. ${semi ? `Bonne nouvelle : avec ton ${advice.draws.join(' / ')}, c’est un SEMI-bluff — même payé tu peux encore toucher, donc bien moins risqué.` : `Sans tirage, ce serait un bluff “pur” : tu ne comptes que sur son fold. À réserver aux board qui touchent ta range et aux adversaires capables de se coucher.`}`)
+    }
+  }
+
+  const QA_BUTTONS: [string, string][] = [
+    ['why', 'Pourquoi ?'], ['equity', 'Mon équité ?'], ['raise', 'Et si je relance ?'], ['hand', 'C’est quoi ma main ?'],
+    ['equity_calc', 'Comment tu calcules mon équité ?'], ['potodds_calc', 'Comment tu calcules la cote ?'], ['bluff', 'Et si j’essaie de bluffer ?'],
+  ]
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }}>
+      <motion.div initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-[680px] max-h-[92vh] overflow-y-auto rounded-2xl border border-[#c9a227]/30"
+        style={{ background: '#070d1a' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/8 sticky top-0 z-10" style={{ background: '#070d1a' }}>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-[#c9a227] uppercase tracking-widest">Assistant Coach</span>
+            <span className="text-[10px] text-white/35">{isPreflop ? 'Préflop' : 'Postflop'}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/8 border border-white/10 text-white/50 font-bold uppercase tracking-wide">{formatLabel}</span>
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10">✕</button>
+        </div>
+
+        <div className="p-5">
+          {/* Postflop before the flop is dealt */}
+          {!advice && !isPreflop && <p className="text-white/50 text-sm text-center py-8">En attente du flop…</p>}
+
+          {advice && (
+            <>
+              {/* Situation + recommendation banner */}
+              {isPreflop && (
+                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">
+                  Situation : <span className="text-[#c9a227] font-bold">{position}</span> — {SCENARIO_LABEL[scenario as Scenario]}
+                </p>
+              )}
+              <div className="flex items-center gap-4 rounded-xl border p-4 mb-4"
+                style={{ background: advice.color + '1f', borderColor: advice.color + '88' }}>
+                <div className="text-center min-w-[72px]">
+                  <p className="text-[9px] text-white/40 uppercase tracking-widest">Conseil</p>
+                  <p className="text-xl font-black tracking-wide leading-tight" style={{ color: advice.color }}>{advice.actionText}</p>
+                </div>
+                <div className="flex-1">
+                  {heroKey && <p className="text-sm font-bold text-white/90 font-mono">{heroKey} · <span className="font-sans">{advice.sizingText}</span></p>}
+                  <p className="text-[10px] text-white/45 mt-0.5">Confiance : <span className="font-bold" style={{ color: advice.color }}>{advice.confidence}</span></p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Preflop grid */}
+          {isPreflop && rangeMap && (
+            <>
+              <div className="mx-auto" style={{ width: 'min(100%, 520px)' }}>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
+                  {GRID_RANKS.map((_, i) =>
+                    GRID_RANKS.map((__, j) => {
+                      const key = cellKey(i, j)
+                      const action = rangeMap.get(key) ?? 'fold'
+                      const c = ACTION_COLOR[action]
+                      const isHero = key === heroKey
+                      return (
+                        <div key={`${i}-${j}`} title={`${key} — ${ACTION_LABEL[action]}`}
+                          className="relative flex items-center justify-center rounded-[3px] select-none"
+                          style={{
+                            aspectRatio: '1', fontSize: 9, fontWeight: 700, background: c.bg, color: c.fg,
+                            outline: isHero ? '2px solid #00e5ff' : 'none', outlineOffset: isHero ? '-1px' : 0,
+                            boxShadow: isHero ? '0 0 10px rgba(0,229,255,0.8)' : 'none', zIndex: isHero ? 2 : 1,
+                          }}>
+                          {key.replace('s', '').replace('o', '')}
+                          {key.endsWith('s') && <span style={{ fontSize: 6, opacity: 0.7, marginLeft: 1 }}>s</span>}
+                          {key.endsWith('o') && <span style={{ fontSize: 6, opacity: 0.55, marginLeft: 1 }}>o</span>}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-4 my-3 flex-wrap">
+                {(scenario === 'rfi' ? (['raise', 'fold'] as RangeAction[])
+                  : scenario === 'vsopen' ? (['3bet', 'call', 'fold'] as RangeAction[])
+                  : (['4bet', 'call', 'fold'] as RangeAction[])
+                ).map(a => (
+                  <div key={a} className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm" style={{ background: ACTION_COLOR[a].bg }} />
+                    <span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{ACTION_LABEL[a]}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {advice && (
+            <>
+              {/* Equity / pot odds */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-[10px] mb-1">
+                  <span className="text-white/50 uppercase tracking-wide">Ton équité</span>
+                  <span className="font-bold text-emerald-300">{Math.round(advice.equity * 100)}%
+                    {toCall > 0 && <span className="text-white/40 font-normal"> · cote {Math.round(advice.potOdds * 100)}%</span>}
+                  </span>
+                </div>
+                <div className="relative h-3 rounded-full overflow-hidden bg-white/8">
+                  <div className="h-full rounded-full" style={{ width: `${advice.equity * 100}%`, background: 'linear-gradient(90deg,#1f9d5e,#34d399)' }} />
+                  {toCall > 0 && <div className="absolute top-0 bottom-0 w-[2px] bg-[#c9a227]" style={{ left: `${advice.potOdds * 100}%` }} title="Équité requise pour payer" />}
+                </div>
+                {!isPreflop && (
+                  <p className="text-[9px] text-white/30 mt-1">Ta main : <span className="text-white/60 font-bold">{advice.madeHand}</span>{advice.draws.length ? ` · ${advice.draws.join(' · ')}` : ''}</p>
+                )}
+              </div>
+
+              {/* Reasons */}
+              <div className="space-y-1.5 mb-4">
+                {advice.reasons.map((r, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="text-[#c9a227] mt-0.5 text-[10px]">▸</span>
+                    <p className="text-[11px] text-white/70 leading-relaxed">{r}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Guided Q&A */}
+              <div className="border-t border-white/8 pt-3">
+                <p className="text-[9px] text-white/35 uppercase tracking-widest mb-2">Demande au coach</p>
+                <div className="flex flex-wrap gap-2">
+                  {QA_BUTTONS.map(([q, label]) => (
+                    <button key={q} onClick={() => ask(q)}
+                      className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 border border-white/10 text-white/60 hover:text-[#c9a227] hover:border-[#c9a227]/40 transition-all">
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {answer && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 p-3 rounded-lg bg-[#00d4ff]/8 border border-[#00d4ff]/20">
+                    <p className="text-[11px] text-white/80 leading-relaxed">💬 {answer}</p>
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Action recap */}
+              {actionRecap.length > 0 && (
+                <div className="border-t border-white/8 pt-3 mt-3">
+                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5">Déroulé du coup</p>
+                  <div className="space-y-0.5 max-h-28 overflow-y-auto">
+                    {actionRecap.map((l, i) => <p key={i} className="text-[10px] text-white/40 font-mono">{l}</p>)}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[9px] text-white/25 text-center mt-4 leading-relaxed">
+                {isPreflop
+                  ? 'Range adaptée au nombre de joueurs en jeu + équité estimée par simulation. Conseil d’entraînement, pas un solveur.'
+                  : 'Équité estimée par simulation (Monte-Carlo) vs mains aléatoires. Conseil heuristique d’entraînement, pas un solveur.'}
+              </p>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  )
+}
