@@ -11,6 +11,12 @@
 export interface Card { rank: string; suit: string }
 export type AdviceAction = 'BET' | 'CHECK' | 'CALL' | 'RAISE' | 'FOLD'
 
+export interface CheckPlanRow {
+  label: string      // "⅓ pot", "pot", "all-in"…
+  reqEq: number      // equity needed to call that bet
+  action: string     // "Call", "Fold", "Check-raise (valeur)"…
+  note: string       // short rationale
+}
 export interface Advice {
   action: AdviceAction
   sizingText: string
@@ -20,6 +26,7 @@ export interface Advice {
   draws: string[]
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
+  checkPlan?: CheckPlanRow[] // plan vs a bet behind — only when action === CHECK
 }
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
@@ -29,18 +36,23 @@ const HAND_NAMES = ['Carte haute', 'Paire', 'Double paire', 'Brelan', 'Suite', '
 
 // ── Evaluation ───────────────────────────────────────────────────────────────
 function eval5(c: Card[]): number {
-  const rv = c.map(x => RV[x.rank]).sort((a, b) => b - a)
+  const rv = c.map(x => RV[x.rank])
   const sv = c.map(x => x.suit)
   const isF = sv.every(s => s === sv[0])
   const u = [...new Set(rv)].sort((a, b) => b - a)
-  const isS = (u.length === 5 && u[0] - u[4] === 4) || (u[0] === 14 && u[1] === 5 && u[2] === 4 && u[3] === 3 && u[4] === 2)
+  const wheel = u.length === 5 && u[0] === 14 && u[1] === 5 && u[2] === 4 && u[3] === 3 && u[4] === 2
+  const isS = (u.length === 5 && u[0] - u[4] === 4) || wheel
   const cnt: Record<number, number> = {}; rv.forEach(r => (cnt[r] = (cnt[r] ?? 0) + 1))
   const cv = Object.values(cnt).sort((a, b) => b - a)
   let rank = 0
   if (isF && isS) rank = 8; else if (cv[0] === 4) rank = 7; else if (cv[0] === 3 && cv[1] === 2) rank = 6
   else if (isF) rank = 5; else if (isS) rank = 4; else if (cv[0] === 3) rank = 3
   else if (cv[0] === 2 && cv[1] === 2) rank = 2; else if (cv[0] === 2) rank = 1
-  return rank * 15 ** 5 + rv[0] * 15 ** 4 + rv[1] * 15 ** 3 + rv[2] * 15 ** 2 + rv[3] * 15 + rv[4]
+  if (isS) return rank * 15 ** 5 + (wheel ? 5 : u[0])
+  // Tiebreak by group size first (pairs/trips), then rank — so a pair beats a higher kicker.
+  const tb: number[] = []
+  Object.keys(cnt).map(Number).sort((a, b) => cnt[b] - cnt[a] || b - a).forEach(r => { for (let i = 0; i < cnt[r]; i++) tb.push(r) })
+  return rank * 15 ** 5 + (tb[0] ?? 0) * 15 ** 4 + (tb[1] ?? 0) * 15 ** 3 + (tb[2] ?? 0) * 15 ** 2 + (tb[3] ?? 0) * 15 + (tb[4] ?? 0)
 }
 function best7(cards: Card[]): number {
   if (cards.length <= 5) return eval5(padTo5(cards))
@@ -188,12 +200,23 @@ export function getPostflopAdvice(input: {
   const reasons: string[] = []
   reasons.push(`Ton équité réelle ≈ ${pct(eq)}${aggression > 0 ? ` face à une range ${barrels >= 2 ? 'forte (plusieurs mises)' : 'resserrée'}` : ` face à ${opponents} adversaire${opponents > 1 ? 's' : ''}`}.`)
   if (toCall > 0) reasons.push(`Cote du pot : il te faut ${pct(potOdds)} d'équité pour payer ${toCall}.`)
-  reasons.push(`Ta main : ${name}${pair !== 'none' ? ` (${pair === 'overpair' ? 'overpaire' : pair === 'top' ? 'top paire' : pair === 'second' ? '2e paire' : 'paire faible'})` : ''}${draws.length ? ' + ' + draws.join(' + ') : ''}.`)
+  // "Playing the board" is strictly a RIVER concept (5 community cards) where your
+  // hole cards add nothing. Pre-river you always hold at least high-card / a draw,
+  // so we never mislabel it (and we avoid padding the board with fake cards).
+  const playsBoard = board.length === 5 && best7([...hole, ...board]) <= best7(board)
+  // Implied-odds buffer below direct pot odds: generous on the flop (two cards to
+  // come), almost none on the turn (one card, little room to get paid).
+  const impliedBuf = board.length <= 3 ? 0.05 : 0.01
+
+  reasons.push(playsBoard
+    ? `Ta main : tu joues le board (${name}) — pas de main à toi${draws.length ? ', seulement ' + draws.join(' + ') : ''}.`
+    : `Ta main : ${name}${pair !== 'none' ? ` (${pair === 'overpair' ? 'overpaire' : pair === 'top' ? 'top paire' : pair === 'second' ? '2e paire' : 'paire faible'})` : ''}${draws.length ? ' + ' + draws.join(' + ') : ''}.`)
   reasons.push(inPosition ? 'Tu es en position (tu parles après).' : 'Tu es hors de position : sois plus prudent.')
+  if (cat === 0 && !playsBoard && toCall > 0) reasons.push('Ta « carte haute » n’est pas rien : ton équité vient de tes surcartes (tu peux toucher la paire), de tirages de secours, et tu bats ses mains ratées/bluffs au showdown.')
   if (pot > 0 && spr < 4) reasons.push(`SPR ≈ ${spr.toFixed(1)} (tapis/pot) : ${spr <= 1.5 ? 'engagé — avec une main forte, joue all-in.' : 'assez bas, prêt à investir gros avec une main forte.'}`)
 
-  const isStrongValue = cat >= 2 || pair === 'overpair' // two pair+, sets, overpair
-  const isOnePair = cat === 1
+  const isStrongValue = !playsBoard && (cat >= 2 || pair === 'overpair') // two pair+, sets, overpair
+  const isOnePair = !playsBoard && cat === 1
   const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
   const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
 
@@ -202,38 +225,30 @@ export function getPostflopAdvice(input: {
   let confidence: Advice['confidence'] = 'moyenne'
 
   if (toCall > 0) {
-    // ── Facing a bet/raise ──
+    // ── Facing a bet/raise. Golden rule: NEVER fold when equity beats the pot
+    // odds — only raise (strong value) or call/fold around the price. ──
     if (isStrongValue && eq >= 0.55) {
+      // Strong made hand with the edge → value raise.
       if (spr <= 1.5) { action = 'RAISE'; sizingText = `relance ALL-IN (SPR bas)` }
       else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})` }
       reasons.push('Main forte : tu domines une bonne partie de sa range → relance pour la valeur.')
       confidence = eq >= 0.7 ? 'haute' : 'moyenne'
-    } else if (isStrongValue) {
-      action = 'CALL'; sizingText = `paie $${toCall}`
-      reasons.push('Main de valeur, mais sa range d’agression est lourde : call (relancer te fait payer surtout par mieux).')
-      confidence = 'moyenne'
-    } else if (isOnePair) {
-      // Bluffcatcher — call/fold only, NEVER raise into aggression.
-      if (eq >= potOdds + 0.02) {
-        action = 'CALL'; sizingText = `paie $${toCall} (bluffcatch)`
-        reasons.push('Une paire face à de l’agression = bluffcatcher : tu paies pour battre ses bluffs, mais ne relance pas (tu ferais fuir ses bluffs et payer ses grosses mains).')
-        confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse'
-      } else if (strongDraw && eq >= potOdds - 0.08) {
-        action = 'CALL'; sizingText = `paie $${toCall}`
-        reasons.push('Paire + tirage : assez d’équité avec les gains implicites pour suivre.')
-        confidence = 'basse'
-      } else {
-        action = 'FOLD'; sizingText = 'couche-toi'
-        reasons.push('Bluffcatcher trop faible face à cette agression : se coucher est le plus rentable.')
-        confidence = eq < potOdds - 0.08 ? 'haute' : 'moyenne'
-      }
-    } else if (strongDraw) {
-      if (eq >= potOdds - 0.04) { action = 'CALL'; sizingText = `paie $${toCall} (tirage)`; reasons.push('Tirage fort : la cote (+ gains implicites) justifie le call.'); confidence = 'moyenne' }
-      else { action = 'FOLD'; sizingText = 'couche-toi'; reasons.push('Tirage trop cher payé par rapport à la cote.'); confidence = 'basse' }
+    } else if (eq >= potOdds + 0.01) {
+      // Profitable call by the pot odds — bluffcatch / showdown / made hand.
+      action = 'CALL'
+      if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push('Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
+      else if (isOnePair) { sizingText = `paie $${toCall} (bluffcatch)`; reasons.push(`Bluffcatcher : ton équité (${pct(eq)}) dépasse la cote (${pct(potOdds)}) → tu paies pour battre ses bluffs, mais ne relance pas.`); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
+      else { sizingText = `paie $${toCall}`; reasons.push(`Ton équité (${pct(eq)}) dépasse la cote du pot (${pct(potOdds)}) → call rentable, même sans grosse main.`); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
+    } else if (strongDraw && eq >= potOdds - impliedBuf) {
+      // Just under the direct price, but a draw with implied odds.
+      action = 'CALL'; sizingText = `paie $${toCall} (tirage)`
+      reasons.push('Tirage juste sous la cote directe, mais les gains implicites (tu gagnes plus en touchant) le rendent rentable.')
+      confidence = 'basse'
     } else {
       action = 'FOLD'; sizingText = 'couche-toi'
-      reasons.push('Pas de main ni de tirage : relancer en bluff ici est très risqué, le fold est correct.')
-      confidence = 'haute'
+      if (strongDraw) reasons.push(`Tirage trop cher : ${pct(eq)} d'équité contre ${pct(potOdds)} requis${board.length >= 4 ? ' — et une seule carte à venir (peu de gains implicites)' : ''}. Fold.`)
+      else reasons.push(`Équité (${pct(eq)}) sous la cote (${pct(potOdds)}) et pas de tirage : se coucher est le plus rentable.`)
+      confidence = eq < potOdds - 0.08 ? 'haute' : 'moyenne'
     }
   } else {
     // ── No bet to call (checked to you / you open the action) ──
@@ -256,5 +271,38 @@ export function getPostflopAdvice(input: {
     }
   }
 
-  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence }
+  // Plan ahead: if we check, what to do when an opponent bets behind us, for
+  // each common sizing. Pot odds drive the call/fold; a strong hand check-raises.
+  // Bigger bets imply a stronger/more-polarized range → a small equity haircut.
+  let checkPlan: CheckPlanRow[] | undefined
+  if (action === 'CHECK') {
+    const sizes: { label: string; frac?: number; allin?: boolean; pen: number }[] = [
+      { label: '⅓ pot', frac: 1 / 3, pen: 0.00 },
+      { label: '⅔ pot', frac: 2 / 3, pen: 0.03 },
+      { label: 'pot', frac: 1, pen: 0.06 },
+      { label: 'all-in', allin: true, pen: 0.10 },
+    ]
+    checkPlan = sizes.map(s => {
+      const bet = s.allin ? Math.max(effStack, pot) : pot * (s.frac as number)
+      const reqEq = bet / (pot + 2 * bet)
+      const effEq = Math.max(0, eq - s.pen)
+      let act: string, note: string
+      if (isStrongValue) {
+        act = 'Check-raise (valeur)'
+        note = s.allin ? `tu domines : paie son all-in.` : `tu domines : relance (~2.5× sa mise) pour la valeur.`
+      } else if (effEq >= reqEq) {
+        act = isOnePair ? 'Call (bluffcatch)' : 'Call'
+        note = `équité ${pct(eq)} ≥ ${pct(reqEq)} requis → rentable.`
+      } else if (strongDraw && effEq >= reqEq - impliedBuf) {
+        act = 'Call (tirage)'
+        note = `tirage : ${pct(eq)} vs ${pct(reqEq)} requis (gains implicites).`
+      } else {
+        act = 'Fold'
+        note = `${pct(eq)} < ${pct(reqEq)} requis${s.allin || s.frac! >= 1 ? ' (grosse mise = range forte)' : ''} → fold.`
+      }
+      return { label: s.label, reqEq, action: act, note }
+    })
+  }
+
+  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence, checkPlan }
 }

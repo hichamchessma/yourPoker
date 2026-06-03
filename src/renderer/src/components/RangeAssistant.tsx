@@ -4,7 +4,7 @@ import {
   GRID_RANKS, buildRangeMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, type AdviceAction } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type CheckPlanRow } from '../lib/postflopAdvisor'
 
 interface Card { rank: string; suit: string }
 
@@ -29,6 +29,7 @@ interface UnifiedAdvice {
   draws: string[]
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
+  checkPlan?: CheckPlanRow[]
 }
 
 export default function RangeAssistant({
@@ -96,7 +97,7 @@ export default function RangeAssistant({
     }
     if (board.length < 3) return null
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
-    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence }
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, checkPlan: a.checkPlan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack])
 
@@ -105,14 +106,27 @@ export default function RangeAssistant({
   function ask(q: string) {
     if (!advice) return
     const pct = (x: number) => `${Math.round(x * 100)}%`
+    const drawing = advice.draws.some(d => d.includes('couleur') || d.includes('ouvert'))
+    // Verdict that stays consistent with the actual recommendation (handles the
+    // implied-odds case where we call a draw slightly below direct pot odds).
+    const oddsVerdict = advice.equity >= advice.potOdds
+      ? 'tu es au-dessus → payer est rentable.'
+      : (advice.actionText === 'CALL' && drawing)
+        ? 'tu es légèrement sous la cote directe, MAIS ton tirage donne des gains implicites (tu gagnes plus en touchant) → le call reste correct.'
+        : 'tu es en dessous → sur la cote directe, payer perd à long terme (d’où le fold).'
     if (q === 'why') setAnswer(advice.reasons.join(' '))
-    else if (q === 'equity') setAnswer(`Tu as environ ${pct(advice.equity)} de chances de gagner le coup. ${toCall > 0 ? `Pour payer, il te faut au moins ${pct(advice.potOdds)} : ${advice.equity >= advice.potOdds ? 'tu es au-dessus → payer est rentable.' : 'tu es en dessous → payer perd de l’argent sur le long terme.'}` : 'Personne n’a misé : tu peux checker gratuitement ou miser pour la valeur.'}`)
+    else if (q === 'equity') setAnswer(`Tu as environ ${pct(advice.equity)} de chances de gagner le coup. ${toCall > 0 ? `Pour payer, il te faut au moins ${pct(advice.potOdds)} : ${oddsVerdict}` : 'Personne n’a misé : tu peux checker gratuitement ou miser pour la valeur.'}`)
     else if (q === 'raise') setAnswer(advice.equity >= 0.6 ? `Avec ${pct(advice.equity)} d’équité, relancer pour la valeur est excellent : tu fais payer les mains plus faibles et les tirages.` : advice.draws.length ? `Relancer en semi-bluff est jouable : même battu maintenant, ton ${advice.draws.join(' / ')} peut te faire gagner gros.` : `Relancer ici est risqué : avec seulement ${pct(advice.equity)} d’équité, tu te fais payer surtout par mieux.`)
     else if (q === 'hand') setAnswer(`Ta main : ${advice.madeHand}${advice.draws.length ? `, avec ${advice.draws.join(' et ')}` : ''}.`)
     else if (q === 'equity_calc') setAnswer(`Je le calcule par simulation (Monte-Carlo) : je rejoue ce coup ~1000–1500 fois en distribuant au hasard les cartes manquantes du board et les mains des ${opponents} adversaire(s), puis je compare ta main à la leur à chaque fois. Le % de fois où tu gagnes (les partages comptent en fraction) = ton équité, soit ~${pct(advice.equity)} ici. Plus je fais de simulations, plus le chiffre est précis.`)
     else if (q === 'potodds_calc') {
       if (toCall <= 0) { setAnswer(`Personne n’a misé : tu n’as rien à payer, donc pas de cote du pot à atteindre.`); return }
-      setAnswer(`C’est purement mathématique : tu dois payer ${toCall} pour tenter de remporter le pot. Équité requise = mise à payer ÷ (pot total après ton call) = ${toCall} ÷ (${pot} + ${toCall}) ≈ ${pct(advice.potOdds)}. Il faut donc gagner le coup au moins ${pct(advice.potOdds)} du temps pour que payer soit rentable. Toi tu gagnes ~${pct(advice.equity)} → ${advice.equity >= advice.potOdds ? 'au-dessus, donc call rentable.' : 'en dessous, donc payer perd à long terme.'}`)
+      setAnswer(`C’est purement mathématique : tu dois payer ${toCall} pour tenter de remporter le pot. Équité requise = mise à payer ÷ (pot total après ton call) = ${toCall} ÷ (${pot} + ${toCall}) ≈ ${pct(advice.potOdds)}. Il faut donc gagner le coup au moins ${pct(advice.potOdds)} du temps pour que payer soit rentable. Toi tu gagnes ~${pct(advice.equity)} → ${oddsVerdict}`)
+    }
+    else if (q === 'bet_behind') {
+      if (!advice.checkPlan || advice.checkPlan.length === 0) { setAnswer('Cette question n’est utile que lorsque le conseil est de CHECKER.'); return }
+      const lines = advice.checkPlan.map(r => `• Il mise ${r.label} (≈ ${pct(r.reqEq)} requis) → ${r.action.toUpperCase()} : ${r.note}`).join('\n')
+      setAnswer(`Tu checkes. Si un adversaire mise APRÈS toi, voici le plan optimal selon sa taille de mise :\n${lines}\n\nPlus la mise est grosse, plus il faut d’équité ET plus sa range est forte → prudence sur les grosses tailles.`)
     }
     else if (q === 'bluff') {
       const betSize = Math.max(1, Math.round(pot * 0.66))
@@ -251,11 +265,22 @@ export default function RangeAssistant({
                       {label}
                     </button>
                   ))}
+                  {/* Plan-ahead question — only active when the advice is to CHECK */}
+                  {(() => {
+                    const enabled = advice.actionText === 'CHECK' && !!advice.checkPlan
+                    return (
+                      <button onClick={() => enabled && ask('bet_behind')} disabled={!enabled}
+                        title={enabled ? 'Plan si un adversaire mise après ton check' : 'Disponible seulement quand le conseil est CHECK'}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${enabled ? 'bg-[#c9a227]/12 border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/20' : 'bg-white/3 border-white/8 text-white/20 cursor-not-allowed'}`}>
+                        🎯 Et si on mise après moi ?
+                      </button>
+                    )
+                  })()}
                 </div>
                 {answer && (
                   <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                     className="mt-3 p-3 rounded-lg bg-[#00d4ff]/8 border border-[#00d4ff]/20">
-                    <p className="text-[11px] text-white/80 leading-relaxed">💬 {answer}</p>
+                    <p className="text-[11px] text-white/80 leading-relaxed whitespace-pre-line">💬 {answer}</p>
                   </motion.div>
                 )}
               </div>

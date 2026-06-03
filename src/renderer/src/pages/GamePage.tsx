@@ -19,6 +19,7 @@ interface Seat {
   position: string; isDealer: boolean; isSB: boolean; isBB: boolean
   handStrength?: string; handScore?: number; isWinner?: boolean
   isEliminated: boolean; isSittingOut: boolean
+  seatType: 'bot' | 'human'
 }
 interface GState {
   phase: Phase; deck: Card[]; seats: Seat[]; community: (Card | null)[]
@@ -62,17 +63,17 @@ const POS: Record<number, string[]> = {
   8:['BTN','SB','BB','UTG','UTG+1','MP','HJ','CO'],
   9:['BTN','SB','BB','UTG','UTG+1','MP','MP+1','HJ','CO'],
 }
+// 3 bot tiers (1 Amateur, 2 Pro, 3 Expert) + a Human-style pool.
 const BNAMES: Record<number, string[]> = {
-  1:['Lucky Luke','Fish Bob','Noobie Ned','Rookie Ray','Passive Pete','Clueless Carl'],
-  2:['Regular Rob','Tag Mike','Basic Ben','ABC Andy','Steady Sam','Avg Joe'],
-  3:['Solid Steve','Semi-Pro Kim','Thinking Tim','Range Rita','Smart Sara','Poker Pat'],
-  4:['Expert Emma','GTO Greg','Balanced Bob','Exploit Ed','Pro Paul','Sharp Shawn'],
-  5:['GTO Bot','Solver AI','PIO Master','Range Rover','Optimal Opus','Neural Net'],
+  1:['Lucky Luke','Fish Bob','Passive Pete','Rookie Ray','Calling Carl','Avg Joe','Loose Lou','Basic Ben'],
+  2:['Solid Steve','Tag Mike','Thinking Tim','Steady Sam','Range Rita','Poker Pat','Sharp Shawn','Pro Paul'],
+  3:['Semi-Pro Kim','GTO Greg','Smart Sara','Exploit Ed','Optimal Opus','Solver Sven','PIO Master','Balanced Bo'],
 }
+const HUMAN_NAMES = ['Alex','Marco','Nadia','Leo','Sofia','Yanis','Karim','Lina','Diego','Emma','Hugo','Inès']
 const LGRAD: Record<number,[string,string]> = {
-  0:['#0d2235','#00d4ff'], 1:['#0d2a0d','#22aa44'], 2:['#102038','#2266cc'],
-  3:['#2a2008','#c9a227'], 4:['#300808','#cc3333'], 5:['#1a0830','#9933dd'],
+  0:['#0d2235','#00d4ff'], 1:['#0d2a0d','#22aa44'], 2:['#2a2008','#c9a227'], 3:['#300818','#cc3366'],
 }
+const HUMAN_GRAD: [string,string] = ['#1a0830','#9933dd']
 const HNAMES = ['Haute carte','Paire','Double paire','Brelan','Suite','Couleur','Full','Carré','Quinte flush']
 const PHASE_LABEL: Record<Phase, string> = {
   idle:'Prêt', dealing:'Distribution', preflop:'Pré-flop',
@@ -133,18 +134,25 @@ function combos5(arr: Card[]): Card[][] {
   go(0, []); return r
 }
 function evalFive(cards: Card[]): number {
-  const rv = cards.map(c => RV[c.rank] ?? 2).sort((a,b)=>b-a)
+  const rv = cards.map(c => RV[c.rank] ?? 2)
   const sv = cards.map(c => c.suit)
   const isF = sv.every(s=>s===sv[0])
   const u = [...new Set(rv)].sort((a,b)=>b-a)
-  const isS = (u.length===5&&u[0]-u[4]===4)||(u[0]===14&&u[1]===5&&u[2]===4&&u[3]===3&&u[4]===2)
+  const wheel = u.length===5 && u[0]===14 && u[1]===5 && u[2]===4 && u[3]===3 && u[4]===2
+  const isS = (u.length===5 && u[0]-u[4]===4) || wheel
   const cnt: Record<number,number> = {}; rv.forEach(r=>cnt[r]=(cnt[r]??0)+1)
   const cv = Object.values(cnt).sort((a,b)=>b-a)
   let rank=0
   if(isF&&isS) rank=8; else if(cv[0]===4) rank=7; else if(cv[0]===3&&cv[1]===2) rank=6
   else if(isF) rank=5; else if(isS) rank=4; else if(cv[0]===3) rank=3
   else if(cv[0]===2&&cv[1]===2) rank=2; else if(cv[0]===2) rank=1
-  return rank*15**5+rv[0]*15**4+rv[1]*15**3+rv[2]*15**2+rv[3]*15+rv[4]
+  // Straights compare on their high card (wheel A-2-3-4-5 is 5-high).
+  if (isS) return rank*15**5 + (wheel ? 5 : u[0])
+  // Tiebreak ordered by GROUP SIZE first (pairs/trips), then rank — so a pair
+  // always outranks a higher kicker (fixes "QQJJ7 vs QQ55A" type comparisons).
+  const tb: number[] = []
+  Object.keys(cnt).map(Number).sort((a,b)=> cnt[b]-cnt[a] || b-a).forEach(r => { for(let i=0;i<cnt[r];i++) tb.push(r) })
+  return rank*15**5 + (tb[0]??0)*15**4 + (tb[1]??0)*15**3 + (tb[2]??0)*15**2 + (tb[3]??0)*15 + (tb[4]??0)
 }
 function bestHand(cards: Card[]): { score:number; name:string } {
   const valid = cards.filter(Boolean) as Card[]
@@ -156,6 +164,36 @@ function bestHand(cards: Card[]): { score:number; name:string } {
   let best=0
   for (const c of combos5(valid)) { const s=evalFive(c); if(s>best) best=s }
   return { score:best, name:HNAMES[Math.floor(best/15**5)]??'Haute carte' }
+}
+// Realistic 0..1 made-hand strength (category-based, with pair refinement) so
+// bots actually value-bet strong hands instead of checking down monsters.
+const CAT_STRENGTH = [0.08, 0.42, 0.68, 0.80, 0.86, 0.91, 0.96, 0.99, 1.0]
+function madeStrength(hole: Card[], board: Card[]): number {
+  const score = bestHand([...hole, ...board]).score
+  const cat = Math.floor(score / 15 ** 5)
+  if (cat !== 1) return CAT_STRENGTH[cat] ?? 0.08
+  // One pair → refine by overpair / top / second / weak.
+  const bRanks = board.map(c => RV[c.rank]).sort((a, b) => b - a)
+  const hRanks = hole.map(c => RV[c.rank])
+  const pocket = hole.length >= 2 && hole[0].rank === hole[1].rank
+  if (pocket && hRanks[0] > (bRanks[0] ?? 0)) return 0.62 // overpair
+  if (hRanks.includes(bRanks[0] ?? -1)) return 0.55       // top pair
+  if (bRanks[1] !== undefined && hRanks.includes(bRanks[1])) return 0.42 // second pair
+  return 0.32                                              // weak / board pair
+}
+// Flush draw or open-ended straight draw → fuel for semi-bluffs.
+function hasStrongDraw(hole: Card[], board: Card[]): boolean {
+  if (board.length >= 5 || board.length < 3) return false
+  const all = [...hole, ...board]
+  const bySuit: Record<string, number> = {}
+  all.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
+  if (Object.values(bySuit).some(n => n === 4)) return true
+  const vals = new Set(all.map(c => RV[c.rank])); if (vals.has(14)) vals.add(1)
+  for (let lo = 1; lo <= 10; lo++) {
+    let cnt = 0; for (let k = lo; k < lo + 5; k++) if (vals.has(k)) cnt++
+    if (cnt === 4 && (!vals.has(lo) || !vals.has(lo + 4))) return true
+  }
+  return false
 }
 function computeSidePots(seats: Seat[]): {amount:number; eligible:number[]}[] {
   const pots: {amount:number; eligible:number[]}[] = []
@@ -295,7 +333,7 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, onAssist, turnNonce }: {
   seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; onAssist?:()=>void; turnNonce?:string
 }) {
-  const [bgD,bgL] = LGRAD[seat.level] ?? LGRAD[3]
+  const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
   const initial = seat.name[0].toUpperCase()
   const hasCard0 = seat.holeCards[0] !== null
   const hasCard1 = seat.holeCards[1] !== null
@@ -374,7 +412,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
           <div className="relative shrink-0 rounded-full"
             style={{boxShadow:seat.isActive?'0 0 0 2px rgba(0,212,255,0.6)':'0 0 0 1px rgba(255,255,255,0.12)'}}>
-            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero)} size={42}/>
+            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero, seat.seatType === 'human')} size={42}/>
             {seat.isActive&&(
               <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#00d4ff] border-2 border-[#040a18]">
                 <div className="w-full h-full rounded-full bg-[#00d4ff] animate-ping opacity-70"/>
@@ -667,7 +705,9 @@ function HandHistoryModal({ records, onClose }: {
                   const pos = getPlayerPos(i)
                   const stepPl = stepState.players.find(sp => sp.idx === pl.idx)
                   const isFolded = stepPl?.isFolded ?? false
-                  const stack = stepPl?.stack ?? pl.startStack
+                  // At the final step show the real end stack (includes winnings);
+                  // mid-replay show the reconstructed committed stack.
+                  const stack = isEnd ? pl.endStack : (stepPl?.stack ?? pl.startStack)
                   const isWinner = isEnd && pl.isWinner
                   const showCards = pl.isHero || isEnd
 
@@ -837,7 +877,7 @@ export default function GamePage(): JSX.Element {
   const bbAmt = cfg.bb ?? 2
   const anteAmt = cfg.ante ?? 0
   const displayName = cfg.displayName ?? 'Hero'
-  const slots = cfg.slots ?? Array.from({length: numPlayers - 1}, () => ({type:'bot', level:3}))
+  const slots = cfg.slots ?? Array.from({length: numPlayers - 1}, () => ({type:'bot', level:2}))
   const decisionTimer = cfg.decisionTimer && cfg.decisionTimer > 0 ? cfg.decisionTimer : 25
 
   // ─── State ───────────────────────────────────────────────────────────────
@@ -865,6 +905,8 @@ export default function GamePage(): JSX.Element {
   const nextHandTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dealTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const sitOutRef = useRef(false)
+  // Per-seat "mood" for Human-style players (-1 tilted … 0 neutral … +1 confident).
+  const moodRef = useRef<Record<number, number>>({})
   const chipIdRef = useRef(0)
   const currentHandActionsRef = useRef<HistoryAction[]>([])
   const handStartStacksRef = useRef<Record<number, number>>({})
@@ -938,6 +980,7 @@ export default function GamePage(): JSX.Element {
   }
 
   function saveCurrentHand(finalGs: GState) {
+    updateMoods(finalGs)
     const heroSeat = finalGs.seats.find(s => s.isHero)
     const heroBefore = handStartStacksRef.current[heroSeat?.idx ?? -1] ?? 0
     const heroAfter = heroSeat?.stack ?? 0
@@ -961,7 +1004,9 @@ export default function GamePage(): JSX.Element {
       })),
       board: finalGs.community,
       actions: [...currentHandActionsRef.current],
-      finalPot: finalGs.pot,
+      // The live pot is already 0 here (awarded to the winner), so take the real
+      // size from the largest recorded pot during the hand.
+      finalPot: currentHandActionsRef.current.reduce((m, a) => Math.max(m, a.potAfter), finalGs.pot),
       sb: sbAmt,
       bb: bbAmt,
       heroProfit,
@@ -996,15 +1041,18 @@ export default function GamePage(): JSX.Element {
       const isHero = i === selectedSeat
       let name: string
       let level: number
+      let seatType: 'bot' | 'human' = 'bot'
 
       if (isHero) {
         name = displayName
         level = 0
       } else {
         const slotIdx = i < selectedSeat ? i : i - 1
-        const slot = slots[slotIdx] ?? { type: 'bot', level: 3 }
-        level = slot.level ?? 3
-        const pool = botNames[level as keyof typeof botNames] ?? botNames[3]
+        const slot = slots[slotIdx] ?? { type: 'bot', level: 2 }
+        seatType = slot.type === 'human' ? 'human' : 'bot'
+        // Clamp to the 3 bot tiers; a human plays on a Pro base + a live mood.
+        level = Math.max(1, Math.min(3, slot.level ?? 2))
+        const pool = seatType === 'human' ? HUMAN_NAMES : (botNames[level as keyof typeof botNames] ?? botNames[2])
         const available = pool.filter(n => !usedNames.has(n))
         name = available.length > 0
           ? available[Math.floor(Math.random() * available.length)]
@@ -1013,7 +1061,7 @@ export default function GamePage(): JSX.Element {
       }
 
       return {
-        idx: i, name, isHero, stack, level,
+        idx: i, name, isHero, stack, level, seatType,
         holeCards: [null, null], cardsFaceUp: isHero,
         bet: 0, totalBet: 0, isFolded: false, isAllIn: false,
         isActive: false, lastAction: null,
@@ -1065,85 +1113,110 @@ export default function GamePage(): JSX.Element {
     }
   }
 
+  // Decision knobs for an archetype (all 0..1-ish).
+  interface BotParams {
+    betValue: number      // min made-hand strength to value-bet when checked to
+    betFreqStrong: number // how often a value hand actually bets (vs trap-check)
+    semiBluff: number     // freq to bet/raise draws as a semi-bluff
+    bluff: number         // freq of a pure bluff
+    raiseValue: number    // min strength to raise for value vs a bet
+    callEdge: number      // strength margin above pot odds needed to call
+    spew: number          // chance to ignore ranges (loose call) — tilt only
+  }
+  const BASE_PARAMS: Record<number, BotParams> = {
+    1: { betValue: 0.62, betFreqStrong: 0.70, semiBluff: 0.15, bluff: 0.05, raiseValue: 0.82, callEdge: -0.06, spew: 0.10 }, // Amateur (loose-passive station)
+    2: { betValue: 0.55, betFreqStrong: 0.86, semiBluff: 0.55, bluff: 0.08, raiseValue: 0.78, callEdge: 0.07, spew: 0 },     // Pro (solid TAG)
+    3: { betValue: 0.52, betFreqStrong: 0.92, semiBluff: 0.66, bluff: 0.13, raiseValue: 0.74, callEdge: 0.04, spew: 0 },     // Expert (aggressive, balanced)
+  }
+
   function decideBotAction(seat: Seat, state: GState): { action: string; amount: number } {
-    const lvl = seat.level
     const c1 = seat.holeCards[0], c2 = seat.holeCards[1]
     if (!c1 || !c2) return { action: 'FOLD', amount: 0 }
 
-    const pStrength = preflopStrength(c1, c2)
+    const tier = Math.max(1, Math.min(3, seat.level))
     const posBonus = POS_BONUS[seat.position] ?? 0.75
     const toCall = state.currentBet - seat.bet
     const potOdds = state.pot > 0 ? toCall / (state.pot + toCall) : 0
-    const eff = pStrength * posBonus
     const board = state.community.filter(Boolean) as Card[]
-    const postStrength = board.length >= 3
-      ? bestHand([...(seat.holeCards.filter(Boolean) as Card[]), ...board]).score / (15**5 * 9)
-      : eff / 10
-    const strength = board.length >= 3 ? postStrength : eff / 10
-
+    const onBoard = board.length >= 3
+    const strength = onBoard ? madeStrength([c1, c2], board) : (preflopStrength(c1, c2) * posBonus) / 10
+    const draw = onBoard ? hasStrongDraw([c1, c2], board) : false
     const rand = Math.random()
 
-    // Sizing helpers — all return a TARGET total bet ("raise to") in chips,
-    // rounded to the big blind, never below the legal minimum, never above
-    // the bot's all-in cap. executeAction re-clamps as a final safety net.
+    // Build params: bots use their tier; Humans use a Pro base modulated by mood.
+    let p: BotParams = { ...BASE_PARAMS[tier] }
+    if (seat.seatType === 'human') {
+      const m = moodRef.current[seat.idx] ?? 0
+      const tilt = Math.max(0, -m), conf = Math.max(0, m)
+      p = { ...BASE_PARAMS[2] }
+      p.betValue -= conf * 0.04
+      p.bluff += tilt * 0.24 + conf * 0.05          // tilt/over-confidence → more bluffs
+      p.semiBluff += tilt * 0.15
+      p.callEdge -= tilt * 0.13                      // tilt → calls much looser
+      p.raiseValue -= tilt * 0.08
+      p.spew = tilt * 0.30                           // tilt → ignore ranges (loose calls)
+    }
+
+    // Sizing helpers (target "raise to" totals).
     const minTo = state.currentBet + state.minRaise
     const allInTo = seat.bet + seat.stack
     const roundBB = (x: number) => Math.max(bbAmt, Math.round(x / bbAmt) * bbAmt)
     const betTo = (frac: number) => Math.min(allInTo, roundBB(state.pot * frac))
-    const raiseTo = (frac: number) =>
-      Math.min(allInTo, Math.max(minTo, state.currentBet + roundBB((state.pot + toCall) * frac)))
+    const raiseTo = (frac: number) => Math.min(allInTo, Math.max(minTo, state.currentBet + roundBB((state.pot + toCall) * frac)))
+    const valueBetFrac = () => (strength >= 0.85 ? 0.78 : 0.62)
+    const valueRaiseFrac = () => (strength >= 0.85 ? 0.95 : 0.65)
 
-    if (lvl <= 1) {
-      // Level 1 — loose passive fish
-      if (toCall === 0) return rand < 0.15 ? { action: 'BET', amount: betTo(0.5) } : { action: 'CHECK', amount: 0 }
-      if (strength > 0.6) return rand < 0.3 ? { action: 'RAISE', amount: raiseTo(0.7) } : { action: 'CALL', amount: toCall }
-      if (strength > 0.3 || rand < 0.55) return { action: 'CALL', amount: toCall }
-      return { action: 'FOLD', amount: 0 }
-    }
-
-    if (lvl === 2) {
-      // Level 2 — recreational calling station
-      if (toCall === 0) return rand < 0.2 ? { action: 'BET', amount: betTo(0.6) } : { action: 'CHECK', amount: 0 }
-      if (strength > 0.7) return { action: 'RAISE', amount: raiseTo(0.7) }
-      if (strength > potOdds + 0.05 || rand < 0.4) return { action: 'CALL', amount: toCall }
-      return { action: 'FOLD', amount: 0 }
-    }
-
-    if (lvl === 3) {
-      // Level 3 — solid TAG
-      if (toCall === 0) {
-        if (strength > 0.65) return { action: 'BET', amount: betTo(0.65) }
+    // ── Pre-flop ──
+    if (!onBoard) {
+      const raiseT = tier === 1 ? 0.78 : tier === 3 ? 0.60 : 0.66
+      const callT = tier === 1 ? 0.30 : 0.42
+      if (toCall === 0) { // BB option / limped pot
+        if (strength >= p.betValue) return { action: 'BET', amount: raiseTo(0.8) }
+        if (draw) return { action: 'CHECK', amount: 0 }
         return { action: 'CHECK', amount: 0 }
       }
-      if (strength > 0.75) return { action: 'RAISE', amount: raiseTo(0.6 + rand * 0.4) }
-      if (strength > potOdds + 0.1) return { action: 'CALL', amount: toCall }
-      if (rand < 0.08) return { action: 'RAISE', amount: raiseTo(0.7) } // bluff
+      if (strength >= raiseT) return { action: 'RAISE', amount: raiseTo(0.9) }
+      if (strength >= callT || (tier === 1 && rand < 0.5)) return { action: 'CALL', amount: toCall }
+      if (tier >= 2 && rand < (tier === 3 ? 0.12 : 0.07)) return { action: 'RAISE', amount: raiseTo(0.9) } // steal / light open
+      if (rand < p.spew) return { action: 'CALL', amount: toCall }
       return { action: 'FOLD', amount: 0 }
     }
 
-    if (lvl === 4) {
-      // Level 4 — advanced aggressive
-      if (toCall === 0) {
-        if (strength > 0.55 || rand < 0.28) return { action: 'BET', amount: betTo(0.5 + rand * 0.5) }
-        return { action: 'CHECK', amount: 0 }
-      }
-      if (strength > 0.7) return { action: 'RAISE', amount: raiseTo(0.7 + rand * 0.3) }
-      if (strength > potOdds || rand < 0.18) return { action: 'CALL', amount: toCall }
-      if (rand < 0.12) return { action: 'RAISE', amount: raiseTo(0.85) } // bluff/semi-bluff
-      return { action: 'FOLD', amount: 0 }
-    }
-
-    // Level 5 — GTO-ish
+    // ── Post-flop ──
     if (toCall === 0) {
-      const betFreq = 0.4 + strength * 0.5
-      if (rand < betFreq) return { action: 'BET', amount: betTo(0.33 + rand * 0.67) }
+      // Checked to us → bet for value, semi-bluff draws, or occasionally bluff.
+      if (strength >= p.betValue) {
+        if (rand < p.betFreqStrong) return { action: 'BET', amount: betTo(valueBetFrac()) }
+        return { action: 'CHECK', amount: 0 } // trap
+      }
+      if (draw && rand < p.semiBluff) return { action: 'BET', amount: betTo(0.5) }
+      if (rand < p.bluff) return { action: 'BET', amount: betTo(0.55) }
       return { action: 'CHECK', amount: 0 }
     }
-    const raiseFreq = strength > 0.7 ? 0.55 : 0.15
-    if (rand < raiseFreq) return { action: 'RAISE', amount: raiseTo(0.5 + rand * 0.5) }
-    const callFreq = strength > potOdds ? 0.75 + strength * 0.2 : 0.2
-    if (rand < callFreq) return { action: 'CALL', amount: toCall }
+    // Facing a bet/raise.
+    if (strength >= p.raiseValue) return { action: 'RAISE', amount: raiseTo(valueRaiseFrac()) }       // value raise
+    if (draw && rand < p.semiBluff * 0.7) return { action: 'RAISE', amount: raiseTo(0.8) }            // semi-bluff raise
+    if (strength >= potOdds + p.callEdge) return { action: 'CALL', amount: toCall }                   // call with showdown value
+    if (draw && strength + 0.18 >= potOdds) return { action: 'CALL', amount: toCall }                 // call the draw on odds
+    if (rand < p.spew) return { action: 'CALL', amount: toCall }                                      // tilt: loose call
+    if (tier >= 2 && rand < p.bluff * 0.6) return { action: 'RAISE', amount: raiseTo(0.8) }           // occasional bluff raise
     return { action: 'FOLD', amount: 0 }
+  }
+
+  // Update Human players' mood at the end of each hand: big losses tilt them
+  // (looser/wilder), wins make them confident; moods drift back to neutral.
+  function updateMoods(finalGs: GState) {
+    finalGs.seats.forEach(s => {
+      if (s.seatType !== 'human') return
+      const start = handStartStacksRef.current[s.idx] ?? s.stack
+      const deltaBB = bbAmt > 0 ? (s.stack - start) / bbAmt : 0
+      let m = (moodRef.current[s.idx] ?? 0) * 0.7 // drift toward neutral
+      if (deltaBB <= -15) m -= 0.5
+      else if (deltaBB < 0) m -= 0.15
+      else if (deltaBB >= 30) m += 0.3
+      else if (deltaBB > 0) m += 0.1
+      moodRef.current[s.idx] = Math.max(-1, Math.min(1, m))
+    })
   }
 
   // ─── Action execution ────────────────────────────────────────────────────
@@ -1222,6 +1295,9 @@ export default function GamePage(): JSX.Element {
       seat.isActive = false
     }
 
+    // Safety net: any committing action that empties the stack is all-in.
+    if (!seat.isFolded && seat.stack <= 0) seat.isAllIn = true
+
     // Record the action
     const phase = currentGs.phase
     recordAction({
@@ -1276,16 +1352,23 @@ export default function GamePage(): JSX.Element {
   // the current bet re-opens the round: every other live player must act again.
   // A call/check/fold simply advances to the next player in the existing queue.
   function nextQueueAfter(stateAfter: GState, actedIdx: number, prev: GState): number[] {
-    const aggressive = stateAfter.currentBet > prev.currentBet
-    if (!aggressive) return stateAfter.actQueue.slice(1)
     const seats = stateAfter.seats
-    const active = seats
-      .filter(s => !s.isFolded && !s.isAllIn && !s.isEliminated && s.stack > 0 && s.idx !== actedIdx)
-      .map(s => s.idx)
+    // A player can still be given the floor only if they're live AND have chips
+    // (an all-in / 0-stack player must never be re-prompted).
+    const canAct = (idx: number) => {
+      const s = seats[idx]
+      return !!s && !s.isFolded && !s.isAllIn && !s.isEliminated && s.stack > 0
+    }
+    const aggressive = stateAfter.currentBet > prev.currentBet
+    if (!aggressive) {
+      // Advance past the actor, dropping anyone who can no longer act.
+      return stateAfter.actQueue.slice(1).filter(canAct)
+    }
+    // A raise re-opens the round for every other live player.
     const sorted: number[] = []
     for (let i = 1; i <= seats.length; i++) {
       const idx = (actedIdx + i) % seats.length
-      if (active.includes(idx)) sorted.push(idx)
+      if (idx !== actedIdx && canAct(idx)) sorted.push(idx)
     }
     return sorted
   }
@@ -1361,8 +1444,9 @@ export default function GamePage(): JSX.Element {
       return
     }
 
-    // Nobody can act (everyone all-in) → run the rest of the board out.
-    if (queue.length === 0) {
+    // 0 or 1 player can still act (others all-in) → no more betting, run the
+    // rest of the board out to showdown.
+    if (queue.length <= 1) {
       if (state.phase === 'river') setTimeout(() => showdown(state), 400)
       else {
         const nextPhase: Phase =
@@ -1387,20 +1471,13 @@ export default function GamePage(): JSX.Element {
       return
     }
 
-    // Reveal all hole cards
-    const seatsRevealed = state.seats.map(s => ({
-      ...s,
-      cardsFaceUp: !s.isFolded,
-      isActive: false,
-    }))
-
-    // Compute hand strengths
+    // Compute hand strengths (don't reveal cards yet — muck rules decide that).
     const board = state.community.filter(Boolean) as Card[]
-    const evaluated = seatsRevealed.map(s => {
-      if (s.isFolded || !s.holeCards[0] || !s.holeCards[1]) return { ...s }
+    const evaluated = state.seats.map(s => {
+      if (s.isFolded || !s.holeCards[0] || !s.holeCards[1]) return { ...s, isActive: false }
       const allCards = [...(s.holeCards.filter(Boolean) as Card[]), ...board]
       const { score, name } = bestHand(allCards)
-      return { ...s, handScore: score, handStrength: name }
+      return { ...s, isActive: false, handScore: score, handStrength: name }
     })
 
     // Compute side pots and determine winners
@@ -1430,12 +1507,48 @@ export default function GamePage(): JSX.Element {
       }
     }
 
-    const finalSeats = evaluated.map(s => ({
-      ...s,
-      stack: s.stack + (payouts[s.idx] ?? 0),
-      isWinner: winnerSet.has(s.idx),
-      isEliminated: s.stack + (payouts[s.idx] ?? 0) === 0 && !s.isHero,
-    }))
+    // ── International showdown order + muck rules ──
+    // The last aggressor (last bet/raise/all-in) shows first; if there was no bet
+    // on the last street, the first live player left of the button shows first.
+    // Going in order, a player only TABLES their hand if it beats (or ties) the
+    // best hand shown so far — otherwise they MUCK (cards stay hidden). Winners
+    // always table. The hero always sees their own cards.
+    const n = state.seats.length
+    const contenderIdxs = evaluated.filter(s => !s.isFolded && !s.isSittingOut && !!s.holeCards[0] && !!s.holeCards[1]).map(s => s.idx)
+    const aggrActs = currentHandActionsRef.current.filter(a => a.seatIdx >= 0 && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
+    let startIdx = aggrActs.length ? aggrActs[aggrActs.length - 1].seatIdx : -1
+    if (startIdx < 0 || !contenderIdxs.includes(startIdx)) {
+      startIdx = -1
+      for (let i = 1; i <= n; i++) { const idx = (state.dealerIdx + i) % n; if (contenderIdxs.includes(idx)) { startIdx = idx; break } }
+    }
+    const order: number[] = []
+    for (let i = 0; i < n; i++) { const idx = (startIdx + i) % n; if (contenderIdxs.includes(idx)) order.push(idx) }
+    const scoreOf = (idx: number) => evaluated.find(e => e.idx === idx)?.handScore ?? -1
+    const isAllInSeat = (idx: number) => !!evaluated.find(e => e.idx === idx)?.isAllIn
+    const reveal = new Set<number>()
+    let bestShown = -1
+    // All-in players are FORCED to table their hand (they have no action left).
+    order.forEach(idx => { if (isAllInSeat(idx)) { reveal.add(idx); bestShown = Math.max(bestShown, scoreOf(idx)) } })
+    // Then show/muck in order: the aggressor (order[0]) always tables; everyone
+    // else only tables if they beat (or tie) the best hand shown so far.
+    order.forEach((idx, i) => {
+      if (reveal.has(idx)) return
+      const sc = scoreOf(idx)
+      if (i === 0 || sc >= bestShown) { reveal.add(idx); bestShown = Math.max(bestShown, sc) }
+    })
+    winnerSet.forEach(w => reveal.add(w)) // winners must table to claim
+
+    const finalSeats = evaluated.map(s => {
+      const shown = !s.isFolded && (s.isHero || reveal.has(s.idx))
+      return {
+        ...s,
+        cardsFaceUp: shown,
+        handStrength: shown ? s.handStrength : undefined,
+        stack: s.stack + (payouts[s.idx] ?? 0),
+        isWinner: winnerSet.has(s.idx),
+        isEliminated: s.stack + (payouts[s.idx] ?? 0) === 0 && !s.isHero,
+      }
+    })
 
     // Fire winner chips from the pot to each winning seat
     let payDelay = 200
@@ -1599,10 +1712,12 @@ export default function GamePage(): JSX.Element {
 
     const sbPost = Math.min(sbAmt, sbSeat.stack)
     sbSeat.stack -= sbPost; sbSeat.bet = sbPost; sbSeat.totalBet += sbPost
+    if (sbSeat.stack <= 0) sbSeat.isAllIn = true // posted the blind all-in
     pot += sbPost
 
     const bbPost = Math.min(bbAmt, bbSeat.stack)
     bbSeat.stack -= bbPost; bbSeat.bet = bbPost; bbSeat.totalBet += bbPost
+    if (bbSeat.stack <= 0) bbSeat.isAllIn = true
     pot += bbPost
 
     // Record blind actions
@@ -1774,20 +1889,26 @@ export default function GamePage(): JSX.Element {
   }
 
   // ─── Bot style label ─────────────────────────────────────────────────────
-  function botStyle(level: number): string {
-    return ['','Fish','Récréatif','TAG','Avancé','GTO'][level] ?? 'Bot'
+  function botStyle(seat: Seat): string {
+    if (seat.seatType === 'human') return 'Humain'
+    return ['', 'Amateur', 'Pro', 'Expert'][seat.level] ?? 'Bot'
   }
 
   // ─── Derived state ───────────────────────────────────────────────────────
   const hero = gs.seats.find(s => s.isHero)
   const isHeroTurn = hero?.isActive ?? false
-  const heroBusted = !!hero && hero.stack <= 0
+  // Hero is all-in inside a still-running hand (chips committed, board to come).
+  const heroAllInLive = !!hero && hero.stack <= 0 && hero.isAllIn && !hero.isFolded
+    && (hero.holeCards[0] !== null || hero.holeCards[1] !== null)
+    && (gs.phase === 'preflop' || gs.phase === 'flop' || gs.phase === 'turn' || gs.phase === 'river')
+  // Busted = no chips AND not in a live all-in (→ show the rebuy prompt).
+  const heroBusted = !!hero && hero.stack <= 0 && !heroAllInLive
   const heroOut = !!hero && hero.isSittingOut          // actually dealt out this hand
   const sitOutPending = sitOut && !heroOut             // queued for the next hand
   const isShowdown = gs.phase === 'showdown'
   // Hero is live in the current hand (has cards, not folded/out) — used to show
   // the pre-action check boxes while waiting for other players.
-  const heroInHand = !!hero && !hero.isFolded && !hero.isSittingOut && !heroBusted
+  const heroInHand = !!hero && !hero.isFolded && !hero.isSittingOut && !heroBusted && !hero.isAllIn
     && (hero.holeCards[0] !== null || hero.holeCards[1] !== null)
     && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
   const preCanCheck = !!hero && gs.currentBet <= hero.bet          // no bet to call → check
@@ -2210,7 +2331,12 @@ export default function GamePage(): JSX.Element {
 
           {/* Action buttons */}
           <div className="flex items-center gap-3 px-4 py-3">
-            {heroBusted ? (
+            {heroAllInLive ? (
+              <div className="flex-1 flex items-center justify-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"/>
+                <p className="text-[10px] text-purple-300/90 uppercase tracking-widest font-bold">All-in — en attente du tableau…</p>
+              </div>
+            ) : heroBusted ? (
               <div className="flex-1 flex items-center justify-center gap-4">
                 <div className="text-center">
                   <p className="text-[10px] text-red-400/80 uppercase tracking-widest font-bold">Plus de jetons</p>
@@ -2407,7 +2533,7 @@ export default function GamePage(): JSX.Element {
                 <div className={`w-2 h-2 rounded-full ${s.isFolded?'bg-red-500/40':s.isAllIn?'bg-purple-500':'bg-white/20'}`}/>
                 <span className={`font-bold ${s.isActive?'text-[#00d4ff]':'text-white/65'}`}>{s.name}</span>
                 <span className="text-[9px] font-bold font-mono tabular-nums text-emerald-300/90">${s.stack.toLocaleString()}</span>
-                <span className="text-[7px] text-white/25 italic">{botStyle(s.level)}</span>
+                <span className="text-[7px] text-white/25 italic">{botStyle(s)}</span>
                 {s.lastAction && (
                   <span className={`px-1 rounded font-bold uppercase ${s.lastAction==='FOLD'?'text-red-400/60':s.lastAction.startsWith('RAISE')||s.lastAction.startsWith('BET')?'text-yellow-300':'text-emerald-400'}`}>
                     {s.lastAction}

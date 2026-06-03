@@ -11,11 +11,9 @@ type SlotType = 'bot' | 'human' | 'empty'
 interface Slot { type: SlotType; level: number }
 
 const BOT_LEVELS = [
-  { level: 1, name: 'Débutant',   color: '#22cc44', desc: 'Fish classique, joue trop de mains' },
-  { level: 2, name: 'Récréatif',  color: '#44aaff', desc: 'Appelle trop, bluff rarement' },
-  { level: 3, name: 'Régulier',   color: '#f0d060', desc: 'TAG standard, solide et prévisible' },
-  { level: 4, name: 'Avancé',     color: '#c9a227', desc: 'Agressif, range balance correcte' },
-  { level: 5, name: 'Expert GTO', color: '#ff4444', desc: 'Quasi-optimal, très difficile' },
+  { level: 1, name: 'Amateur', color: '#22cc44', desc: 'Récréatif : appelle trop, passif, bluffe rarement' },
+  { level: 2, name: 'Pro',     color: '#f0d060', desc: 'Solide & agressif : value-bet, c-bet, respecte les ranges' },
+  { level: 3, name: 'Expert',  color: '#ff4444', desc: 'Très agressif, bluffs équilibrés, redoutable' },
 ]
 
 const POS_LABELS: Record<number, string[]> = {
@@ -30,12 +28,12 @@ const POS_LABELS: Record<number, string[]> = {
 }
 
 const PRESETS = [
-  { icon: '💵', name: 'Cash Game',       players: 6, stack: 100, sb: 1,  bb: 2,  bots: [3,3,3,3,3], desc: 'Setup 6-max standard' },
-  { icon: '🏆', name: 'Final Table',     players: 9, stack: 50,  sb: 5,  bb: 10, bots: [3,3,3,3,3,3,3,3], desc: '9 joueurs tournoi' },
-  { icon: '⚔️', name: 'Heads-Up',        players: 2, stack: 200, sb: 1,  bb: 2,  bots: [4], desc: 'Duel vs Bot Avancé' },
-  { icon: '🔥', name: 'Battle Zone',     players: 6, stack: 50,  sb: 2,  bb: 4,  bots: [5,5,5,5,5], desc: 'Défi ultime vs Experts' },
+  { icon: '💵', name: 'Cash Game',       players: 6, stack: 100, sb: 1,  bb: 2,  bots: [2,2,2,2,2], desc: 'Setup 6-max standard' },
+  { icon: '🏆', name: 'Final Table',     players: 9, stack: 50,  sb: 5,  bb: 10, bots: [2,2,2,3,3,2,2,3], desc: '9 joueurs tournoi' },
+  { icon: '⚔️', name: 'Heads-Up',        players: 2, stack: 200, sb: 1,  bb: 2,  bots: [3], desc: 'Duel vs Expert' },
+  { icon: '🔥', name: 'Battle Zone',     players: 6, stack: 50,  sb: 2,  bb: 4,  bots: [3,3,3,3,3], desc: 'Défi ultime vs Experts' },
   { icon: '🎓', name: 'École du Poker',  players: 6, stack: 100, sb: 1,  bb: 2,  bots: [1,1,2,2,3], desc: 'Bots mixtes pour s\'exercer' },
-  { icon: '🤠', name: 'Wild West',       players: 9, stack: 30,  sb: 1,  bb: 2,  bots: [1,1,2,2,3,3,4,4], desc: 'Tables chaotiques' },
+  { icon: '🤠', name: 'Wild West',       players: 9, stack: 30,  sb: 1,  bb: 2,  bots: [1,1,2,2,3,3,1,2], desc: 'Tables chaotiques' },
 ]
 
 // ── Poker Table SVG ───────────────────────────────────────────────
@@ -158,7 +156,7 @@ export default function TrainingSetupPage(): JSX.Element {
   const [gameSpeed, setGameSpeed] = useState<'slow'|'normal'|'fast'>('normal')
   const [anonymousMode, setAnonymousMode] = useState(false)
   const [slots, setSlots] = useState<Slot[]>(
-    Array.from({ length: 8 }, (_, i) => ({ type: i < 5 ? 'bot' : 'empty', level: 3 } as Slot))
+    Array.from({ length: 8 }, (_, i) => ({ type: i < 5 ? 'bot' : 'empty', level: 2 } as Slot))
   )
 
   const stackChips = stackBB * bb
@@ -445,7 +443,7 @@ export default function TrainingSetupPage(): JSX.Element {
                       <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold">
                         Configurez {numPlayers - 1} adversaire{numPlayers > 2 ? 's' : ''}
                       </p>
-                      <button onClick={() => setSlots(prev => prev.map((s, i) => i < numPlayers - 1 ? { ...s, type: 'bot', level: 3 } : { type: 'empty', level: 3 }))}
+                      <button onClick={() => setSlots(prev => prev.map((s, i) => i < numPlayers - 1 ? { ...s, type: 'bot', level: 2 } : { type: 'empty', level: 2 }))}
                         className="flex items-center gap-1 text-[9px] text-white/30 hover:text-white/60 transition-colors">
                         <RotateCcw size={10}/> Reset
                       </button>

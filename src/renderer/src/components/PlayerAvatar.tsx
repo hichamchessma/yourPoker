@@ -57,12 +57,14 @@ const HERO_SPEC: AvatarSpec = {
   accessory: 'sunglasses', beard: true, bg: ['#06343f', '#04181f'],
 }
 
-const POOLS: Record<number, AvatarSpec[]> = { 1: FISH, 2: REG, 3: TAG, 4: AGGRO, 5: GTO }
+// 3 bot tiers: Amateur → fish, Pro → reg/TAG, Expert → aggro/GTO.
+const TIER_POOLS: Record<number, AvatarSpec[]> = { 1: FISH, 2: [...REG, ...TAG], 3: [...AGGRO, ...GTO] }
+const HUMAN_POOL: AvatarSpec[] = [...FISH, ...REG, ...TAG, ...AGGRO, ...GTO]
 
-/** Deterministic pick: stable per (level, seed). */
-export function avatarForSeat(level: number, seed: number, isHero = false): AvatarSpec {
+/** Deterministic pick: stable per (level/type, seed). */
+export function avatarForSeat(level: number, seed: number, isHero = false, human = false): AvatarSpec {
   if (isHero) return HERO_SPEC
-  const pool = POOLS[level] ?? REG
+  const pool = human ? HUMAN_POOL : (TIER_POOLS[level] ?? TIER_POOLS[2])
   return pool[((seed % pool.length) + pool.length) % pool.length]
 }
 
