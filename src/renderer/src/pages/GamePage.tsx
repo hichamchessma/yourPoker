@@ -1,10 +1,16 @@
-﻿import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Sparkles } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Sparkles, Eye } from 'lucide-react'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import RangeAssistant from '../components/RangeAssistant'
-import type { Scenario } from '../lib/preflopRanges'
+import RangeHeatmap from '../components/RangeHeatmap'
+import { type Scenario, handKeyFromCards, buildRangeMap } from '../lib/preflopRanges'
+import { getPostflopAdvice } from '../lib/postflopAdvisor'
+import {
+  initRange, applyAction, rangeView, actionSummary,
+  type RangeWeights, type ActCat,
+} from '../lib/rangeEstimator'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Suit = '♠' | '♥' | '♦' | '♣'
@@ -46,6 +52,7 @@ interface HandHistoryRecord {
     idx: number; name: string; isHero: boolean; position: string
     startStack: number; endStack: number
     holeCards: [Card|null, Card|null]; isFolded: boolean; isWinner: boolean
+    level: number; seatType: 'bot' | 'human'
   }>
   board: (Card|null)[]; actions: HistoryAction[]
   finalPot: number; sb: number; bb: number
@@ -330,8 +337,8 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 }
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, onAssist, turnNonce }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; onAssist?:()=>void; turnNonce?:string
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, onAssist, turnNonce, turnPaused, onHover }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; onAssist?:()=>void; turnNonce?:string; turnPaused?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void
 }) {
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
   const initial = seat.name[0].toUpperCase()
@@ -365,7 +372,9 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
 
   return (
     <div className={`absolute flex flex-col items-center gap-0.5 transition-all duration-500 ${seat.isSittingOut?'opacity-50':''}`}
-      style={{...style,zIndex:seat.isActive?20:8}}>
+      style={{...style,zIndex:seat.isActive?20:8}}
+      onMouseEnter={onHover ? (e) => onHover(true, e) : undefined}
+      onMouseLeave={onHover ? () => onHover(false) : undefined}>
       {/* Hole cards — only the cards are dimmed when folded; name & stack stay readable */}
       <div className={`flex relative mb-0.5 transition-all duration-500 ${seat.isFolded?'opacity-20 grayscale':''}`}
         style={{height:hasCard0||hasCard1?80:0,overflow:'visible',minWidth:80}}>
@@ -405,8 +414,8 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         )}
         {seat.isActive&&(
           <div className="mx-2.5 mt-1.5 h-[3px] rounded-full bg-white/8 overflow-hidden">
-            <motion.div key={turnNonce} className="h-full rounded-full bg-[#00d4ff]"
-              initial={{width:'100%'}} animate={{width:'0%'}} transition={{duration:turnSeconds,ease:'linear'}}/>
+            <div key={`${turnNonce}:${turnPaused ? 'p' : 'r'}`} className="h-full rounded-full bg-[#00d4ff]"
+              style={{ animation:`turnDrain ${turnSeconds}s linear forwards`, animationPlayState: turnPaused ? 'paused' : 'running' }}/>
           </div>
         )}
         <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
@@ -544,6 +553,8 @@ function computeStepState(record: HandHistoryRecord, stepIdx: number): {
   board: (Card|null)[]
   pot: number
   currentPhase: Phase
+  streetBets: Record<number, number>   // live bet sitting in front of each player
+  lastActorIdx: number                 // who just acted at this step
 } {
   // Rebuild state at a given action step
   const players = record.players.map(p => ({
@@ -554,43 +565,192 @@ function computeStepState(record: HandHistoryRecord, stepIdx: number): {
   let pot = 0
   let board: (Card|null)[] = [null,null,null,null,null]
   let currentPhase: Phase = 'preflop'
+  let lastActorIdx = -1
 
-  const bets: Record<number, number> = {}
-  players.forEach(p => { bets[p.idx] = 0 })
+  const streetBets: Record<number, number> = {}
+  players.forEach(p => { streetBets[p.idx] = 0 })
 
   for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
     const a = record.actions[i]
     if (a.seatIdx === -1) {
-      // Phase event
+      // Phase event — new street: bets are collected into the pot.
       currentPhase = a.phase
-      if (a.phase === 'flop') {
-        board = [record.board[0], record.board[1], record.board[2], null, null]
-      } else if (a.phase === 'turn') {
-        board = [record.board[0], record.board[1], record.board[2], record.board[3], null]
-      } else if (a.phase === 'river' || a.phase === 'showdown') {
-        board = [...record.board]
-      }
+      if (a.phase !== 'preflop') players.forEach(p => { streetBets[p.idx] = 0 })
+      if (a.phase === 'flop') board = [record.board[0], record.board[1], record.board[2], null, null]
+      else if (a.phase === 'turn') board = [record.board[0], record.board[1], record.board[2], record.board[3], null]
+      else if (a.phase === 'river' || a.phase === 'showdown') board = [...record.board]
     } else {
       currentPhase = a.phase
+      lastActorIdx = a.seatIdx
       const p = players.find(x => x.idx === a.seatIdx)
       if (p) {
         if (a.actionType === 'FOLD') {
           p.isFolded = true
-        } else if (a.actionType === 'CALL' || a.actionType === 'BET' ||
-                   a.actionType === 'RAISE' || a.actionType === 'ALL-IN' ||
-                   a.actionType === 'SB' || a.actionType === 'BB') {
-          const added = a.amount - (bets[p.idx] ?? 0)
-          p.stack -= Math.max(0, added)
-          bets[p.idx] = a.amount
-          pot = a.potAfter
         } else if (a.actionType === 'CHECK') {
-          // no stack change
+          // no chips
+        } else {
+          const added = a.amount - (streetBets[p.idx] ?? 0)
+          p.stack -= Math.max(0, added)
+          streetBets[p.idx] = a.amount
+          pot = a.potAfter
         }
       }
     }
   }
 
-  return { players, board, pot, currentPhase }
+  return { players, board, pot, currentPhase, streetBets, lastActorIdx }
+}
+
+// ─── "Coach juge" — constructive critique of a hero action in the replay ──────
+interface MoveCritique { verdict: 'good' | 'ok' | 'mistake'; headline: string; lines: string[] }
+function boardForPhase(board: (Card | null)[], phase: Phase): Card[] {
+  const b = board.filter(Boolean) as Card[]
+  if (phase === 'flop') return b.slice(0, 3)
+  if (phase === 'turn') return b.slice(0, 4)
+  if (phase === 'river' || phase === 'showdown') return b
+  return []
+}
+function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCritique | null {
+  const act = record.actions[actionIdx]
+  if (!act || act.seatIdx < 0 || !act.isHero) return null
+  if (act.actionType === 'SB' || act.actionType === 'BB') return null // blinds aren't a decision
+  const hero = record.players.find(p => p.isHero)
+  if (!hero || !hero.holeCards[0] || !hero.holeCards[1]) return null
+
+  // Replay everything BEFORE the hero's action to rebuild the spot they faced.
+  let pot = 0, currentBet = 0, phase: Phase = 'preflop'
+  const bet: Record<number, number> = {}, committed: Record<number, number> = {}
+  const folded = new Set<number>()
+  record.players.forEach(p => { bet[p.idx] = 0; committed[p.idx] = 0 })
+  let preflopRaises = 0
+  let lastAggressorName = ''
+  for (let i = 0; i < actionIdx; i++) {
+    const a = record.actions[i]
+    if (a.seatIdx === -1) {
+      phase = a.phase
+      if (a.phase !== 'preflop') { record.players.forEach(p => (bet[p.idx] = 0)); currentBet = 0 }
+      pot = a.potAfter
+      continue
+    }
+    if (a.actionType === 'FOLD') { folded.add(a.seatIdx); pot = a.potAfter; continue }
+    if (a.actionType === 'CHECK') { pot = a.potAfter; continue }
+    const delta = a.amount - (bet[a.seatIdx] ?? 0)
+    committed[a.seatIdx] = (committed[a.seatIdx] ?? 0) + Math.max(0, delta)
+    bet[a.seatIdx] = a.amount
+    if (a.amount > currentBet) {
+      currentBet = a.amount
+      if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') lastAggressorName = a.name
+    }
+    if (a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')) preflopRaises++
+    pot = a.potAfter
+  }
+
+  phase = act.phase
+  const board = boardForPhase(record.board, phase)
+  const toCall = Math.max(0, currentBet - (bet[hero.idx] ?? 0))
+  // Only players actually dealt into THIS hand (had hole cards) and not yet folded
+  // count as live opponents — eliminated / sat-out seats ($0, no cards) must NOT
+  // inflate the opponent count (that wrongly lowers equity vs the live coach).
+  const live = record.players.filter(p => !folded.has(p.idx) && (p.holeCards[0] !== null || p.holeCards[1] !== null))
+  const opponents = Math.max(1, live.length - 1)
+  const heroRemaining = hero.startStack - (committed[hero.idx] ?? 0)
+  const oppRemaining = live.filter(p => !p.isHero).map(p => p.startStack - (committed[p.idx] ?? 0))
+  const effStack = Math.min(heroRemaining, oppRemaining.length ? Math.max(...oppRemaining) : heroRemaining)
+  const latePos = ['BTN', 'BTN/SB', 'CO'].includes(hero.position)
+  const heroCat: 'fold' | 'passive' | 'aggr' =
+    act.actionType === 'FOLD' ? 'fold' : (act.actionType === 'CALL' || act.actionType === 'CHECK') ? 'passive' : 'aggr'
+  const pct = (x: number) => `${Math.round(x * 100)}%`
+  const lines: string[] = []
+  let verdict: MoveCritique['verdict'] = 'ok'
+  let headline = ''
+
+  if (phase === 'preflop') {
+    const scenario: Scenario = preflopRaises >= 2 ? 'vs3bet' : preflopRaises === 1 ? 'vsopen' : 'rfi'
+    const map = buildRangeMap(scenario, hero.position)
+    const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
+    const rec = map.get(key) ?? 'fold'
+    const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
+    const recLabel = rec === 'fold' ? 'FOLD' : rec === 'call' ? 'CALL' : rec === '3bet' ? '3-BET' : rec === '4bet' ? '4-BET' : 'OPEN/RAISE'
+    const ctx = scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert` : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}` : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
+    lines.push(`Situation : ${ctx}. Ta main : ${key}.`)
+    lines.push(`Range de référence : ${key} se joue ${recLabel}.`)
+    if (heroCat === recCat) { verdict = 'good'; headline = `Bon coup — ${recLabel}` ; lines.push('Ton choix colle à la range standard de cette position/situation. ✅') }
+    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Trop large'; lines.push(`${key} n’est pas dans ta range ici — jouer ce coup perd de l’argent sur le long terme.`) }
+    else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = 'Trop passif'; lines.push(`${key} devrait ${recLabel} (value + initiative), pas seulement suivre — tu laisses de la valeur et de la fold equity.`) }
+    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold trop serré'; lines.push(`${key} est assez fort pour ${recLabel} — le coucher est une fuite.`) }
+    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push(`${key} est plutôt un call ici ; relancer te fait jouer un gros pot dominé une partie du temps.`) }
+    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = 'Fold un peu serré'; lines.push(`${key} pouvait suivre (cote/jouabilité), mais le fold reste défendable.`) }
+  } else {
+    const villainBets = record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
+    const aggression = Math.min(0.85, villainBets.length * 0.28)
+    const barrels = new Set(villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb })
+    const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
+    const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
+    const phaseLbl = PHASE_LABEL[phase] ?? phase
+    lines.push(`Situation : ${phaseLbl}, board ${board.map(c => c.rank + c.suit).join(' ')}${lastAggressorName && toCall > 0 ? `, ${lastAggressorName} a misé` : ''}.`)
+    lines.push(`Ton équité ≈ ${pct(adv.equity)}${toCall > 0 ? ` — cote requise ${pct(adv.potOdds)}` : ''} ; ta main : ${adv.madeHand}${adv.draws.length ? ' + ' + adv.draws.join(' + ') : ''}.`)
+    lines.push(`Coup optimal : ${adv.action} (${adv.sizingText}).`)
+    adv.reasons.slice(1, 3).forEach(r => lines.push(r))
+    if (heroCat === recCat) { verdict = 'good'; headline = `Bon coup — ${adv.action}`; lines.push('Ta décision correspond au coup recommandé. ✅') }
+    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Tu continues trop'; lines.push(`Ton équité (${pct(adv.equity)}) est sous la cote (${pct(adv.potOdds)}) : payer/relancer perd à long terme.`) }
+    else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = 'Trop passif'; lines.push('Tu avais une main/équité pour miser ou relancer (value + protection) — checker/suivre laisse de la valeur.') }
+    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold de trop'; lines.push('Tu te couches une main qui devait miser pour la valeur.') }
+    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push('Relancer transforme une main de showdown/bluffcatch en cible : tu fais fuir les pires mains et payer les meilleures.') }
+    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold rentable manqué'; lines.push(`Tu avais la cote (${pct(adv.equity)} ≥ ${pct(adv.potOdds)}) : se coucher jette de l’EV.`) }
+  }
+  return { verdict, headline, lines }
+}
+
+// Replay the hand up to `stepIdx` through the range estimator → each player's
+// estimated range at that moment (for the history hover, same engine as in-game).
+function reconstructRanges(record: HandHistoryRecord, stepIdx: number): Record<number, RangeWeights> {
+  const ranges: Record<number, RangeWeights> = {}
+  record.players.forEach(p => { ranges[p.idx] = initRange() })
+  let currentBet = 0, pot = 0
+  const bet: Record<number, number> = {}
+  record.players.forEach(p => { bet[p.idx] = 0 })
+  for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
+    const a = record.actions[i]
+    if (a.seatIdx === -1) {
+      if (a.phase !== 'preflop') { record.players.forEach(p => (bet[p.idx] = 0)); currentBet = 0 }
+      pot = a.potAfter
+      continue
+    }
+    const p = record.players.find(x => x.idx === a.seatIdx)
+    if (!p) continue
+    if (a.actionType !== 'SB' && a.actionType !== 'BB') {
+      const preflop = a.phase === 'preflop'
+      const board = boardForPhase(record.board, a.phase)
+      const toCall = Math.max(0, currentBet - (bet[a.seatIdx] ?? 0))
+      const cat: ActCat = a.actionType === 'FOLD' ? 'fold' : a.actionType === 'CHECK' ? 'check' : a.actionType === 'CALL' ? 'call' : 'aggr'
+      ranges[a.seatIdx] = applyAction(ranges[a.seatIdx] ?? initRange(board), cat, {
+        preflop, board, toCall, potOdds: toCall > 0 ? toCall / (pot + toCall) : 0,
+        posBonus: POS_BONUS[p.position] ?? 0.75,
+        tier: Math.max(1, Math.min(3, p.level)),
+        human: p.seatType === 'human', mood: 0,
+        facingRaise: preflop && currentBet > record.bb,
+      })
+    }
+    if (a.actionType === 'FOLD') { /* stays */ }
+    else if (a.actionType !== 'CHECK') { bet[a.seatIdx] = a.amount; if (a.amount > currentBet) currentBet = a.amount; pot = a.potAfter }
+  }
+  return ranges
+}
+
+// Short "move + effect" summary of a player's latest action up to a step.
+function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number): { move: string; effect: string } {
+  let last: HistoryAction | null = null, numCallers = 0, raises = 0
+  for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
+    const a = record.actions[i]
+    if (a.seatIdx === -1) { if (a.phase !== 'preflop') { numCallers = 0; raises = 0 } continue }
+    if (a.actionType === 'CALL') numCallers++
+    if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') raises++
+    if (a.seatIdx === idx && a.actionType !== 'SB' && a.actionType !== 'BB') last = a
+  }
+  if (!last) return { move: '—', effect: 'pas encore parlé ce coup' }
+  const cat: ActCat = last.actionType === 'FOLD' ? 'fold' : last.actionType === 'CHECK' ? 'check' : last.actionType === 'CALL' ? 'call' : 'aggr'
+  return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
 }
 
 function HandHistoryModal({ records, onClose }: {
@@ -599,6 +759,7 @@ function HandHistoryModal({ records, onClose }: {
 }) {
   const [selectedId, setSelectedId] = useState<number|null>(records.length > 0 ? records[records.length-1].id : null)
   const [stepIdx, setStepIdx] = useState<number>(0)
+  const [critique, setCritique] = useState<MoveCritique | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   const record = records.find(r => r.id === selectedId) ?? null
@@ -606,6 +767,13 @@ function HandHistoryModal({ records, onClose }: {
   useEffect(() => {
     if (record) setStepIdx(record.actions.length - 1)
   }, [selectedId, record])
+  // Clear the critique whenever we move to another step / hand.
+  useEffect(() => { setCritique(null) }, [stepIdx, selectedId])
+
+  // Range Vision in the replay — hover a player to see their estimated range.
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const [hoverXY, setHoverXY] = useState<{ x: number; y: number } | null>(null)
+  const stepRanges = useMemo(() => (record ? reconstructRanges(record, stepIdx) : {}), [record?.id, stepIdx])
 
   useEffect(() => {
     if (logRef.current) {
@@ -655,6 +823,7 @@ function HandHistoryModal({ records, onClose }: {
           <div className="flex items-center gap-3">
             <span className="text-sm font-bold text-white/70 uppercase tracking-widest">Historique des mains</span>
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
+            <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
           </div>
           <button onClick={onClose}
             className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 text-lg">
@@ -692,10 +861,10 @@ function HandHistoryModal({ records, onClose }: {
               </div>
 
               {/* Table area */}
-              <div className="relative flex-1 min-h-0" style={{minHeight:380}}>
+              <div className="relative flex-1 min-h-0" style={{minHeight:480}}>
                 {/* Table SVG bg */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div style={{width:'100%',maxWidth:720,opacity:0.75}}>
+                  <div style={{width:'100%',maxWidth:900,opacity:0.78}}>
                     <TableSVG/>
                   </div>
                 </div>
@@ -711,15 +880,18 @@ function HandHistoryModal({ records, onClose }: {
                   const isWinner = isEnd && pl.isWinner
                   const showCards = pl.isHero || isEnd
 
+                  const inHand = !isFolded && (pl.holeCards[0] !== null || pl.holeCards[1] !== null)
                   return (
                     <div key={pl.idx}
-                      className={`absolute flex flex-col items-center transition-all duration-300 ${isFolded?'opacity-30 grayscale':''}`}
+                      className={`absolute flex flex-col items-center transition-all duration-300 ${isFolded?'opacity-30 grayscale':''} ${inHand?'cursor-help':''}`}
                       style={{
                         left: `${pos.x}%`,
                         top: `${pos.y}%`,
                         transform: 'translate(-50%, -50%)',
                         zIndex: 10,
-                      }}>
+                      }}
+                      onMouseEnter={inHand ? (e) => { setHoverIdx(pl.idx); setHoverXY({ x: e.clientX, y: e.clientY }) } : undefined}
+                      onMouseLeave={inHand ? () => { setHoverIdx(null); setHoverXY(null) } : undefined}>
                       {/* Cards */}
                       {(pl.holeCards[0] || pl.holeCards[1]) && (
                         <div className="flex gap-0.5 mb-1">
@@ -727,43 +899,58 @@ function HandHistoryModal({ records, onClose }: {
                             const card = pl.holeCards[ci as 0|1]
                             if (!card) return null
                             if (showCards && card) {
-                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={34} h={48}/>
+                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={44} h={62}/>
                             }
-                            return <FaceDown key={ci} w={28} h={40}/>
+                            return <FaceDown key={ci} w={36} h={50}/>
                           })}
                         </div>
                       )}
                       {/* Name badge */}
-                      <div className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold whitespace-nowrap
+                      <div className={`px-2.5 py-0.5 rounded-lg border text-[12.5px] font-bold whitespace-nowrap
                         ${pl.isHero?'border-[#00d4ff]/50 bg-[#00d4ff]/10 text-[#00d4ff]'
                         :isWinner?'border-[#c9a227]/60 bg-[#c9a227]/10 text-[#c9a227]'
                         :'border-white/10 bg-black/40 text-white/70'}`}>
                         {pl.isHero ? 'Vous' : pl.name}
                       </div>
-                      <div className="text-[10px] font-bold text-emerald-300/90 font-mono mt-0.5">${stack}</div>
-                      {isWinner && <div className="text-base">🏆</div>}
+                      <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">${stack}</div>
+                      {isWinner && <div className="text-lg">🏆</div>}
+                    </div>
+                  )
+                })}
+
+                {/* Live bets in front of players (re-enacted street by street) */}
+                {record.players.map((pl, i) => {
+                  const amt = stepState.streetBets[pl.idx] ?? 0
+                  if (amt <= 0) return null
+                  const pos = getPlayerPos(i)
+                  const off = betOffset(pos.x, pos.y)
+                  return (
+                    <div key={`bet-${pl.idx}`} className="absolute pointer-events-none flex flex-col items-center gap-0.5"
+                      style={{ left: `${pos.x + off.x}%`, top: `${pos.y + off.y}%`, transform: 'translate(-50%,-50%)', zIndex: 12 }}>
+                      <ChipStack amount={amt} sz={16} maxVisible={5}/>
+                      <span className="text-[10px] font-mono text-[#c9a227] font-bold bg-black/55 px-1 rounded">${amt}</span>
                     </div>
                   )
                 })}
 
                 {/* Board cards */}
-                <div className="absolute left-1/2 -translate-x-1/2" style={{top:'42%',transform:'translate(-50%,-50%)'}}>
-                  <div className="flex gap-1.5 items-center">
+                <div className="absolute left-1/2 -translate-x-1/2" style={{top:'41%',transform:'translate(-50%,-50%)'}}>
+                  <div className="flex gap-2 items-center">
                     {stepState.board.map((card, i) => (
                       <div key={i}>
                         {card
-                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={46} h={64}/>
-                          : <EmptySlot w={46} h={64}/>}
+                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={60} h={84}/>
+                          : <EmptySlot w={60} h={84}/>}
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* Pot */}
-                <div className="absolute left-1/2 top-[60%] -translate-x-1/2 -translate-y-1/2">
-                  <div className="flex items-center gap-1.5 bg-black/65 border border-[#c9a227]/30 rounded-lg px-3 py-1">
-                    <span className="text-[10px] text-white/45 uppercase tracking-wide">Pot</span>
-                    <span className="text-sm font-bold text-[#c9a227] font-mono">${stepState.pot}</span>
+                <div className="absolute left-1/2 top-[59%] -translate-x-1/2 -translate-y-1/2">
+                  <div className="flex items-center gap-2 bg-black/65 border border-[#c9a227]/30 rounded-lg px-4 py-1.5">
+                    <span className="text-[11px] text-white/45 uppercase tracking-wide">Pot</span>
+                    <span className="text-base font-bold text-[#c9a227] font-mono">${stepState.pot}</span>
                   </div>
                 </div>
               </div>
@@ -793,6 +980,42 @@ function HandHistoryModal({ records, onClose }: {
                   disabled={isEnd}>▶|</button>
                 <span className="text-xs text-white/40 font-mono">{stepIdx+1}/{record.actions.length}</span>
               </div>
+
+              {/* Coach juge — appears only on the hero's own moves */}
+              {(() => {
+                const a = record.actions[stepIdx]
+                if (!a || a.seatIdx < 0 || !a.isHero || a.actionType === 'SB' || a.actionType === 'BB') return null
+                return (
+                  <div className="flex-shrink-0">
+                    {!critique ? (
+                      <button onClick={() => setCritique(critiqueHeroMove(record, stepIdx))}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#c9a227] font-bold text-xs uppercase tracking-widest hover:bg-[#c9a227]/20 transition-all">
+                        👁 Juge mon coup ({a.actionType}{a.amount > 0 ? ` $${a.amount}` : ''})
+                      </button>
+                    ) : (
+                      <div className="rounded-xl border p-3.5" style={{
+                        background: critique.verdict === 'good' ? 'rgba(31,157,94,0.10)' : critique.verdict === 'mistake' ? 'rgba(192,57,49,0.10)' : 'rgba(201,162,39,0.08)',
+                        borderColor: critique.verdict === 'good' ? 'rgba(31,157,94,0.45)' : critique.verdict === 'mistake' ? 'rgba(192,57,49,0.45)' : 'rgba(201,162,39,0.35)',
+                      }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">{critique.verdict === 'good' ? '✅' : critique.verdict === 'mistake' ? '❌' : '⚠️'}</span>
+                            <span className="text-sm font-black uppercase tracking-wide" style={{ color: critique.verdict === 'good' ? '#34d399' : critique.verdict === 'mistake' ? '#f87171' : '#e8c547' }}>{critique.headline}</span>
+                          </div>
+                          <button onClick={() => setCritique(null)} className="text-white/40 hover:text-white text-sm">✕</button>
+                        </div>
+                        <div className="space-y-1.5">
+                          {critique.lines.map((l, i) => (
+                            <p key={i} className="text-[12.5px] text-white/80 leading-relaxed flex gap-1.5">
+                              <span className="text-[#c9a227] mt-0.5">▸</span>{l}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Summary */}
               {isEnd && (
@@ -860,6 +1083,27 @@ function HandHistoryModal({ records, onClose }: {
           </div>
         </div>
       </motion.div>
+
+      {/* Range Vision popup in the replay (fixed + clamped to the viewport) */}
+      {hoverIdx !== null && hoverXY && stepRanges[hoverIdx] && (() => {
+        const pl = record.players.find(p => p.idx === hoverIdx)
+        if (!pl) return null
+        const view = rangeView(stepRanges[hoverIdx])
+        const meta = playerLastMeta(record, hoverIdx, stepIdx)
+        const heroKey = pl.isHero && pl.holeCards[0] && pl.holeCards[1] ? handKeyFromCards(pl.holeCards[0], pl.holeCards[1]) : null
+        const W = 312, H = 372
+        let x = hoverXY.x + 18, y = hoverXY.y - H / 2
+        if (x + W > window.innerWidth - 8) x = hoverXY.x - W - 18
+        if (x < 8) x = 8
+        if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
+        if (y < 8) y = 8
+        return (
+          <div className="fixed z-[60] pointer-events-none" style={{ left: x, top: y }}>
+            <RangeHeatmap view={view} move={meta.move} effect={meta.effect}
+              name={pl.isHero ? 'Toi (range représentée)' : pl.name} heroKey={heroKey}/>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -899,6 +1143,14 @@ export default function GamePage(): JSX.Element {
   const [preAction, setPreActionState] = useState<'none' | 'fold' | 'checkcall'>('none')
   const preActionRef = useRef<'none' | 'fold' | 'checkcall'>('none')
   function setPreAction(v: 'none' | 'fold' | 'checkcall') { preActionRef.current = v; setPreActionState(v) }
+  // ── Range Vision: estimated opponent ranges, tracked live per seat ──
+  const [visionMode, setVisionMode] = useState(false)
+  const [hoverSeat, setHoverSeat] = useState<number | null>(null)
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null)
+  const visionRef = useRef(false)
+  const rangeRef = useRef<Record<number, RangeWeights>>({})
+  const rangeMetaRef = useRef<Record<number, { move: string; effect: string }>>({})
+  function toggleVision() { const nv = !visionRef.current; visionRef.current = nv; setVisionMode(nv) }
 
   const gsRef = useRef<GState>(gs)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1001,6 +1253,7 @@ export default function GamePage(): JSX.Element {
         holeCards: s.holeCards,
         isFolded: s.isFolded,
         isWinner: finalGs.winners.includes(s.idx),
+        level: s.level, seatType: s.seatType,
       })),
       board: finalGs.community,
       actions: [...currentHandActionsRef.current],
@@ -1021,7 +1274,9 @@ export default function GamePage(): JSX.Element {
   function findBlinds(seats: Seat[], dealerIdx: number): { sbIdx: number; bbIdx: number } {
     const active = seats.filter(s => !s.isEliminated && s.stack > 0 && !s.isSittingOut)
     const n = active.length
-    if (n < 2) return { sbIdx: dealerIdx, bbIdx: dealerIdx }
+    // Fewer than 2 active players (e.g. you sit out heads-up): never charge a
+    // sitting-out player — point both blinds at the lone active seat.
+    if (n < 2) { const only = active[0]?.idx ?? dealerIdx; return { sbIdx: only, bbIdx: only } }
     if (n === 2) {
       // HU: dealer is SB
       return { sbIdx: dealerIdx, bbIdx: (dealerIdx + 1) % seats.length }
@@ -1166,19 +1421,25 @@ export default function GamePage(): JSX.Element {
     const valueBetFrac = () => (strength >= 0.85 ? 0.78 : 0.62)
     const valueRaiseFrac = () => (strength >= 0.85 ? 0.95 : 0.65)
 
-    // ── Pre-flop ──
+    // ── Pre-flop ── (position-scaled ranges; premiums always raise)
     if (!onBoard) {
-      const raiseT = tier === 1 ? 0.78 : tier === 3 ? 0.60 : 0.66
-      const callT = tier === 1 ? 0.30 : 0.42
+      const psv = preflopStrength(c1, c2)            // 1..10 hand chart value
+      const openTh = 8.5 - posBonus * 4.5            // BTN ≈ 4.0 … UTG ≈ 5.7
+      const threeBetTh = openTh + 2.5                // premium → 3-bet
+      const callTh = openTh - 1.2
+      const facingRaise = state.currentBet > bbAmt
       if (toCall === 0) { // BB option / limped pot
-        if (strength >= p.betValue) return { action: 'BET', amount: raiseTo(0.8) }
-        if (draw) return { action: 'CHECK', amount: 0 }
-        return { action: 'CHECK', amount: 0 }
+        return psv >= openTh ? { action: 'BET', amount: raiseTo(0.8) } : { action: 'CHECK', amount: 0 }
       }
-      if (strength >= raiseT) return { action: 'RAISE', amount: raiseTo(0.9) }
-      if (strength >= callT || (tier === 1 && rand < 0.5)) return { action: 'CALL', amount: toCall }
-      if (tier >= 2 && rand < (tier === 3 ? 0.12 : 0.07)) return { action: 'RAISE', amount: raiseTo(0.9) } // steal / light open
-      if (rand < p.spew) return { action: 'CALL', amount: toCall }
+      if (!facingRaise) { // open / raise-first-in
+        if (psv >= openTh) return { action: 'RAISE', amount: raiseTo(0.9) }
+        if (tier === 1 && psv >= callTh && rand < 0.5) return { action: 'CALL', amount: toCall } // fish limps
+        return { action: 'FOLD', amount: 0 }
+      }
+      // Facing a raise → 3-bet (value) / call / fold (+ occasional light 3-bet).
+      if (psv >= threeBetTh) return { action: 'RAISE', amount: raiseTo(0.9) }
+      if (psv >= callTh) return { action: 'CALL', amount: toCall }
+      if (tier >= 2 && psv >= openTh - 2 && rand < (tier === 3 ? 0.10 : 0.06)) return { action: 'RAISE', amount: raiseTo(0.9) }
       return { action: 'FOLD', amount: 0 }
     }
 
@@ -1217,6 +1478,31 @@ export default function GamePage(): JSX.Element {
       else if (deltaBB > 0) m += 0.1
       moodRef.current[s.idx] = Math.max(-1, Math.min(1, m))
     })
+  }
+
+  // Narrow a player's estimated range by the action they just took (Vision mode).
+  function trackRange(seatIdx: number, action: string, currentGs: GState) {
+    if (!visionRef.current) return
+    const seat = currentGs.seats[seatIdx]
+    if (!seat) return
+    const cat: ActCat = action === 'FOLD' ? 'fold' : action === 'CHECK' ? 'check' : action === 'CALL' ? 'call' : 'aggr'
+    const preflop = currentGs.phase === 'preflop'
+    const board = currentGs.community.filter(Boolean) as Card[]
+    const toCall = Math.max(0, currentGs.currentBet - seat.bet)
+    const potOdds = toCall > 0 ? toCall / (currentGs.pot + toCall) : 0
+    const phaseActs = currentHandActionsRef.current.filter(a => a.phase === currentGs.phase && a.seatIdx >= 0)
+    const numCallers = phaseActs.filter(a => a.actionType === 'CALL').length
+    const raisesSoFar = phaseActs.filter(a => a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN').length
+    if (!rangeRef.current[seatIdx]) rangeRef.current[seatIdx] = initRange(board)
+    rangeRef.current[seatIdx] = applyAction(rangeRef.current[seatIdx], cat, {
+      preflop, board, toCall, potOdds,
+      posBonus: POS_BONUS[seat.position] ?? 0.75,
+      tier: Math.max(1, Math.min(3, seat.level)),
+      human: seat.seatType === 'human',
+      mood: moodRef.current[seatIdx] ?? 0,
+      facingRaise: preflop && currentGs.currentBet > bbAmt,
+    })
+    rangeMetaRef.current[seatIdx] = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })
   }
 
   // ─── Action execution ────────────────────────────────────────────────────
@@ -1297,6 +1583,9 @@ export default function GamePage(): JSX.Element {
 
     // Safety net: any committing action that empties the stack is all-in.
     if (!seat.isFolded && seat.stack <= 0) seat.isAllIn = true
+
+    // Range Vision: narrow this player's estimated range (uses pre-action context).
+    trackRange(seatIdx, action, currentGs)
 
     // Record the action
     const phase = currentGs.phase
@@ -1608,11 +1897,17 @@ export default function GamePage(): JSX.Element {
       return
     }
 
-    // Check if only one player left
+    // Check if only one player left → award the pot and move on (must apply the
+    // result, otherwise the hand stalls — e.g. when you sit out heads-up).
     const activePlayers = state.seats.filter(s => !s.isFolded && !s.isEliminated)
     if (activePlayers.length === 1) {
-      foldWin(activePlayers[0].idx, { ...state, actQueue: [] })
+      const winner = foldWin(activePlayers[0].idx, { ...state, actQueue: [] })
+      setGs(winner); gsRef.current = winner
+      saveCurrentHand(winner)
       return
+    }
+    if (activePlayers.length === 0) { // safety: nobody left → just end the hand
+      setGs(prev => ({ ...prev, phase: 'showdown', autoRunning: false })); return
     }
 
     if (seat.isHero) {
@@ -1693,6 +1988,9 @@ export default function GamePage(): JSX.Element {
     // Save start stacks
     seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack })
     currentHandActionsRef.current = []
+    // Fresh estimated ranges for everyone (full range, narrowed by their actions).
+    rangeRef.current = {}; rangeMetaRef.current = {}
+    seats.forEach(s => { if (!s.isSittingOut) rangeRef.current[s.idx] = initRange() })
 
     // Post antes (go straight into the pot)
     let pot = 0
@@ -2080,6 +2378,16 @@ export default function GamePage(): JSX.Element {
           </button>
         )}
 
+        {/* Range Vision toggle — hover any in-hand player to read their range */}
+        {gs.phase !== 'idle' && (
+          <button onClick={toggleVision}
+            title="Survole un joueur encore dans le coup pour voir sa range estimée"
+            className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
+              ${visionMode ? 'bg-[#c9a227]/25 border-[#c9a227]/60 text-[#c9a227] shadow-[0_0_12px_rgba(201,162,39,0.4)]' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
+            <Eye size={11}/> Vision Range
+          </button>
+        )}
+
         {/* Game controls — flow is automatic; Pause halts it (incl. at showdown) */}
         {gs.phase === 'idle' ? (
           <button onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), gs.dealerIdx, gs.handNum)}
@@ -2201,9 +2509,14 @@ export default function GamePage(): JSX.Element {
                   isWinner={isWinner}
                   isShowdown={isShowdown}
                   turnSeconds={decisionTimer}
-                  turnNonce={`${gs.handNum}:${gs.currentBet}:${assistOpen ? 'p' : 'r'}`}
+                  turnNonce={`${gs.handNum}:${gs.currentBet}`}
+                  turnPaused={gs.paused || assistOpen}
                   onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
                   onAssist={seat.isHero && heroInHand ? () => setAssistOpen(true) : undefined}
+                  onHover={visionMode ? (entering, e) => {
+                    if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { setHoverSeat(null); setHoverPos(null) }
+                  } : undefined}
                 />
               )
             })}
@@ -2329,8 +2642,8 @@ export default function GamePage(): JSX.Element {
             )}
           </AnimatePresence>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-3 px-4 py-3">
+          {/* Action buttons — fixed height so the bar never jumps between states */}
+          <div className="flex items-center gap-3 px-4 py-3 min-h-[92px]">
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"/>
@@ -2435,20 +2748,21 @@ export default function GamePage(): JSX.Element {
                         <ChevronDown size={10}/>
                       </button>
                       <div className="flex gap-1">
-                        {[0.33, 0.5, 0.75, 1, 1.5].map(mult => {
-                          const base = gs.currentBet + Math.round((gs.pot + callAmt) * mult / bbAmt) * bbAmt
-                          const amt = clampRaise(base)
-                          if (amt >= heroMaxTo && mult > 0.33) return null
-                          return (
-                            <button key={mult} onClick={() => setHeroBetAmt(amt)}
-                              className="px-1.5 py-0.5 rounded text-[7px] font-bold bg-white/5 border border-white/10 text-white/40 hover:text-[#c9a227] hover:border-[#c9a227]/30 transition-all">
-                              {mult >= 1 ? `${mult}P` : `${Math.round(mult*100)}%`}
-                            </button>
-                          )
-                        })}
+                        {([
+                          ['3bb', clampRaise(3 * bbAmt)],
+                          ['⅓', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 3 / bbAmt) * bbAmt)],
+                          ['½', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 2 / bbAmt) * bbAmt)],
+                          ['⅔', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * 2 / 3 / bbAmt) * bbAmt)],
+                          ['Pot', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / bbAmt) * bbAmt)],
+                        ] as [string, number][]).map(([label, amt]) => (
+                          <button key={label} onClick={() => setHeroBetAmt(amt)}
+                            className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-white/5 border border-white/10 text-white/45 hover:text-[#c9a227] hover:border-[#c9a227]/30 transition-all">
+                            {label}
+                          </button>
+                        ))}
                         <button onClick={() => setHeroBetAmt(heroMaxTo)}
-                          className="px-1.5 py-0.5 rounded text-[7px] font-bold bg-purple-900/20 border border-purple-700/30 text-purple-400 hover:bg-purple-900/30 transition-all">
-                          Max
+                          className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-900/20 border border-purple-700/30 text-purple-400 hover:bg-purple-900/30 transition-all">
+                          All-in
                         </button>
                       </div>
                       <button onClick={() => setHeroBetAmt(v => clampRaise(v + bbAmt))}
@@ -2552,6 +2866,28 @@ export default function GamePage(): JSX.Element {
           <HandHistoryModal records={handHistory} onClose={() => setHistoryOpen(false)}/>
         )}
       </AnimatePresence>
+
+      {/* ── RANGE VISION popup (fixed overlay, clamped to the viewport) ── */}
+      {visionMode && hoverSeat !== null && hoverPos && (() => {
+        const seat = gs.seats.find(s => s.idx === hoverSeat)
+        if (!seat || seat.isFolded || seat.isSittingOut || seat.isEliminated || !rangeRef.current[hoverSeat]) return null
+        const view = rangeView(rangeRef.current[hoverSeat])
+        const meta = rangeMetaRef.current[hoverSeat] ?? { move: '—', effect: 'aucune action encore' }
+        const heroKey = seat.isHero && seat.holeCards[0] && seat.holeCards[1]
+          ? handKeyFromCards(seat.holeCards[0], seat.holeCards[1]) : null
+        const W = 312, H = 372
+        let x = hoverPos.x + 18, y = hoverPos.y - H / 2
+        if (x + W > window.innerWidth - 8) x = hoverPos.x - W - 18
+        if (x < 8) x = 8
+        if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
+        if (y < 8) y = 8
+        return (
+          <div className="fixed z-[80] pointer-events-none" style={{ left: x, top: y }}>
+            <RangeHeatmap view={view} move={meta.move} effect={meta.effect}
+              name={seat.isHero ? 'Toi (range représentée)' : seat.name} heroKey={heroKey}/>
+          </div>
+        )
+      })()}
 
       {/* ── PREFLOP RANGE ASSISTANT ── */}
       <AnimatePresence>

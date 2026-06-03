@@ -11,11 +11,12 @@
 export interface Card { rank: string; suit: string }
 export type AdviceAction = 'BET' | 'CHECK' | 'CALL' | 'RAISE' | 'FOLD'
 
-export interface CheckPlanRow {
+export interface FacePlanRow {
   label: string      // "⅓ pot", "pot", "all-in"…
-  reqEq: number      // equity needed to call that bet
-  action: string     // "Call", "Fold", "Check-raise (valeur)"…
-  note: string       // short rationale
+  reqEq: number      // equity needed to call that bet/raise
+  equation: string   // the math: "B = ⅔·pot ($X) ; req = B/(pot+2B) = 2/7 ≈ 29%"
+  action: string     // "CALL", "FOLD", "RE-RAISE / 4-BET (valeur)"…
+  why: string        // short math rationale
 }
 export interface Advice {
   action: AdviceAction
@@ -26,7 +27,7 @@ export interface Advice {
   draws: string[]
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
-  checkPlan?: CheckPlanRow[] // plan vs a bet behind — only when action === CHECK
+  facePlan?: FacePlanRow[] // plan vs a bet/raise behind — when CHECK / BET / CALL
 }
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
@@ -81,22 +82,59 @@ export function monteCarloEquity(hole: Card[], board: Card[], opponents: number,
   return rangeEquity(hole, board, opponents, 0, iters)
 }
 
-// Equity where each opponent hand is importance-weighted by how well it connects
-// with the CURRENT board, scaled by `aggression` (0 = random … ~0.85 = barreled).
-// A small bluff floor keeps some air in the range (polarized barreling range).
-export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1400): number {
+// A quick strong-draw check (flush draw or open-ended) for range weighting.
+function hasStrongDraw(hole: Card[], board: Card[]): boolean {
+  if (board.length >= 5 || board.length < 3) return false
+  const all = [...hole, ...board]
+  const bySuit: Record<string, number> = {}
+  all.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
+  if (Object.values(bySuit).some(n => n === 4)) return true
+  const vals = new Set(all.map(c => RV[c.rank]))
+  if (vals.has(14)) vals.add(1)
+  for (let lo = 1; lo <= 10; lo++) {
+    let count = 0
+    for (let k = lo; k < lo + 5; k++) if (vals.has(k)) count++
+    if (count === 4 && (!vals.has(lo) || !vals.has(lo + 4))) return true // open-ended (not gutshot)
+  }
+  return false
+}
+
+// P(a player bets/continues this hand | their cards) — the realistic shape of an
+// aggressor's range. A bettor is mostly value (top pair+, sets) + draws (semi-bluff)
+// + a SMALL fraction of pure bluffs — NOT ~half air. This is what makes a weak made
+// hand (e.g. bottom pair) correctly low-equity against a bet, so the coach folds it.
+function betFrequency(oppHole: Card[], board: Card[], a: number): number {
+  const cat = categoryOf(best7([...oppHole, ...board]))
+  if (cat >= 3) return 0.95                              // set / straight / flush+ → almost always bets
+  if (cat === 2) return 0.90                             // two pair
+  if (cat === 1) {                                       // one pair — top pair bets a lot, weak pair rarely
+    const bRanks = board.map(c => RV[c.rank]).sort((x, y) => y - x)
+    const hRanks = oppHole.map(c => RV[c.rank])
+    const pocket = oppHole[0].rank === oppHole[1].rank
+    const topOrOver = (pocket && hRanks[0] > bRanks[0]) || hRanks.includes(bRanks[0])
+    return topOrOver ? 0.78 : Math.max(0.12, 0.42 * (1 - a * 0.45)) // weaker pairs barrel less
+  }
+  if (hasStrongDraw(oppHole, board)) return 0.58         // semi-bluff
+  return Math.max(0.05, 0.18 * (1 - a * 0.6))            // air bluff — shrinks as barrels pile up
+}
+
+// Equity where each opponent hand is importance-weighted by how likely a player
+// would actually be betting/continuing it (see betFrequency), scaled by `aggression`
+// (0 = random range … ~0.85 = multi-barreled, very polarized to value).
+export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800): number {
   if (opponents < 1) return 1
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const deck = fullDeck().filter(c => !known.has(c.rank + c.suit))
   const needBoard = 5 - board.length
   const a = Math.max(0, Math.min(0.9, aggression))
-  const bluffFloor = 0.10
 
   const keepProb = (oppHole: Card[]): number => {
     if (a <= 0 || board.length < 3) return 1
-    const cat = categoryOf(best7([...oppHole, ...board])) // strength on the board they bet
-    const s = Math.min(1, cat / 5) // highcard 0 … set .6 … flush+ 1
-    return Math.max(bluffFloor, (1 - a) + a * s)
+    // Blend a uniform range with the bet-frequency-shaped (polarized-to-value) range.
+    // The blend ramps to 100% by the time we've seen ~2 barrels, so a barreled range
+    // is fully shaped (weak hands carry little weight) rather than half-uniform air.
+    const blend = Math.min(1, a / 0.45)
+    return (1 - blend) * 1 + blend * betFrequency(oppHole, board, a)
   }
 
   let winW = 0, totW = 0
@@ -273,36 +311,44 @@ export function getPostflopAdvice(input: {
 
   // Plan ahead: if we check, what to do when an opponent bets behind us, for
   // each common sizing. Pot odds drive the call/fold; a strong hand check-raises.
-  // Bigger bets imply a stronger/more-polarized range → a small equity haircut.
-  let checkPlan: CheckPlanRow[] | undefined
-  if (action === 'CHECK') {
-    const sizes: { label: string; frac?: number; allin?: boolean; pen: number }[] = [
-      { label: '⅓ pot', frac: 1 / 3, pen: 0.00 },
-      { label: '⅔ pot', frac: 2 / 3, pen: 0.03 },
-      { label: 'pot', frac: 1, pen: 0.06 },
-      { label: 'all-in', allin: true, pen: 0.10 },
+  // Anticipation plan: if the opponent bets / raises behind us, what's the move
+  // for each sizing? We expose the actual MATH (required equity = B/(pot+2B)) and
+  // the full move set incl. RE-RAISE / 4-BET, not just call/fold. Shown whenever
+  // we'd CHECK, BET or CALL (i.e. the action isn't already a fold/raise).
+  let facePlan: FacePlanRow[] | undefined
+  if (action === 'CHECK' || action === 'BET' || action === 'CALL') {
+    const sizes: { label: string; fracTxt: string; reqTxt: string; frac?: number; allin?: boolean; pen: number }[] = [
+      { label: '⅓ pot', fracTxt: '⅓·pot', reqTxt: '1/5', frac: 1 / 3, pen: 0.00 },
+      { label: '½ pot', fracTxt: '½·pot', reqTxt: '1/4', frac: 1 / 2, pen: 0.02 },
+      { label: '⅔ pot', fracTxt: '⅔·pot', reqTxt: '2/7', frac: 2 / 3, pen: 0.03 },
+      { label: 'pot', fracTxt: 'pot', reqTxt: '1/3', frac: 1, pen: 0.06 },
+      { label: 'all-in', fracTxt: 'tapis', reqTxt: '', allin: true, pen: 0.10 },
     ]
-    checkPlan = sizes.map(s => {
-      const bet = s.allin ? Math.max(effStack, pot) : pot * (s.frac as number)
-      const reqEq = bet / (pot + 2 * bet)
+    facePlan = sizes.map(s => {
+      const B = s.allin ? Math.max(effStack, pot) : pot * (s.frac as number)
+      const reqEq = B / (pot + 2 * B)
       const effEq = Math.max(0, eq - s.pen)
-      let act: string, note: string
+      const small = !s.allin && (s.frac as number) <= 0.5
+      const equation = s.allin
+        ? `B = tapis ($${round(B)}) ; req = B/(pot+2B) = ${round(B)}/(${round(pot)}+2·${round(B)}) ≈ ${pct(reqEq)}`
+        : `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${s.reqTxt} ≈ ${pct(reqEq)}`
+      let act: string, why: string
       if (isStrongValue) {
-        act = 'Check-raise (valeur)'
-        note = s.allin ? `tu domines : paie son all-in.` : `tu domines : relance (~2.5× sa mise) pour la valeur.`
+        if (s.allin || spr <= 1.5) { act = 'CALL / ALL-IN (valeur)'; why = `main forte (équité ${pct(eq)}) → tu encaisses.` }
+        else { act = 'RE-RAISE / 4-BET (valeur)'; why = `tu domines sa range${small ? ' — petit sizing = re-raise pour la valeur' : ''}.` }
+      } else if (strongDraw && small) {
+        act = 'RE-RAISE (semi-bluff)'; why = `petit sizing + ton tirage → fold equity + outs si payé.`
       } else if (effEq >= reqEq) {
-        act = isOnePair ? 'Call (bluffcatch)' : 'Call'
-        note = `équité ${pct(eq)} ≥ ${pct(reqEq)} requis → rentable.`
+        act = isOnePair ? 'CALL (bluffcatch)' : 'CALL'
+        why = `équité ${pct(eq)} ≥ ${pct(reqEq)} requis → rentable.`
       } else if (strongDraw && effEq >= reqEq - impliedBuf) {
-        act = 'Call (tirage)'
-        note = `tirage : ${pct(eq)} vs ${pct(reqEq)} requis (gains implicites).`
+        act = 'CALL (tirage)'; why = `${pct(eq)} ≈ ${pct(reqEq)} requis + gains implicites.`
       } else {
-        act = 'Fold'
-        note = `${pct(eq)} < ${pct(reqEq)} requis${s.allin || s.frac! >= 1 ? ' (grosse mise = range forte)' : ''} → fold.`
+        act = 'FOLD'; why = `équité ${pct(eq)} < ${pct(reqEq)} requis${s.allin || (s.frac as number) >= 1 ? ' (grosse mise = range forte)' : ''}.`
       }
-      return { label: s.label, reqEq, action: act, note }
+      return { label: s.label, reqEq, equation, action: act, why }
     })
   }
 
-  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence, checkPlan }
+  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence, facePlan }
 }

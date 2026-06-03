@@ -48,6 +48,9 @@
   .app-drag-none { -webkit-app-region: no-drag; }
 }
 
+/* Decision-clock bar (freezable via animation-play-state when paused). */
+@keyframes turnDrain { from { width: 100%; } to { width: 0%; } }
+
 @layer components {
   .btn-gold {
     @apply bg-gold-gradient text-poker-darker font-bold uppercase tracking-widest

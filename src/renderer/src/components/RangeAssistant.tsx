@@ -4,7 +4,7 @@ import {
   GRID_RANKS, buildRangeMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type CheckPlanRow } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type FacePlanRow } from '../lib/postflopAdvisor'
 
 interface Card { rank: string; suit: string }
 
@@ -29,7 +29,7 @@ interface UnifiedAdvice {
   draws: string[]
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
-  checkPlan?: CheckPlanRow[]
+  facePlan?: FacePlanRow[]
 }
 
 export default function RangeAssistant({
@@ -97,7 +97,7 @@ export default function RangeAssistant({
     }
     if (board.length < 3) return null
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
-    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, checkPlan: a.checkPlan }
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack])
 
@@ -123,10 +123,11 @@ export default function RangeAssistant({
       if (toCall <= 0) { setAnswer(`Personne n’a misé : tu n’as rien à payer, donc pas de cote du pot à atteindre.`); return }
       setAnswer(`C’est purement mathématique : tu dois payer ${toCall} pour tenter de remporter le pot. Équité requise = mise à payer ÷ (pot total après ton call) = ${toCall} ÷ (${pot} + ${toCall}) ≈ ${pct(advice.potOdds)}. Il faut donc gagner le coup au moins ${pct(advice.potOdds)} du temps pour que payer soit rentable. Toi tu gagnes ~${pct(advice.equity)} → ${oddsVerdict}`)
     }
-    else if (q === 'bet_behind') {
-      if (!advice.checkPlan || advice.checkPlan.length === 0) { setAnswer('Cette question n’est utile que lorsque le conseil est de CHECKER.'); return }
-      const lines = advice.checkPlan.map(r => `• Il mise ${r.label} (≈ ${pct(r.reqEq)} requis) → ${r.action.toUpperCase()} : ${r.note}`).join('\n')
-      setAnswer(`Tu checkes. Si un adversaire mise APRÈS toi, voici le plan optimal selon sa taille de mise :\n${lines}\n\nPlus la mise est grosse, plus il faut d’équité ET plus sa range est forte → prudence sur les grosses tailles.`)
+    else if (q === 'face_raise') {
+      if (!advice.facePlan || advice.facePlan.length === 0) { setAnswer('Disponible quand le conseil est CHECK, BET ou CALL.'); return }
+      const verb = advice.actionText === 'BET' ? 'te relance' : advice.actionText === 'CALL' ? 'relance derrière' : 'mise derrière toi'
+      const lines = advice.facePlan.map(r => `▸ S’il ${verb} ${r.label} → ${r.action}\n   ${r.equation}\n   ${r.why}`).join('\n')
+      setAnswer(`Anticipe : si l’adversaire ${verb}, voici le coup optimal selon sa taille (req = équité nécessaire pour payer, B = sa mise) :\n\n${lines}\n\nClé : un PETIT sizing avec une main forte → souvent un RE-RAISE / 4-bet pour la valeur, pas un simple call.`)
     }
     else if (q === 'bluff') {
       const betSize = Math.max(1, Math.round(pot * 0.66))
@@ -265,14 +266,14 @@ export default function RangeAssistant({
                       {label}
                     </button>
                   ))}
-                  {/* Plan-ahead question — only active when the advice is to CHECK */}
+                  {/* Anticipation question — active when we'd CHECK / BET / CALL */}
                   {(() => {
-                    const enabled = advice.actionText === 'CHECK' && !!advice.checkPlan
+                    const enabled = !!advice.facePlan && ['CHECK', 'BET', 'CALL'].includes(advice.actionText)
                     return (
-                      <button onClick={() => enabled && ask('bet_behind')} disabled={!enabled}
-                        title={enabled ? 'Plan si un adversaire mise après ton check' : 'Disponible seulement quand le conseil est CHECK'}
+                      <button onClick={() => enabled && ask('face_raise')} disabled={!enabled}
+                        title={enabled ? 'Plan si l’adversaire mise / te relance, par taille' : 'Disponible quand le conseil est CHECK, BET ou CALL'}
                         className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${enabled ? 'bg-[#c9a227]/12 border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/20' : 'bg-white/3 border-white/8 text-white/20 cursor-not-allowed'}`}>
-                        🎯 Et si on mise après moi ?
+                        🎯 Et si je me fais raise ?
                       </button>
                     )
                   })()}

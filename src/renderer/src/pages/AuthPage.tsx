@@ -6,6 +6,7 @@ import SocialButton from '../components/auth/SocialButton'
 import WindowControls from '../components/layout/WindowControls'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import type { Session } from '@supabase/supabase-js'
 
 function PokerChip({ id, color = 'gold', size = 120 }: { id: string; color?: 'gold' | 'teal'; size?: number }) {
   const g = color === 'gold'
@@ -99,6 +100,23 @@ export default function AuthPage(): JSX.Element {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    // ── Local admin bypass (dev/test): "admin" / "admin" → direct access ──
+    if (identifier.trim().toLowerCase() === 'admin' && password === 'admin') {
+      const adminUser = {
+        id: 'admin-local', aud: 'authenticated', role: 'authenticated',
+        email: 'admin@local', created_at: new Date().toISOString(),
+        app_metadata: { provider: 'local' }, user_metadata: { full_name: 'Admin' },
+      } as unknown as Session['user']
+      const adminSession = {
+        access_token: 'admin-local', refresh_token: 'admin-local',
+        token_type: 'bearer', expires_in: 31536000,
+        expires_at: Math.floor(Date.now() / 1000) + 31536000, user: adminUser,
+      } as unknown as Session
+      setSession(adminSession)
+      return
+    }
+
     setIsLoading(true)
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: identifier, password })
@@ -317,6 +335,12 @@ export default function AuthPage(): JSX.Element {
                     {error}
                   </motion.p>
                 )}
+
+                {/* Dev shortcut */}
+                <button type="button" onClick={() => { setIdentifier('admin'); setPassword('admin') }}
+                  className="text-[10px] text-poker-gold/70 hover:text-poker-gold transition-colors text-center uppercase tracking-wider">
+                  Accès dev : admin / admin
+                </button>
 
                 <motion.button
                   type="submit"
