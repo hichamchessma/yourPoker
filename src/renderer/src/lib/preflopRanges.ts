@@ -18,11 +18,18 @@ interface Hand { key: string; combos: number; score: number }
 // suited / connected hands get bonuses, large gaps a penalty, aces a kicker bump.
 function comboScore(hi: number, lo: number, suited: boolean, pair: boolean): number {
   if (pair) return 60 + hi * 4 // 22→68 … TT→100 … AA→116
-  let s = hi * 4 + lo * 2
-  if (suited) s += 10
+  // Reward suitedness & connectedness more, and the dominance of offsuit high-card
+  // hands less, so late-position ranges open suited connectors/gappers (54s, 75s,
+  // 85s…) — which solvers favour — instead of offsuit junk (Q7o, J7o, T7o).
+  let s = hi * 3 + lo * 2.5
+  if (suited) s += 14
   const gap = hi - lo - 1
-  s -= gap * 2.2
-  if (hi === 14) s += 6
+  s -= gap * 2.6
+  if (gap === 0) s += 7          // connectors (straight potential)
+  else if (gap === 1) s += 4     // one-gappers
+  else if (gap === 2) s += 2     // two-gappers
+  if (hi === 14) s += 8          // ace (nut potential)
+  else if (hi === 13) s += 3     // king
   return s
 }
 
@@ -78,15 +85,41 @@ function openPctByBehind(behind: number): number {
 const OPEN_PCT: Record<string, number> = {
   UTG: 15, 'UTG+1': 16, MP: 18, 'MP+1': 19, HJ: 22, CO: 28, BTN: 46, SB: 45, BB: 60, 'BTN/SB': 47,
 }
-const VS_OPEN: Record<string, { tb: number; call: number }> = {
-  UTG: { tb: 5, call: 7 }, 'UTG+1': { tb: 5, call: 7 }, MP: { tb: 6, call: 8 }, 'MP+1': { tb: 6, call: 8 },
-  HJ: { tb: 7, call: 9 }, CO: { tb: 8, call: 14 }, BTN: { tb: 9, call: 19 },
-  SB: { tb: 11, call: 6 }, BB: { tb: 9, call: 26 }, 'BTN/SB': { tb: 10, call: 16 },
+// vs-open: polarized 3-bet VALUE (explicit, NOT a linear top-% which would 3-bet
+// medium pairs as value) + bluffs (THREEBET_BLUFFS) + a position-scaled FLAT band.
+const VS_OPEN_DEF: Record<string, { value: string[]; call: number }> = {
+  UTG:    { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 7 },
+  'UTG+1':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 7 },
+  MP:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 8 },
+  'MP+1': { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 8 },
+  HJ:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 9 },
+  CO:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 14 },
+  BTN:    { value: ['AA', 'KK', 'QQ', 'JJ', 'AKs', 'AKo', 'AQs'],  call: 19 },
+  SB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 5 },  // polarized OOP, small flat
+  BB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 26 }, // closes, defends wide
+  'BTN/SB':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],       call: 16 },
 }
-const VS_3BET = { fb: 4, call: 5 }
+// vs-3bet defense by position. The 4-bet VALUE part is an EXPLICIT polarized set
+// (QQ+/AK), NOT a linear "top-%": the playability score ranks every pair above AK,
+// so a top-% cut would wrongly 4-bet 88-JJ. `call` is the continue width (in % of
+// hands) — the strong-but-not-nut hands we flat. Blinds/late positions defend wider.
+const VS_3BET_DEF: Record<string, { value: string[]; call: number }> = {
+  UTG:    { value: ['AA', 'KK', 'QQ', 'AKs'],                call: 5 },
+  'UTG+1':{ value: ['AA', 'KK', 'QQ', 'AKs'],                call: 5 },
+  MP:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 6 },
+  'MP+1': { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 6 },
+  HJ:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 8 },
+  CO:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 11 },
+  BTN:    { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],  call: 15 },
+  SB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 8 },
+  BB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 18 },
+  'BTN/SB':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],        call: 12 },
+}
 
-// Polarized 3-bet bluffs: suited wheel aces (blockers) + suited gappers/connectors.
+// Polarized bluffs. 3-bet bluffs (vs an open) — suited wheel aces + suited gappers.
 const THREEBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s', 'A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s', '86s', '75s', '64s'])
+// 4-bet bluffs (vs a 3-bet) — tight: just the ace-blocker suited wheel hands.
+const FOURBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s'])
 
 export interface RangeOpts {
   effBB?: number       // effective stack in big blinds
@@ -113,20 +146,26 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     const raise = topByPct(pct)
     for (const h of RANKED) map.set(h.key, raise.has(h.key) ? 'raise' : 'fold')
   } else if (scenario === 'vsopen') {
-    const cfg = VS_OPEN[position] ?? { tb: 6, call: 10 }
-    let tbPct = cfg.tb
-    if (opts.effBB !== undefined && opts.effBB < 25) tbPct *= 1.1 // short → more 3-bet (shove)
-    const callPct = adjustCall(cfg.call, opts)
-    const tb = topByPct(tbPct)
-    const cont = topByPct(tbPct + callPct)
+    // Polarized 3-bet (explicit value + blocker/suited bluffs), then a flat band.
+    const def = VS_OPEN_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 10 }
+    const value = new Set(def.value)
+    const cont = topByPct(adjustCall(def.call, opts) + 3) // +3% ≈ covers the value combos
     for (const h of RANKED) {
-      const a: RangeAction = tb.has(h.key) || THREEBET_BLUFFS.has(h.key) ? '3bet' : cont.has(h.key) ? 'call' : 'fold'
+      const a: RangeAction = value.has(h.key) || THREEBET_BLUFFS.has(h.key) ? '3bet'
+        : cont.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
   } else {
-    const fb = topByPct(VS_3BET.fb)
-    const cont = topByPct(VS_3BET.fb + adjustCall(VS_3BET.call, opts))
-    for (const h of RANKED) map.set(h.key, fb.has(h.key) ? '4bet' : cont.has(h.key) ? 'call' : 'fold')
+    // vs a 3-bet: explicit polarized value 4-bets (QQ+/AK) + ace-blocker bluffs,
+    // then a position-scaled CALL band of strong-but-not-nut hands, fold the rest.
+    const def = VS_3BET_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 8 }
+    const value = new Set(def.value)
+    const cont = topByPct(adjustCall(def.call, opts) + 3) // +3% ≈ covers the value combos so the band starts at the calls
+    for (const h of RANKED) {
+      const a: RangeAction = value.has(h.key) || FOURBET_BLUFFS.has(h.key) ? '4bet'
+        : cont.has(h.key) ? 'call' : 'fold'
+      map.set(h.key, a)
+    }
   }
   return map
 }

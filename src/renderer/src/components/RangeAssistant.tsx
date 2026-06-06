@@ -5,6 +5,8 @@ import {
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
 import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type FacePlanRow } from '../lib/postflopAdvisor'
+import RangeHeatmap from './RangeHeatmap'
+import type { RangeView } from '../lib/rangeEstimator'
 
 interface Card { rank: string; suit: string }
 
@@ -36,6 +38,7 @@ export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
   raiseToBB, multiway, actionRecap, onClose,
+  embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
   card2: Card | null
@@ -56,6 +59,9 @@ export default function RangeAssistant({
   multiway: boolean
   actionRecap: string[]
   onClose: () => void
+  embedded?: boolean
+  representedView?: RangeView | null
+  representedMeta?: { move: string; effect: string } | null
 }) {
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
@@ -142,10 +148,11 @@ export default function RangeAssistant({
     ['equity_calc', 'Comment tu calcules mon équité ?'], ['potodds_calc', 'Comment tu calcules la cote ?'], ['bluff', 'Et si j’essaie de bluffer ?'],
   ]
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }}>
+  const panel = (
       <motion.div initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-[680px] max-h-[92vh] overflow-y-auto rounded-2xl border border-[#c9a227]/30"
+        className={embedded
+          ? 'w-[620px] max-w-[94vw] max-h-[88vh] overflow-y-auto rounded-2xl border border-[#c9a227]/30 shadow-2xl'
+          : 'w-full max-w-[680px] max-h-[92vh] overflow-y-auto rounded-2xl border border-[#c9a227]/30'}
         style={{ background: '#070d1a' }}>
 
         {/* Header */}
@@ -155,8 +162,10 @@ export default function RangeAssistant({
             <span className="text-[10px] text-white/35">{isPreflop ? 'Préflop' : 'Postflop'}</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/8 border border-white/10 text-white/50 font-bold uppercase tracking-wide">{formatLabel}</span>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10">✕</button>
+          {embedded
+            ? <span className="text-[9px] text-white/30 italic">survol — quitte le profil pour fermer</span>
+            : <button onClick={onClose}
+                className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10">✕</button>}
         </div>
 
         <div className="p-5">
@@ -229,6 +238,14 @@ export default function RangeAssistant({
 
           {advice && (
             <>
+              {/* Represented range (perceived) — postflop, all streets */}
+              {!isPreflop && representedView && (
+                <div className="mb-4 flex flex-col items-center">
+                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">Ta range représentée (perçue)</p>
+                  <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
+                    name="Toi — range représentée" heroKey={heroKey}/>
+                </div>
+              )}
               {/* Equity / pot odds */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-[10px] mb-1">
@@ -305,6 +322,11 @@ export default function RangeAssistant({
           )}
         </div>
       </motion.div>
+  )
+  if (embedded) return panel
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }}>
+      {panel}
     </div>
   )
 }

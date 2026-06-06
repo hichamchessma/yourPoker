@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Home,
   GraduationCap,
+  SlidersHorizontal,
   BookOpen,
   BarChart2,
   User,
@@ -24,6 +25,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'lobby', label: 'Accueil (Lobby)', icon: <Home size={20} />, path: '/lobby' },
   { id: 'training', label: 'Entraînement', icon: <GraduationCap size={20} />, path: '/training' },
+  { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup' },
   { id: 'library', label: 'Bibliothèque', icon: <BookOpen size={20} />, path: '/library' },
   { id: 'stats', label: 'Statistiques', icon: <BarChart2 size={20} />, path: '/stats' },
   { id: 'profile', label: 'Profil', icon: <User size={20} />, path: '/profile' },

@@ -1,14 +1,14 @@
 ﻿import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Sparkles, Eye } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye } from 'lucide-react'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
 import { type Scenario, handKeyFromCards, buildRangeMap } from '../lib/preflopRanges'
 import { getPostflopAdvice } from '../lib/postflopAdvisor'
 import {
-  initRange, applyAction, rangeView, actionSummary,
+  initRange, applyAction, rangeView, actionSummary, preflopProbs,
   type RangeWeights, type ActCat,
 } from '../lib/rangeEstimator'
 
@@ -37,6 +37,17 @@ interface GameConfig {
   numPlayers: number; selectedSeat: number; stackBB: number; sb: number
   bb: number; ante: number; decisionTimer: number; displayName: string
   slots: Array<{ type: string; level: number }>
+  scenario?: ScenarioCfg
+  playLive?: boolean
+}
+// Custom-scenario start state coming from SetupPositionPage.
+interface ScenarioCfg {
+  numPlayers: number; heroPos: string; stackBB: number; sb: number; bb: number
+  startStreet: 'preflop' | 'flop' | 'turn' | 'river'
+  heroCards: [Card | null, Card | null]
+  board: (Card | null)[]
+  potBB: number
+  opponents: Array<{ level: number; discipline: string }>
 }
 interface ChipFlight {
   id: number; fromX: number; fromY: number; toX: number; toY: number
@@ -99,25 +110,20 @@ function betOffset(leftPct: number, topPct: number): { x: number; y: number } {
 }
 
 // ─── Bot AI helpers ───────────────────────────────────────────────────────────
+// Chen formula — fine-grained preflop hand ranking (~ -1 … 20). MUST stay
+// identical to the copy in lib/rangeEstimator.ts so bots & the range estimator
+// share the exact same preflop strength scale.
 function preflopStrength(c1: Card, c2: Card): number {
   const r1 = RV[c1.rank] ?? 2, r2 = RV[c2.rank] ?? 2
   const hi = Math.max(r1, r2), lo = Math.min(r1, r2)
-  const pair = r1 === r2, suited = c1.suit === c2.suit, gap = hi - lo
-  if (pair) return hi>=14?10:hi>=12?9:hi>=10?8:hi>=8?7:6
-  if (hi===14) {
-    if (lo>=13) return suited?10:9
-    if (lo>=11) return suited?8:7
-    if (lo>=9)  return suited?7:6
-    return suited?6:5
-  }
-  if (hi>=13&&lo>=11) return suited?8:7
-  if (hi>=12&&lo>=10) return suited?7:6
-  if (gap<=1&&lo>=9)  return suited?7:6
-  if (gap<=1&&lo>=7)  return suited?6:5
-  if (suited&&gap<=1&&lo>=5) return 5
-  if (suited&&gap<=2&&lo>=5) return 4
-  if (hi>=10&&gap<=2) return 4
-  return Math.max(1, 2.5 - gap*0.3 + (suited?0.5:0))
+  const val = (r: number) => r === 14 ? 10 : r === 13 ? 8 : r === 12 ? 7 : r === 11 ? 6 : r / 2
+  if (r1 === r2) return Math.max(5, val(hi) * 2)            // pair
+  let s = val(hi)
+  if (c1.suit === c2.suit) s += 2                            // suited bonus
+  const gap = hi - lo - 1                                    // cards between
+  if (gap === 1) s -= 1; else if (gap === 2) s -= 2; else if (gap === 3) s -= 4; else if (gap >= 4) s -= 5
+  if (hi - lo <= 2 && hi < 12) s += 1                        // straight bonus (both below Q)
+  return s                                                   // unrounded → finer thresholds
 }
 const POS_BONUS: Record<string, number> = {
   'BTN':1.00,'BTN/SB':1.00,'CO':0.88,'HJ':0.78,
@@ -337,8 +343,8 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 }
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, onAssist, turnNonce, turnPaused, onHover }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; onAssist?:()=>void; turnNonce?:string; turnPaused?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, onHover }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void
 }) {
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
   const initial = seat.name[0].toUpperCase()
@@ -427,13 +433,6 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
                 <div className="w-full h-full rounded-full bg-[#00d4ff] animate-ping opacity-70"/>
               </div>
             )}
-            {onAssist&&(
-              <button onClick={onAssist} title="Assistant de range (préflop)"
-                className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center border border-[#c9a227]/60 shadow-lg hover:scale-110 transition-transform"
-                style={{background:'radial-gradient(circle at 35% 30%, #f0d060, #c9a227 60%, #8B6810)'}}>
-                <Sparkles size={11} className="text-[#1a1206]"/>
-              </button>
-            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
@@ -487,12 +486,12 @@ function TableSVG() {
   return (
     <svg viewBox="0 0 840 450" width="100%" style={{display:'block'}}>
       <defs>
-        <radialGradient id="tF" cx="50%" cy="40%" r="56%">
-          <stop offset="0%" stopColor="#116638"/><stop offset="45%" stopColor="#0a5228"/>
-          <stop offset="80%" stopColor="#073a1c"/><stop offset="100%" stopColor="#041808"/>
+        <radialGradient id="tF" cx="50%" cy="38%" r="58%">
+          <stop offset="0%" stopColor="#1b7e8c"/><stop offset="42%" stopColor="#0e5b67"/>
+          <stop offset="78%" stopColor="#083e48"/><stop offset="100%" stopColor="#041a20"/>
         </radialGradient>
         <radialGradient id="tG" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(14,130,60,0.10)"/><stop offset="100%" stopColor="transparent"/>
+          <stop offset="0%" stopColor="rgba(28,180,200,0.12)"/><stop offset="100%" stopColor="transparent"/>
         </radialGradient>
         <linearGradient id="tR" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#f8e870"/><stop offset="12%" stopColor="#d8b030"/>
@@ -532,17 +531,23 @@ function TableSVG() {
 function Room() {
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      <div className="absolute inset-0" style={{background:'#0c0907'}}/>
-      <div className="absolute inset-x-0 top-0" style={{height:'85%',background:'radial-gradient(ellipse 80% 70% at 50% -8%, rgba(190,120,18,0.5) 0%, rgba(130,75,10,0.22) 38%, transparent 70%)'}}/>
-      <div className="absolute top-0 bottom-0 left-0" style={{width:'28%',background:'radial-gradient(ellipse at 0% 42%, rgba(160,90,12,0.32) 0%, transparent 65%)'}}/>
-      <div className="absolute top-0 bottom-0 right-0" style={{width:'28%',background:'radial-gradient(ellipse at 100% 42%, rgba(160,90,12,0.32) 0%, transparent 65%)'}}/>
-      <div className="absolute inset-0" style={{background:'linear-gradient(90deg, rgba(0,0,0,0.6) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.6) 100%)'}}/>
-      <div className="absolute inset-x-0 top-0" style={{height:'30%',background:'linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%)'}}/>
-      <div className="absolute inset-x-0 bottom-0" style={{height:'22%',background:'linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%)'}}/>
-      <div className="absolute inset-0 opacity-[0.06]" style={{backgroundImage:'repeating-linear-gradient(90deg, transparent 0px, transparent 90px, rgba(220,160,60,0.5) 90px, rgba(220,160,60,0.5) 91px)'}}/>
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full" style={{background:'rgba(255,230,120,0.95)',boxShadow:'0 0 20px 10px rgba(220,170,30,0.55), 0 0 60px 30px rgba(180,110,10,0.3)'}}/>
-      <div className="absolute top-1/3 left-10 w-2 h-2 rounded-full" style={{background:'rgba(255,210,100,0.8)',boxShadow:'0 0 15px 8px rgba(200,140,20,0.45)'}}/>
-      <div className="absolute top-1/3 right-10 w-2 h-2 rounded-full" style={{background:'rgba(255,210,100,0.8)',boxShadow:'0 0 15px 8px rgba(200,140,20,0.45)'}}/>
+      {/* deep cool lounge base */}
+      <div className="absolute inset-0" style={{background:'radial-gradient(120% 95% at 50% 28%, #0f2230 0%, #0a1622 46%, #050a12 100%)'}}/>
+      {/* warm gold spotlight from the chandelier above */}
+      <div className="absolute inset-x-0 top-0" style={{height:'82%',background:'radial-gradient(ellipse 68% 62% at 50% -6%, rgba(214,172,64,0.42) 0%, rgba(150,100,28,0.16) 40%, transparent 72%)'}}/>
+      {/* cool teal glow rising from the felt */}
+      <div className="absolute inset-x-0 bottom-0" style={{height:'72%',background:'radial-gradient(ellipse 62% 56% at 50% 82%, rgba(24,150,170,0.20) 0%, transparent 64%)'}}/>
+      {/* soft side ambiance */}
+      <div className="absolute top-0 bottom-0 left-0" style={{width:'30%',background:'radial-gradient(ellipse at 0% 45%, rgba(184,124,40,0.16) 0%, transparent 60%)'}}/>
+      <div className="absolute top-0 bottom-0 right-0" style={{width:'30%',background:'radial-gradient(ellipse at 100% 45%, rgba(184,124,40,0.16) 0%, transparent 60%)'}}/>
+      {/* focus vignette */}
+      <div className="absolute inset-0" style={{background:'radial-gradient(125% 105% at 50% 46%, transparent 54%, rgba(0,0,0,0.55) 100%)'}}/>
+      <div className="absolute inset-x-0 top-0" style={{height:'26%',background:'linear-gradient(180deg, rgba(0,0,0,0.62) 0%, transparent 100%)'}}/>
+      <div className="absolute inset-x-0 bottom-0" style={{height:'20%',background:'linear-gradient(0deg, rgba(0,0,0,0.80) 0%, transparent 100%)'}}/>
+      {/* chandelier point + cool accent lights */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full" style={{background:'rgba(255,236,152,0.95)',boxShadow:'0 0 22px 11px rgba(222,182,62,0.5), 0 0 72px 34px rgba(180,120,30,0.28)'}}/>
+      <div className="absolute top-[30%] left-12 w-1.5 h-1.5 rounded-full" style={{background:'rgba(120,214,232,0.7)',boxShadow:'0 0 14px 7px rgba(40,168,196,0.35)'}}/>
+      <div className="absolute top-[30%] right-12 w-1.5 h-1.5 rounded-full" style={{background:'rgba(120,214,232,0.7)',boxShadow:'0 0 14px 7px rgba(40,168,196,0.35)'}}/>
     </div>
   )
 }
@@ -707,13 +712,13 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
 function reconstructRanges(record: HandHistoryRecord, stepIdx: number): Record<number, RangeWeights> {
   const ranges: Record<number, RangeWeights> = {}
   record.players.forEach(p => { ranges[p.idx] = initRange() })
-  let currentBet = 0, pot = 0
+  let currentBet = 0, pot = 0, preRaises = 0
   const bet: Record<number, number> = {}
   record.players.forEach(p => { bet[p.idx] = 0 })
   for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
     const a = record.actions[i]
     if (a.seatIdx === -1) {
-      if (a.phase !== 'preflop') { record.players.forEach(p => (bet[p.idx] = 0)); currentBet = 0 }
+      if (a.phase !== 'preflop') { record.players.forEach(p => (bet[p.idx] = 0)); currentBet = 0; preRaises = 0 }
       pot = a.potAfter
       continue
     }
@@ -729,11 +734,12 @@ function reconstructRanges(record: HandHistoryRecord, stepIdx: number): Record<n
         posBonus: POS_BONUS[p.position] ?? 0.75,
         tier: Math.max(1, Math.min(3, p.level)),
         human: p.seatType === 'human', mood: 0,
-        facingRaise: preflop && currentBet > record.bb,
+        priorRaises: preRaises,
       })
     }
     if (a.actionType === 'FOLD') { /* stays */ }
     else if (a.actionType !== 'CHECK') { bet[a.seatIdx] = a.amount; if (a.amount > currentBet) currentBet = a.amount; pot = a.potAfter }
+    if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') preRaises++
   }
   return ranges
 }
@@ -1135,7 +1141,6 @@ export default function GamePage(): JSX.Element {
   const [heroBetAmt, setHeroBetAmt] = useState(bbAmt * 2)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [assistOpen, setAssistOpen] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [sitOut, setSitOut] = useState(false)
   const [rebuyAmt, setRebuyAmt] = useState(stackBB * bbAmt)
@@ -1143,14 +1148,18 @@ export default function GamePage(): JSX.Element {
   const [preAction, setPreActionState] = useState<'none' | 'fold' | 'checkcall'>('none')
   const preActionRef = useRef<'none' | 'fold' | 'checkcall'>('none')
   function setPreAction(v: 'none' | 'fold' | 'checkcall') { preActionRef.current = v; setPreActionState(v) }
-  // ── Range Vision: estimated opponent ranges, tracked live per seat ──
-  const [visionMode, setVisionMode] = useState(false)
+  // ── Range Vision: estimated ranges, tracked live per seat — ALWAYS ON now.
+  // Hover any in-hand player → their range. Hover your own profile → range +
+  // full coach advice (no buttons to click; it's a hover-card kept open while
+  // the cursor is over the profile or the panel).
   const [hoverSeat, setHoverSeat] = useState<number | null>(null)
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null)
-  const visionRef = useRef(false)
+  const [heroPanelHover, setHeroPanelHover] = useState(false)
+  const heroPanelHoverRef = useRef(false)
+  const coachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const visionRef = useRef(true)
   const rangeRef = useRef<Record<number, RangeWeights>>({})
   const rangeMetaRef = useRef<Record<number, { move: string; effect: string }>>({})
-  function toggleVision() { const nv = !visionRef.current; visionRef.current = nv; setVisionMode(nv) }
 
   const gsRef = useRef<GState>(gs)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1165,6 +1174,21 @@ export default function GamePage(): JSX.Element {
   const tableRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { gsRef.current = gs }, [gs])
+
+  // Auto-start a custom scenario (from SetupPositionPage) once, on mount. The guard
+  // is checked when the timer FIRES (not when scheduled) so React StrictMode's
+  // mount→cleanup→remount in dev can't cancel it permanently.
+  const scenarioStartedRef = useRef(false)
+  useEffect(() => {
+    if (!cfg.scenario) return
+    const t = setTimeout(() => {
+      if (scenarioStartedRef.current) return
+      scenarioStartedRef.current = true
+      startScenario(cfg.scenario as ScenarioCfg, cfg.playLive !== false)
+    }, 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   function getSeatPosPct(idx: number, total: number): { left: string; top: string; transform: string } {
@@ -1421,25 +1445,24 @@ export default function GamePage(): JSX.Element {
     const valueBetFrac = () => (strength >= 0.85 ? 0.78 : 0.62)
     const valueRaiseFrac = () => (strength >= 0.85 ? 0.95 : 0.65)
 
-    // ── Pre-flop ── (position-scaled ranges; premiums always raise)
+    // ── Pre-flop ── decision shared with the range estimator (preflopProbs), keyed
+    // on how many raises have been made before us → open / 3-bet / 4-bet logic.
     if (!onBoard) {
       const psv = preflopStrength(c1, c2)            // 1..10 hand chart value
-      const openTh = 8.5 - posBonus * 4.5            // BTN ≈ 4.0 … UTG ≈ 5.7
-      const threeBetTh = openTh + 2.5                // premium → 3-bet
-      const callTh = openTh - 1.2
-      const facingRaise = state.currentBet > bbAmt
-      if (toCall === 0) { // BB option / limped pot
-        return psv >= openTh ? { action: 'BET', amount: raiseTo(0.8) } : { action: 'CHECK', amount: 0 }
+      const preRaises = currentHandActionsRef.current
+        .filter(a => a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+      const pp = preflopProbs(psv, posBonus, preRaises, tier, toCall)
+      let acc = pp.aggr
+      if (rand < acc) {
+        const size = preRaises === 0 ? 0.8 : 0.9     // opens a touch smaller than re-raises
+        return toCall === 0
+          ? { action: 'BET', amount: raiseTo(size) }
+          : { action: 'RAISE', amount: raiseTo(size) }
       }
-      if (!facingRaise) { // open / raise-first-in
-        if (psv >= openTh) return { action: 'RAISE', amount: raiseTo(0.9) }
-        if (tier === 1 && psv >= callTh && rand < 0.5) return { action: 'CALL', amount: toCall } // fish limps
-        return { action: 'FOLD', amount: 0 }
-      }
-      // Facing a raise → 3-bet (value) / call / fold (+ occasional light 3-bet).
-      if (psv >= threeBetTh) return { action: 'RAISE', amount: raiseTo(0.9) }
-      if (psv >= callTh) return { action: 'CALL', amount: toCall }
-      if (tier >= 2 && psv >= openTh - 2 && rand < (tier === 3 ? 0.10 : 0.06)) return { action: 'RAISE', amount: raiseTo(0.9) }
+      acc += pp.call
+      if (rand < acc) return toCall > 0 ? { action: 'CALL', amount: toCall } : { action: 'CHECK', amount: 0 }
+      acc += pp.check
+      if (rand < acc) return { action: 'CHECK', amount: 0 }
       return { action: 'FOLD', amount: 0 }
     }
 
@@ -1500,7 +1523,7 @@ export default function GamePage(): JSX.Element {
       tier: Math.max(1, Math.min(3, seat.level)),
       human: seat.seatType === 'human',
       mood: moodRef.current[seatIdx] ?? 0,
-      facingRaise: preflop && currentGs.currentBet > bbAmt,
+      priorRaises: raisesSoFar,  // # of raises this player faced (0/1/2/≥3) → open/3-bet/4-bet logic
     })
     rangeMetaRef.current[seatIdx] = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })
   }
@@ -2039,6 +2062,73 @@ export default function GamePage(): JSX.Element {
     dealTimeoutsRef.current.push(t)
   }
 
+  // Start a hand directly from a custom SCENARIO state (chosen street, fixed hero
+  // cards + board, set pot). Opponents get random cards (Phase 1); the existing
+  // street/betting machinery takes over from there.
+  function startScenario(sc: ScenarioCfg, live: boolean) {
+    const n = sc.numPlayers
+    const positions = POS[n] ?? POS[6]
+    const posIdx = Math.max(0, positions.indexOf(sc.heroPos))
+    const dealerIdx = ((0 - posIdx) % n + n) % n   // hero (seat 0) gets heroPos
+
+    const known = new Set<string>()
+    sc.heroCards.forEach(c => c && known.add(c.rank + c.suit))
+    sc.board.forEach(c => c && known.add(c.rank + c.suit))
+    const deck = shuffle(mkDeck().filter(c => !known.has(c.rank + c.suit)))
+
+    const boardCount = sc.startStreet === 'preflop' ? 0 : sc.startStreet === 'flop' ? 3 : sc.startStreet === 'turn' ? 4 : 5
+    const community: (Card | null)[] = [null, null, null, null, null]
+    for (let i = 0; i < boardCount; i++) community[i] = sc.board[i] as Card
+
+    let seats = createSeats().map((s, i) => ({
+      ...s,
+      isDealer: i === dealerIdx,
+      position: positions[((i - dealerIdx) % n + n) % n] ?? `S${i + 1}`,
+      holeCards: (s.isHero ? [sc.heroCards[0], sc.heroCards[1]] : [deck.pop() ?? null, deck.pop() ?? null]) as [Card | null, Card | null],
+      cardsFaceUp: s.isHero,
+      isFolded: false, isAllIn: false, bet: 0, totalBet: 0, isSittingOut: false, isActive: false, lastAction: null,
+    }))
+    const { sbIdx, bbIdx } = findBlinds(seats, dealerIdx)
+    seats = seats.map((s, i) => ({ ...s, isSB: i === sbIdx, isBB: i === bbIdx }))
+
+    currentHandActionsRef.current = []
+    rangeRef.current = {}; rangeMetaRef.current = {}; moodRef.current = {}
+    handStartStacksRef.current = {}
+    seats.forEach(s => { rangeRef.current[s.idx] = initRange(community.filter(Boolean) as Card[]) })
+
+    if (sc.startStreet === 'preflop') {
+      let pot = 0
+      const sbPost = Math.min(sbAmt, seats[sbIdx].stack)
+      seats[sbIdx] = { ...seats[sbIdx], stack: seats[sbIdx].stack - sbPost, bet: sbPost, totalBet: sbPost }
+      pot += sbPost
+      const bbPost = Math.min(bbAmt, seats[bbIdx].stack)
+      seats[bbIdx] = { ...seats[bbIdx], stack: seats[bbIdx].stack - bbPost, bet: bbPost, totalBet: bbPost }
+      pot += bbPost
+      seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack + s.bet })
+      recordAction({ phase: 'preflop', seatIdx: sbIdx, name: seats[sbIdx].name, isHero: seats[sbIdx].isHero, actionType: 'SB', amount: sbPost }, pot)
+      recordAction({ phase: 'preflop', seatIdx: bbIdx, name: seats[bbIdx].name, isHero: seats[bbIdx].isHero, actionType: 'BB', amount: bbPost }, pot)
+      const state: GState = { phase: 'preflop', deck, seats, community: [null, null, null, null, null], pot, currentBet: bbAmt, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: ['=== Scénario (préflop) ==='], winners: [], paused: !live, autoRunning: live }
+      setGs(state); gsRef.current = state
+      const firstToAct = (bbIdx + 1) % n
+      setTimeout(() => startStreet(gsRef.current, firstToAct), 420)
+    } else {
+      const potChips = Math.max(0, Math.round(sc.potBB * bbAmt))
+      const share = n > 0 ? Math.round(potChips / n) : 0
+      seats = seats.map(s => ({ ...s, stack: Math.max(0, s.stack - share), totalBet: share }))
+      const pot = share * n
+      seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack + share })
+      // Street markers so the coach / history see the right board context.
+      recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: 'Pré-flop', amount: 0 }, pot)
+      if (boardCount >= 3) recordAction({ phase: 'flop', seatIdx: -1, name: '', isHero: false, actionType: 'Flop', amount: 0 }, pot)
+      if (boardCount >= 4) recordAction({ phase: 'turn', seatIdx: -1, name: '', isHero: false, actionType: 'Turn', amount: 0 }, pot)
+      if (boardCount >= 5) recordAction({ phase: 'river', seatIdx: -1, name: '', isHero: false, actionType: 'River', amount: 0 }, pot)
+      const state: GState = { phase: sc.startStreet, deck, seats, community, pot, currentBet: 0, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: [`=== Scénario (${sc.startStreet}) ===`], winners: [], paused: !live, autoRunning: live }
+      setGs(state); gsRef.current = state
+      const first = firstActivePostflop(seats, dealerIdx)
+      setTimeout(() => startStreet(gsRef.current, first), 450)
+    }
+  }
+
   function startHandContinue(state: GState) {
     const deck = [...state.deck]
     const numSeats = state.seats.length
@@ -2209,6 +2299,12 @@ export default function GamePage(): JSX.Element {
   const heroInHand = !!hero && !hero.isFolded && !hero.isSittingOut && !heroBusted && !hero.isAllIn
     && (hero.holeCards[0] !== null || hero.holeCards[1] !== null)
     && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
+  // Coach hover-card is open when hovering the hero's own profile (or the panel).
+  const coachOpen = !!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)
+  // Hero's represented (perceived) range — shown postflop in the coach panel.
+  const heroRepView = (coachOpen && hero && gs.community.filter(Boolean).length >= 3 && rangeRef.current[hero.idx])
+    ? rangeView(rangeRef.current[hero.idx]) : null
+  const heroRepMeta = hero ? (rangeMetaRef.current[hero.idx] ?? { move: '—', effect: 'range de départ' }) : null
   const preCanCheck = !!hero && gs.currentBet <= hero.bet          // no bet to call → check
   const preCallAmt = hero ? Math.min(gs.currentBet - hero.bet, hero.stack) : 0
 
@@ -2284,12 +2380,36 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.handNum, gs.currentBet])
 
+  // ── Keyboard shortcuts — only on the hero's turn, ignored while typing ──
+  //   f = fold · c = check/call · &(1) = ⅓ pot · é(2) = ⅔ pot · p = pot · a = all-in
+  //   (& and é are the AZERTY 1/2 keys; the bare 1/2 digits work too as a fallback)
+  useEffect(() => {
+    if (!isHeroTurn || gs.paused) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      const k = e.key.toLowerCase()
+      const sizeTo = (frac: number) => clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * frac / bbAmt) * bbAmt)
+      const aggro = (amt: number) => { if (canRaise) heroAction(isOpenBet ? 'BET' : 'RAISE', amt) }
+      if (k === 'f') { e.preventDefault(); heroAction('FOLD') }
+      else if (k === 'c') { e.preventDefault(); if (canCheck) heroAction('CHECK'); else heroAction('CALL', callAmt) }
+      else if (k === '&' || k === '1') { e.preventDefault(); aggro(sizeTo(1 / 3)) }
+      else if (k === 'é' || k === '2') { e.preventDefault(); aggro(sizeTo(2 / 3)) }
+      else if (k === 'p') { e.preventDefault(); aggro(sizeTo(1)) }
+      else if (k === 'a') { e.preventDefault(); if (canRaise) heroAction('ALL-IN', heroMaxTo) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHeroTurn, gs.paused, gs.currentBet, gs.pot, callAmt, canCheck, canRaise, isOpenBet, heroMaxTo, bbAmt])
+
   // Decision clock: when the hero's time runs out, auto-act. Facing a bet that
   // must be called/raised → auto-fold and sit out next hand. Otherwise (a free
   // check is available) → auto-check and the hand continues normally.
   useEffect(() => {
-    // The clock freezes while the coach window is open (and resumes on close).
-    if (!isHeroTurn || gs.paused || assistOpen) return
+    // The clock freezes while the coach hover-card is open (resumes on leave).
+    if (!isHeroTurn || gs.paused || coachOpen) return
     const t = setTimeout(() => {
       const cur = gsRef.current
       const h = cur.seats.find(s => s.isHero)
@@ -2305,7 +2425,7 @@ export default function GamePage(): JSX.Element {
     }, decisionTimer * 1000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHeroTurn, gs.paused, assistOpen, gs.handNum, gs.currentBet])
+  }, [isHeroTurn, gs.paused, coachOpen, gs.handNum, gs.currentBet])
 
   // Apply a queued pre-action ("check box") the instant it's the hero's turn.
   useEffect(() => {
@@ -2378,14 +2498,12 @@ export default function GamePage(): JSX.Element {
           </button>
         )}
 
-        {/* Range Vision toggle — hover any in-hand player to read their range */}
+        {/* Range Vision is always on now — hover any in-hand player for their range,
+            hover your own profile for range + full coach advice (no button). */}
         {gs.phase !== 'idle' && (
-          <button onClick={toggleVision}
-            title="Survole un joueur encore dans le coup pour voir sa range estimée"
-            className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
-              ${visionMode ? 'bg-[#c9a227]/25 border-[#c9a227]/60 text-[#c9a227] shadow-[0_0_12px_rgba(201,162,39,0.4)]' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
-            <Eye size={11}/> Vision Range
-          </button>
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#c9a227]/30 bg-[#c9a227]/10 text-[#c9a227]/80 text-[9px] font-bold uppercase tracking-widest">
+            <Eye size={11}/> Survole un joueur
+          </span>
         )}
 
         {/* Game controls — flow is automatic; Pause halts it (incl. at showdown) */}
@@ -2449,7 +2567,8 @@ export default function GamePage(): JSX.Element {
         </AnimatePresence>
 
         {/* Table container */}
-        <div ref={tableRef} className="absolute inset-0 flex items-center justify-center p-2">
+        <div ref={tableRef} className="absolute inset-0 flex items-center justify-center p-2"
+          onMouseLeave={() => setHoverSeat(s => (s !== null && s !== hero?.idx ? null : s))}>
           <div className="relative w-full h-full" style={{maxWidth:1240,maxHeight:700}}>
 
             {/* Table SVG */}
@@ -2510,13 +2629,27 @@ export default function GamePage(): JSX.Element {
                   isShowdown={isShowdown}
                   turnSeconds={decisionTimer}
                   turnNonce={`${gs.handNum}:${gs.currentBet}`}
-                  turnPaused={gs.paused || assistOpen}
+                  turnPaused={gs.paused || coachOpen}
                   onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
-                  onAssist={seat.isHero && heroInHand ? () => setAssistOpen(true) : undefined}
-                  onHover={visionMode ? (entering, e) => {
-                    if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { setHoverSeat(null); setHoverPos(null) }
-                  } : undefined}
+                  onHover={(entering, e) => {
+                    if (seat.isHero) {
+                      // Hero: open the coach hover-card; keep it open briefly on leave
+                      // so the cursor can travel onto the panel (Q&A stays clickable).
+                      if (entering && e) {
+                        if (coachTimerRef.current) clearTimeout(coachTimerRef.current)
+                        setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY })
+                      } else {
+                        coachTimerRef.current = setTimeout(() => {
+                          if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s))
+                        }, 350)
+                      }
+                    } else {
+                      // Opponent: show the range and KEEP it while the cursor roams
+                      // the table — it's only cleared when leaving the table (handled
+                      // on the table container) or when hovering another player.
+                      if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    }
+                  }}
                 />
               )
             })}
@@ -2691,7 +2824,7 @@ export default function GamePage(): JSX.Element {
                 <motion.button whileTap={{scale:0.95}}
                   onClick={() => heroAction('FOLD')}
                   className="flex-1 py-2.5 rounded-xl border border-red-700/40 bg-red-900/20 text-red-400 font-bold text-sm uppercase tracking-widest hover:bg-red-900/35 transition-all">
-                  Fold
+                  Fold <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">F</kbd>
                 </motion.button>
 
                 {/* Check / Call */}
@@ -2699,13 +2832,13 @@ export default function GamePage(): JSX.Element {
                   <motion.button whileTap={{scale:0.95}}
                     onClick={() => heroAction('CHECK')}
                     className="flex-1 py-2.5 rounded-xl border border-sky-700/40 bg-sky-900/20 text-sky-400 font-bold text-sm uppercase tracking-widest hover:bg-sky-900/35 transition-all">
-                    Check
+                    Check <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">C</kbd>
                   </motion.button>
                 ) : (
                   <motion.button whileTap={{scale:0.95}}
                     onClick={() => heroAction('CALL', callAmt)}
                     className="flex-1 py-2.5 rounded-xl border border-emerald-700/40 bg-emerald-900/20 text-emerald-400 font-bold text-sm uppercase tracking-widest hover:bg-emerald-900/35 transition-all">
-                    Call ${callAmt.toLocaleString()}
+                    Call ${callAmt.toLocaleString()} <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">C</kbd>
                   </motion.button>
                 )}
 
@@ -2749,20 +2882,21 @@ export default function GamePage(): JSX.Element {
                       </button>
                       <div className="flex gap-1">
                         {([
-                          ['3bb', clampRaise(3 * bbAmt)],
-                          ['⅓', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 3 / bbAmt) * bbAmt)],
-                          ['½', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 2 / bbAmt) * bbAmt)],
-                          ['⅔', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * 2 / 3 / bbAmt) * bbAmt)],
-                          ['Pot', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / bbAmt) * bbAmt)],
-                        ] as [string, number][]).map(([label, amt]) => (
+                          ['3bb', clampRaise(3 * bbAmt), ''],
+                          ['⅓', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 3 / bbAmt) * bbAmt), '&'],
+                          ['½', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 2 / bbAmt) * bbAmt), ''],
+                          ['⅔', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * 2 / 3 / bbAmt) * bbAmt), 'é'],
+                          ['Pot', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / bbAmt) * bbAmt), 'P'],
+                        ] as [string, number, string][]).map(([label, amt, key]) => (
                           <button key={label} onClick={() => setHeroBetAmt(amt)}
+                            title={key ? `${label} pot — touche « ${key} »` : label}
                             className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-white/5 border border-white/10 text-white/45 hover:text-[#c9a227] hover:border-[#c9a227]/30 transition-all">
-                            {label}
+                            {label}{key && <span className="ml-0.5 opacity-50">{key}</span>}
                           </button>
                         ))}
-                        <button onClick={() => setHeroBetAmt(heroMaxTo)}
+                        <button onClick={() => setHeroBetAmt(heroMaxTo)} title="All-in — touche « A »"
                           className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-900/20 border border-purple-700/30 text-purple-400 hover:bg-purple-900/30 transition-all">
-                          All-in
+                          All-in <span className="opacity-50">A</span>
                         </button>
                       </div>
                       <button onClick={() => setHeroBetAmt(v => clampRaise(v + bbAmt))}
@@ -2778,7 +2912,7 @@ export default function GamePage(): JSX.Element {
                   <motion.button whileTap={{scale:0.95}}
                     onClick={() => heroAction('ALL-IN', heroMaxTo)}
                     className="px-3 py-2.5 rounded-xl border border-purple-700/40 bg-purple-900/20 text-purple-400 font-bold text-xs uppercase tracking-widest hover:bg-purple-900/35 transition-all">
-                    All-in
+                    All-in <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">A</kbd>
                   </motion.button>
                 )}
               </>
@@ -2867,52 +3001,60 @@ export default function GamePage(): JSX.Element {
         )}
       </AnimatePresence>
 
-      {/* ── RANGE VISION popup (fixed overlay, clamped to the viewport) ── */}
-      {visionMode && hoverSeat !== null && hoverPos && (() => {
+      {/* ── OPPONENT range popup (read-only). Stays while the cursor is anywhere
+            inside the table; cleared by the table's onMouseLeave (or on switching
+            to another player). Bigger & readable. ── */}
+      {hoverSeat !== null && hoverSeat !== hero?.idx && hoverPos && (() => {
         const seat = gs.seats.find(s => s.idx === hoverSeat)
         if (!seat || seat.isFolded || seat.isSittingOut || seat.isEliminated || !rangeRef.current[hoverSeat]) return null
         const view = rangeView(rangeRef.current[hoverSeat])
         const meta = rangeMetaRef.current[hoverSeat] ?? { move: '—', effect: 'aucune action encore' }
-        const heroKey = seat.isHero && seat.holeCards[0] && seat.holeCards[1]
-          ? handKeyFromCards(seat.holeCards[0], seat.holeCards[1]) : null
-        const W = 312, H = 372
-        let x = hoverPos.x + 18, y = hoverPos.y - H / 2
-        if (x + W > window.innerWidth - 8) x = hoverPos.x - W - 18
+        const W = 482, H = 560
+        let x = hoverPos.x + 22, y = hoverPos.y - H / 2
+        if (x + W > window.innerWidth - 8) x = hoverPos.x - W - 22
         if (x < 8) x = 8
         if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
         if (y < 8) y = 8
         return (
           <div className="fixed z-[80] pointer-events-none" style={{ left: x, top: y }}>
-            <RangeHeatmap view={view} move={meta.move} effect={meta.effect}
-              name={seat.isHero ? 'Toi (range représentée)' : seat.name} heroKey={heroKey}/>
+            <RangeHeatmap view={view} move={meta.move} effect={meta.effect} name={seat.name} width={462}/>
           </div>
         )
       })()}
 
-      {/* ── PREFLOP RANGE ASSISTANT ── */}
+      {/* ── HERO coach hover-card: range représentée + conseil complet (no click) ── */}
       <AnimatePresence>
-        {assistOpen && hero && (
-          <RangeAssistant
-            card1={hero.holeCards[0]}
-            card2={hero.holeCards[1]}
-            position={hero.position}
-            scenario={heroScenario}
-            activePlayers={heroActiveCount}
-            playersBehind={heroPlayersBehind}
-            board={gs.community.filter(Boolean) as Card[]}
-            pot={gs.pot}
-            toCall={Math.max(0, gs.currentBet - hero.bet)}
-            heroStack={hero.stack}
-            effStack={heroEffStack}
-            inPosition={heroInPosition}
-            aggression={heroAggression}
-            barrels={heroBarrels}
-            bb={bbAmt}
-            raiseToBB={heroRaiseToBB}
-            multiway={heroMultiway}
-            actionRecap={gs.log.slice(-10)}
-            onClose={() => setAssistOpen(false)}
-          />
+        {coachOpen && hero && (
+          <div className="fixed inset-x-0 top-[3vh] z-[70] flex justify-center pointer-events-none">
+            <div className="pointer-events-auto"
+              onMouseEnter={() => { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); heroPanelHoverRef.current = true; setHeroPanelHover(true) }}
+              onMouseLeave={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(s => (s === hero.idx ? null : s)) }}>
+              <RangeAssistant
+                embedded
+                representedView={heroRepView}
+                representedMeta={heroRepMeta}
+                card1={hero.holeCards[0]}
+                card2={hero.holeCards[1]}
+                position={hero.position}
+                scenario={heroScenario}
+                activePlayers={heroActiveCount}
+                playersBehind={heroPlayersBehind}
+                board={gs.community.filter(Boolean) as Card[]}
+                pot={gs.pot}
+                toCall={Math.max(0, gs.currentBet - hero.bet)}
+                heroStack={hero.stack}
+                effStack={heroEffStack}
+                inPosition={heroInPosition}
+                aggression={heroAggression}
+                barrels={heroBarrels}
+                bb={bbAmt}
+                raiseToBB={heroRaiseToBB}
+                multiway={heroMultiway}
+                actionRecap={gs.log.slice(-10)}
+                onClose={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(null) }}
+              />
+            </div>
+          </div>
         )}
       </AnimatePresence>
 

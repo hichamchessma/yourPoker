@@ -87,20 +87,20 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
   for (let lo = 1; lo <= 10; lo++) { let c = 0; for (let k = lo; k < lo + 5; k++) if (vals.has(k)) c++; if (c === 4 && (!vals.has(lo) || !vals.has(lo + 4))) return true }
   return false
 }
+// Chen formula — a fine-grained, widely-used preflop hand ranking (~ -1 … 20).
+// Far more resolution than a coarse chart, so position-based thresholds map to
+// realistic range widths. MUST stay identical to the copy in GamePage.tsx.
 function preflopStrength(c1: Card, c2: Card): number {
   const r1 = RV[c1.rank] ?? 2, r2 = RV[c2.rank] ?? 2
   const hi = Math.max(r1, r2), lo = Math.min(r1, r2)
-  const pair = r1 === r2, suited = c1.suit === c2.suit, gap = hi - lo
-  if (pair) return hi >= 14 ? 10 : hi >= 12 ? 9 : hi >= 10 ? 8 : hi >= 8 ? 7 : 6
-  if (hi === 14) { if (lo >= 13) return suited ? 10 : 9; if (lo >= 11) return suited ? 8 : 7; if (lo >= 9) return suited ? 7 : 6; return suited ? 6 : 5 }
-  if (hi >= 13 && lo >= 11) return suited ? 8 : 7
-  if (hi >= 12 && lo >= 10) return suited ? 7 : 6
-  if (gap <= 1 && lo >= 9) return suited ? 7 : 6
-  if (gap <= 1 && lo >= 7) return suited ? 6 : 5
-  if (suited && gap <= 1 && lo >= 5) return 5
-  if (suited && gap <= 2 && lo >= 5) return 4
-  if (hi >= 10 && gap <= 2) return 4
-  return Math.max(1, 2.5 - gap * 0.3 + (suited ? 0.5 : 0))
+  const val = (r: number) => r === 14 ? 10 : r === 13 ? 8 : r === 12 ? 7 : r === 11 ? 6 : r / 2
+  if (r1 === r2) return Math.max(5, val(hi) * 2)            // pair
+  let s = val(hi)
+  if (c1.suit === c2.suit) s += 2                            // suited bonus
+  const gap = hi - lo - 1                                    // cards between
+  if (gap === 1) s -= 1; else if (gap === 2) s -= 2; else if (gap === 3) s -= 4; else if (gap >= 4) s -= 5
+  if (hi - lo <= 2 && hi < 12) s += 1                        // straight bonus (both below Q)
+  return s                                                   // unrounded → finer thresholds
 }
 
 // ── Bot policy params (mirror of the in-game bot tiers) ──────────────────────
@@ -124,24 +124,60 @@ export function policyFor(tier: number, human: boolean, mood = 0): PolicyParams 
   return p
 }
 
-// ── Probability of each action category for a given hand strength ────────────
-function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: number, potOdds: number, posBonus: number, tier: number, p: PolicyParams, facingRaise: boolean): Record<ActCat, number> {
-  if (preflop) {
-    // `strength` here is the raw preflop chart value (1..10).
-    const openTh = 8.5 - posBonus * 4.5
-    const threeBetTh = openTh + 2.5
-    const callTh = openTh - 1.2
-    if (toCall <= 0) return strength >= openTh ? { fold: 0, check: 0, call: 0, aggr: 1 } : { fold: 0, check: 1, call: 0, aggr: 0 }
-    if (!facingRaise) {
-      if (strength >= openTh) return { fold: 0, check: 0, call: 0, aggr: 1 }
-      const call = tier === 1 && strength >= callTh ? 0.5 : 0
-      return { fold: 1 - call, check: 0, call, aggr: 0 }
-    }
-    if (strength >= threeBetTh) return { fold: 0, check: 0, call: 0, aggr: 1 }
-    if (strength >= callTh) return { fold: 0, check: 0, call: 1, aggr: 0 }
-    const lightAggr = tier >= 2 && strength >= openTh - 2 ? (tier === 3 ? 0.10 : 0.06) : 0
-    return { fold: 1 - lightAggr, check: 0, call: 0, aggr: lightAggr }
+// ── Pre-flop policy BY RAISE LEVEL — SHARED by the bots (decideBotAction) and the
+//    range estimator, so a player's shown range always matches how the bots play.
+//    priorRaises = number of raises already made this street before the player acts:
+//      0 = unopened (RFI / limped) · 1 = vs an open · 2 = vs a 3-bet · ≥3 = vs a 4-bet+.
+//    `psv` is the raw 1..10 hand-chart value (preflopStrength).
+export function preflopProbs(psv: number, posBonus: number, priorRaises: number, tier: number, toCall: number): Record<ActCat, number> {
+  // Chen-scale thresholds. openTh maps to realistic widths:
+  //   UTG≈6.7 (~17%) · HJ≈5.9 (~24%) · CO≈5.3 (~27%) · BTN≈4.7 (~42%).
+  const openTh = 10.0 - posBonus * 5.3
+  const RAISE: Record<ActCat, number> = { fold: 0, check: 0, call: 0, aggr: 1 }
+
+  // Unopened pot — open our position range, otherwise check (BB) / fold.
+  if (priorRaises <= 0) {
+    if (toCall <= 0) return psv >= openTh ? RAISE : { fold: 0, check: 1, call: 0, aggr: 0 }
+    if (psv >= openTh) return RAISE              // raise-first-in over limpers / blinds
+    const call = tier === 1 && psv >= openTh - 1.5 ? 0.5 : 0   // only the fish limp along
+    return { fold: 1 - call, check: 0, call, aggr: 0 }
   }
+
+  // vs a single OPEN → 3-bet (value QQ+/AK/strong broadways + a few bluffs) / FLAT / fold.
+  if (priorRaises === 1) {
+    const value3bet = 10                         // ~ QQ+, JJ, TT, AK, AQs, AJs, KQs
+    const flatLo = openTh - 0.5
+    if (psv >= value3bet) return RAISE
+    if (psv >= flatLo) {
+      const bluff = tier >= 2 && psv < flatLo + 1.5 ? (tier === 3 ? 0.12 : 0.07) : 0  // polarised light 3-bets
+      return { fold: 0, check: 0, call: 1 - bluff, aggr: bluff }
+    }
+    return { fold: 1, check: 0, call: 0, aggr: 0 }
+  }
+
+  // vs a 3-BET → 4-bet ONLY premiums (QQ+), FLAT the value core (JJ-TT, AK, AQs,
+  // suited broadways, suited connectors…), fold the junk. This makes a "call vs
+  // 3-bet" range correctly capped & condensed (~9%) instead of a 27%-wide soup.
+  if (priorRaises === 2) {
+    const value4bet = 14                         // AA, KK, QQ
+    const flatLo = 8                             // down to 88, AKo, ATs, KTs, suited broadways…
+    if (psv >= value4bet) return RAISE
+    if (psv >= flatLo) {
+      const bluff = tier === 3 && psv < flatLo + 1 ? 0.10 : 0
+      return { fold: 0, check: 0, call: 1 - bluff, aggr: bluff }
+    }
+    return { fold: 1, check: 0, call: 0, aggr: 0 }
+  }
+
+  // vs a 4-BET+ → jam the nuts, call the next tier, fold the rest.
+  if (psv >= 15) return RAISE                     // AA, KK
+  if (psv >= 12) return { fold: 0, check: 0, call: 1, aggr: 0 }  // QQ, JJ, AKs
+  return { fold: 1, check: 0, call: 0, aggr: 0 }
+}
+
+// ── Probability of each action category for a given hand strength ────────────
+function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: number, potOdds: number, posBonus: number, tier: number, p: PolicyParams, priorRaises: number): Record<ActCat, number> {
+  if (preflop) return preflopProbs(strength, posBonus, priorRaises, tier, toCall)
   if (toCall <= 0) {
     const aggr = strength >= p.betValue ? p.betFreqStrong : draw ? p.semiBluff : p.bluff
     return { fold: 0, check: 1 - aggr, call: 0, aggr }
@@ -165,7 +201,7 @@ export interface ActionCtx {
   tier: number
   human: boolean
   mood: number
-  facingRaise: boolean // preflop: a raise happened before this player acted
+  priorRaises: number  // preflop: # of raises made before this player acted (0/1/2/≥3)
 }
 
 const RANK_BLOCK = (board: Card[]) => {
@@ -185,7 +221,7 @@ export function applyAction(range: RangeWeights, observed: ActCat, ctx: ActionCt
     // Pre-flop: raw chart value (1..10); post-flop: made-hand strength (0..1).
     const strength = ctx.preflop ? preflopStrength(a, b) : madeStrength([a, b], ctx.board)
     const draw = ctx.preflop ? false : hasStrongDraw([a, b], ctx.board)
-    const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, p, ctx.facingRaise)
+    const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, p, ctx.priorRaises)
     out[h.key] = w * probs[observed]
   }
   return out

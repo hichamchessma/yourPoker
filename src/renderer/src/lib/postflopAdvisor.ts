@@ -235,26 +235,50 @@ export function getPostflopAdvice(input: {
   const pct = (x: number) => `${Math.round(x * 100)}%`
   const round = (v: number) => Math.max(1, Math.round(v))
 
+  // Villain bet earlier streets but now it's checked to us → their range is CAPPED
+  // (strong hands would usually keep betting). Key signal for turning air into a bluff.
+  const villainGaveUp = toCall <= 0 && aggression > 0
   const reasons: string[] = []
-  reasons.push(`Ton équité réelle ≈ ${pct(eq)}${aggression > 0 ? ` face à une range ${barrels >= 2 ? 'forte (plusieurs mises)' : 'resserrée'}` : ` face à ${opponents} adversaire${opponents > 1 ? 's' : ''}`}.`)
+  reasons.push(`Ton équité réelle ≈ ${pct(eq)}${villainGaveUp ? ' — l’adversaire a misé puis checké : son range est plafonné/faible' : aggression > 0 ? ` face à une range ${barrels >= 2 ? 'forte (plusieurs mises)' : 'resserrée'}` : ` face à ${opponents} adversaire${opponents > 1 ? 's' : ''}`}.`)
   if (toCall > 0) reasons.push(`Cote du pot : il te faut ${pct(potOdds)} d'équité pour payer ${toCall}.`)
   // "Playing the board" is strictly a RIVER concept (5 community cards) where your
   // hole cards add nothing. Pre-river you always hold at least high-card / a draw,
   // so we never mislabel it (and we avoid padding the board with fake cards).
   const playsBoard = board.length === 5 && best7([...hole, ...board]) <= best7(board)
+  // A "pair" that comes only from the BOARD (hero's hole cards don't pair anything)
+  // is NOT a real made hand — treat it as air + draw, not a bluffcatcher.
+  const heroHasRealPair = hole[0].rank === hole[1].rank || hole.some(h => board.some(b => b.rank === h.rank))
+  const boardOnlyPair = cat === 1 && !heroHasRealPair
+  const effCat = boardOnlyPair ? 0 : cat
+  const boardPaired = (() => { const r: Record<number, number> = {}; board.forEach(c => (r[RV[c.rank]] = (r[RV[c.rank]] ?? 0) + 1)); return Object.values(r).some(n => n >= 2) })()
+  // Low / dominated flush draw: hero's highest card in the 4-flush suit is small →
+  // reverse implied odds (you can complete it and still lose to a higher flush).
+  const flushSuit = (() => { const s: Record<string, number> = {}; [...hole, ...board].forEach(c => (s[c.suit] = (s[c.suit] ?? 0) + 1)); const e = Object.entries(s).find(([, n]) => n === 4); return e ? e[0] : null })()
+  const flushHigh = flushSuit ? Math.max(0, ...hole.filter(c => c.suit === flushSuit).map(c => RV[c.rank])) : 0
+  const lowFlushDraw = !!flushSuit && flushHigh < 12
+  // A draw that is hero's ONLY equity (no real made hand). Reverse-implied if it's a
+  // low flush or the board is paired (you hit but lose to a higher flush / full house).
+  const drawIsOnlyEquity = strongDraw && effCat === 0 && !playsBoard
+  const vulnerableDraw = drawIsOnlyEquity && (boardPaired || lowFlushDraw)
+  // Equity margin required to CALL: negative for clean draws (implied odds let you
+  // call slightly below the price), POSITIVE for vulnerable draws facing aggression
+  // (reverse implied odds → you need MORE than the raw price to call profitably).
+  const callMargin = drawIsOnlyEquity
+    ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
+    : 0.01
   // Implied-odds buffer below direct pot odds: generous on the flop (two cards to
   // come), almost none on the turn (one card, little room to get paid).
   const impliedBuf = board.length <= 3 ? 0.05 : 0.01
 
-  reasons.push(playsBoard
-    ? `Ta main : tu joues le board (${name}) — pas de main à toi${draws.length ? ', seulement ' + draws.join(' + ') : ''}.`
+  reasons.push((playsBoard || boardOnlyPair)
+    ? `Ta main : ${boardOnlyPair ? 'tu joues la paire du board' : `tu joues le board (${name})`} — pas de main à toi${draws.length ? ', seulement ' + draws.join(' + ') : ''}.`
     : `Ta main : ${name}${pair !== 'none' ? ` (${pair === 'overpair' ? 'overpaire' : pair === 'top' ? 'top paire' : pair === 'second' ? '2e paire' : 'paire faible'})` : ''}${draws.length ? ' + ' + draws.join(' + ') : ''}.`)
   reasons.push(inPosition ? 'Tu es en position (tu parles après).' : 'Tu es hors de position : sois plus prudent.')
-  if (cat === 0 && !playsBoard && toCall > 0) reasons.push('Ta « carte haute » n’est pas rien : ton équité vient de tes surcartes (tu peux toucher la paire), de tirages de secours, et tu bats ses mains ratées/bluffs au showdown.')
+  if (effCat === 0 && !playsBoard && !drawIsOnlyEquity && toCall > 0) reasons.push('Ta « carte haute » n’est pas rien : ton équité vient de tes surcartes (tu peux toucher la paire), de tirages de secours, et tu bats ses mains ratées/bluffs au showdown.')
   if (pot > 0 && spr < 4) reasons.push(`SPR ≈ ${spr.toFixed(1)} (tapis/pot) : ${spr <= 1.5 ? 'engagé — avec une main forte, joue all-in.' : 'assez bas, prêt à investir gros avec une main forte.'}`)
 
-  const isStrongValue = !playsBoard && (cat >= 2 || pair === 'overpair') // two pair+, sets, overpair
-  const isOnePair = !playsBoard && cat === 1
+  const isStrongValue = !playsBoard && (effCat >= 2 || pair === 'overpair') // two pair+, sets, overpair
+  const isOnePair = !playsBoard && effCat === 1
   const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
   const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
 
@@ -271,20 +295,25 @@ export function getPostflopAdvice(input: {
       else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})` }
       reasons.push('Main forte : tu domines une bonne partie de sa range → relance pour la valeur.')
       confidence = eq >= 0.7 ? 'haute' : 'moyenne'
-    } else if (eq >= potOdds + 0.01) {
-      // Profitable call by the pot odds — bluffcatch / showdown / made hand.
+    } else if (eq >= potOdds + callMargin) {
+      // Profitable continue, given the required margin (implied odds lower it for clean
+      // draws, reverse implied odds raise it for vulnerable ones). Frame by hand type.
       action = 'CALL'
       if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push('Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
+      else if (drawIsOnlyEquity) {
+        sizingText = `paie $${toCall} (tirage)`
+        reasons.push(callMargin < 0
+          ? `Tirage : ${pct(eq)} d'équité + gains implicites (tu gagnes plus en touchant) → call rentable.`
+          : `Tirage : ${pct(eq)} ≥ ${pct(potOdds + callMargin)} requis → call, mais serré.`)
+        if (vulnerableDraw) reasons.push('⚠️ Tirage vulnérable (couleur basse ou board pairé) : reverse implied odds — tu peux toucher et perdre quand même, joue prudemment.')
+        confidence = 'basse'
+      }
       else if (isOnePair) { sizingText = `paie $${toCall} (bluffcatch)`; reasons.push(`Bluffcatcher : ton équité (${pct(eq)}) dépasse la cote (${pct(potOdds)}) → tu paies pour battre ses bluffs, mais ne relance pas.`); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
       else { sizingText = `paie $${toCall}`; reasons.push(`Ton équité (${pct(eq)}) dépasse la cote du pot (${pct(potOdds)}) → call rentable, même sans grosse main.`); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
-    } else if (strongDraw && eq >= potOdds - impliedBuf) {
-      // Just under the direct price, but a draw with implied odds.
-      action = 'CALL'; sizingText = `paie $${toCall} (tirage)`
-      reasons.push('Tirage juste sous la cote directe, mais les gains implicites (tu gagnes plus en touchant) le rendent rentable.')
-      confidence = 'basse'
     } else {
       action = 'FOLD'; sizingText = 'couche-toi'
-      if (strongDraw) reasons.push(`Tirage trop cher : ${pct(eq)} d'équité contre ${pct(potOdds)} requis${board.length >= 4 ? ' — et une seule carte à venir (peu de gains implicites)' : ''}. Fold.`)
+      if (vulnerableDraw) reasons.push(`Tirage vulnérable trop cher : ${pct(eq)} d'équité, mais reverse implied odds (couleur basse / board pairé, face à l'agression) → tu touches parfois pour perdre. Il te faudrait ${pct(potOdds + callMargin)}. Fold.`)
+      else if (strongDraw) reasons.push(`Tirage trop cher : ${pct(eq)} d'équité contre ${pct(potOdds)} requis${board.length >= 4 ? ' — et une seule carte à venir (peu de gains implicites)' : ''}. Fold.`)
       else reasons.push(`Équité (${pct(eq)}) sous la cote (${pct(potOdds)}) et pas de tirage : se coucher est le plus rentable.`)
       confidence = eq < potOdds - 0.08 ? 'haute' : 'moyenne'
     }
@@ -303,9 +332,34 @@ export function getPostflopAdvice(input: {
       reasons.push('Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.')
       confidence = 'moyenne'
     } else {
-      action = 'CHECK'; sizingText = 'checke'
-      reasons.push('Main faible : checke (un bluff n’est rentable que sur les bons board et adversaires).')
-      confidence = 'moyenne'
+      // Weak hand, ~no showdown value. If the villain showed weakness (barreled then
+      // CHECKED to us) on a board where we can credibly rep value (flush/straight
+      // texture), turn the air into a BLUFF — checking just surrenders the pot. This
+      // is the give-up-vs-bluff decision, and it's clearest on the turn/river.
+      const lateStreet = board.length >= 4
+      const noSDV = cat === 0 && eq < 0.20            // basically nothing at showdown
+      // Board where big bets credibly rep the nuts: a flush is possible (3+ of a
+      // suit) OR a real straight texture (3+ board cards inside a 5-rank window).
+      const suitCount: Record<string, number> = {}; board.forEach(c => (suitCount[c.suit] = (suitCount[c.suit] ?? 0) + 1))
+      const flushPossible = Math.max(0, ...Object.values(suitCount)) >= 3
+      const bvals = [...new Set(board.map(c => RV[c.rank]))]
+      let straighty = false
+      for (let lo = 2; lo <= 10 && !straighty; lo++) { if (bvals.filter(v => v >= lo && v < lo + 5).length >= 3) straighty = true }
+      const repValue = flushPossible || straighty
+      if (lateStreet && noSDV && villainGaveUp && repValue && inPosition) {
+        action = 'BET'
+        const jam = spr <= 1.2
+        sizingText = jam ? 'bluff ALL-IN (SPR bas)' : `bluff polarisé (~pot, $${round(pot * 0.9)})`
+        reasons.push(`Tu n’as aucune showdown value (${pct(eq)}) → checker abandonne presque toujours le pot.`)
+        reasons.push(`L’adversaire a misé puis checké (range plafonné) et le board ${wet >= 0.5 ? 'à couleur/quinte complétée' : 'connecté'} favorise TON range de caller en position : tu rep le nuts → grosse fold equity. C’est un bluff, pas de la sur-agressivité.`)
+        confidence = 'moyenne'
+      } else {
+        action = 'CHECK'; sizingText = 'checke'
+        reasons.push(noSDV
+          ? 'Main sans showdown value, mais ici un bluff serait spéculatif (board peu crédible, adversaire non plafonné ou hors de position) → checke.'
+          : 'Main faible : checke (un bluff n’est rentable que sur les bons board et adversaires).')
+        confidence = 'moyenne'
+      }
     }
   }
 

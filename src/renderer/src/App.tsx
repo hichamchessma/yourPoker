@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import AuthPage from './pages/AuthPage'
 import LobbyPage from './pages/LobbyPage'
 import TrainingSetupPage from './pages/TrainingSetupPage'
+import SetupPositionPage from './pages/SetupPositionPage'
 import GamePage from './pages/GamePage'
 import AppLayout from './layouts/AppLayout'
 import { useAuthStore } from './store/authStore'
@@ -27,6 +28,7 @@ function App(): JSX.Element {
         <Route index element={<Navigate to="/lobby" replace />} />
         <Route path="lobby" element={<LobbyPage />} />
         <Route path="training" element={<TrainingSetupPage />} />
+        <Route path="setup" element={<SetupPositionPage />} />
         <Route path="game" element={<GamePage />} />
       </Route>
       <Route path="*" element={<Navigate to={session ? '/lobby' : '/auth'} replace />} />

@@ -9,7 +9,7 @@ function heat(intensity: number): { bg: string; fg: string } {
 }
 
 export default function RangeHeatmap({
-  view, move, effect, name, heroKey, style,
+  view, move, effect, name, heroKey, style, width = 300,
 }: {
   view: RangeView
   move: string
@@ -17,24 +17,27 @@ export default function RangeHeatmap({
   name: string
   heroKey?: string | null
   style?: React.CSSProperties
+  width?: number
 }) {
+  const s = width / 300            // scale factor — fonts scale with the grid
+  const f = (px: number) => Math.round(px * s)
   return (
-    <div className="pointer-events-none rounded-xl border border-[#c9a227]/40 shadow-2xl p-2.5"
-      style={{ background: 'rgba(7,13,26,0.97)', width: 300, ...style }}>
+    <div className="pointer-events-none rounded-xl border border-[#c9a227]/40 shadow-2xl"
+      style={{ background: 'rgba(7,13,26,0.97)', width, padding: f(10), ...style }}>
       {/* Header: who + last move + consequence + range width */}
-      <div className="mb-1.5">
+      <div style={{ marginBottom: f(6) }}>
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold text-white/85 truncate">{name}</span>
-          <span className="text-[10px] font-bold text-[#c9a227]">{Math.round(view.pctOfHands)}% des mains</span>
+          <span className="font-bold text-white/85 truncate" style={{ fontSize: f(11) }}>{name}</span>
+          <span className="font-bold text-[#c9a227]" style={{ fontSize: f(10) }}>{Math.round(view.pctOfHands)}% des mains</span>
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#c9a227]/20 text-[#c9a227] uppercase tracking-wide">{move}</span>
-          <span className="text-[8.5px] text-white/55 leading-tight">{effect}</span>
+        <div className="flex items-center gap-1.5" style={{ marginTop: f(2) }}>
+          <span className="font-black rounded bg-[#c9a227]/20 text-[#c9a227] uppercase tracking-wide" style={{ fontSize: f(9), padding: `${f(2)}px ${f(6)}px` }}>{move}</span>
+          <span className="text-white/55 leading-tight" style={{ fontSize: f(8.5) }}>{effect}</span>
         </div>
       </div>
 
       {/* 13×13 heatmap */}
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 1 }}>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: Math.max(1, f(1)) }}>
         {GRID_RANKS.map((_, i) =>
           GRID_RANKS.map((__, j) => {
             const key = cellKey(i, j)
@@ -45,19 +48,21 @@ export default function RangeHeatmap({
               <div key={`${i}-${j}`}
                 className="relative flex items-center justify-center rounded-[2px] select-none"
                 style={{
-                  aspectRatio: '1', fontSize: 7, fontWeight: 700, background: c.bg, color: c.fg,
+                  aspectRatio: '1', fontSize: f(7), fontWeight: 700, background: c.bg, color: c.fg,
                   outline: isHero ? '2px solid #00e5ff' : 'none', outlineOffset: isHero ? '-1px' : 0,
                   boxShadow: isHero ? '0 0 8px rgba(0,229,255,0.85)' : 'none', zIndex: isHero ? 2 : 1,
                 }}>
                 {key.replace('s', '').replace('o', '')}
+                {key.endsWith('s') && <span style={{ fontSize: f(6.5), fontWeight: 800, marginLeft: 1, color: intensity > 0.45 ? c.fg : '#37d6ef' }}>s</span>}
+                {key.endsWith('o') && <span style={{ fontSize: f(6.5), fontWeight: 700, marginLeft: 1, color: c.fg, opacity: 0.55 }}>o</span>}
               </div>
             )
           })
         )}
       </div>
 
-      <div className="flex items-center justify-between mt-1.5 text-[7.5px] text-white/30">
-        <span>● faible → ● forte fréquence</span>
+      <div className="flex items-center justify-between text-white/30" style={{ marginTop: f(6), fontSize: f(7.5) }}>
+        <span>● faible → ● forte · <span className="text-white/45">s</span> assorti · <span className="text-white/45">o</span> dépareillé</span>
         <span>range estimée (IA)</span>
       </div>
     </div>
