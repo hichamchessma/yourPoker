@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  GRID_RANKS, buildRangeMap, handKeyFromCards, cellKey,
+  GRID_RANKS, buildRangeMap, buildJamCallMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
 import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type FacePlanRow } from '../lib/postflopAdvisor'
@@ -37,7 +37,7 @@ interface UnifiedAdvice {
 export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
-  raiseToBB, multiway, vsOpenerPos, actionRecap, onClose,
+  raiseToBB, multiway, vsOpenerPos, reRaiseRatio, numAllIn = 0, actionRecap, onClose,
   embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
@@ -58,6 +58,8 @@ export default function RangeAssistant({
   raiseToBB: number
   multiway: boolean
   vsOpenerPos?: string
+  reRaiseRatio?: number
+  numAllIn?: number
   actionRecap: string[]
   onClose: () => void
   embedded?: boolean
@@ -67,7 +69,11 @@ export default function RangeAssistant({
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
-  const rangeMap = isPreflop ? buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos }) : null
+  // Facing an all-in jam (one or more) → call-off range, not the normal flat range.
+  const vsJam = isPreflop && numAllIn >= 1
+  const rangeMap = !isPreflop ? null
+    : vsJam ? buildJamCallMap(effBB, numAllIn)
+    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio })
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
   const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
 
@@ -83,18 +89,31 @@ export default function RangeAssistant({
       const equity = monteCarloEquity([card1, card2], [], opponents, 1000)
       const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
       const sizingText = chart === 'fold' ? 'couche-toi'
-        : chart === 'call' ? 'suis la mise'
+        : chart === 'call' ? (vsJam ? 'paie le tapis (all-in)' : 'suis la mise')
         : chart === '3bet' ? 'relance (3-bet ≈ 3×)'
         : chart === '4bet' ? 'sur-relance (4-bet)'
         : 'ouvre / relance (≈ 2.5–3 BB)'
-      const reasons = [
-        `Selon la range de ta position (${position} — ${SCENARIO_LABEL[scenario as Scenario].toLowerCase()}), ${heroKey} se joue : ${ACTION_LABEL[chart]}.`,
+      const situationLabel = vsJam
+        ? `face à ${numAllIn} tapis (all-in)`
+        : SCENARIO_LABEL[scenario as Scenario].toLowerCase()
+      const reasons = vsJam ? [
+        `Face à ${numAllIn} tapis (all-in), tu ne peux que PAYER ou te COUCHER — pas de flat${numAllIn > 1 ? ', et la range de call-off se resserre fort à plusieurs tapis' : ''}.`,
+        `Décision d'équité : ${heroKey} a ≈ ${pct(equity)} d'équité, il faut ${pct(potOdds)} pour payer → ${equity >= potOdds ? 'CALL rentable.' : 'FOLD (sous la cote).'}`,
+        `Profondeur ~${Math.round(effBB)} BB : ${effBB > 60 ? 'tapis profonds → seules les mains premium paient' : effBB < 20 ? 'tapis courts → call-off bien plus large' : 'profondeur moyenne'}.`,
+      ] : [
+        `Selon la range de ta position (${position} — ${situationLabel}), ${heroKey} se joue : ${ACTION_LABEL[chart]}.`,
         `Équité brute estimée : ${pct(equity)} face à ${opponents} adversaire${opponents > 1 ? 's' : ''}.`,
         inPosition ? 'Tu es en position : tu peux jouer un peu plus large.' : 'Tu es hors de position : resserre légèrement.',
       ]
       if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet/fold (peu de calls).`)
       else if (effBB > 80) reasons.push(`Tapis profond (~${Math.round(effBB)} BB) : les mains assorties/connectées gagnent en valeur.`)
-      if (scenario === 'vsopen' && raiseToBB > 3.2) reasons.push(`Grosse relance (~${raiseToBB.toFixed(1)} BB) : resserre tes calls.`)
+      if (scenario === 'vsopen' && raiseToBB > 4) reasons.push(`Grosse ouverture (~${raiseToBB.toFixed(1)} BB) : pas de fold equity → on coupe les bluffs de 3-bet, value only.`)
+      else if (scenario === 'vsopen' && raiseToBB <= 2.6) reasons.push(`Petite ouverture (~${raiseToBB.toFixed(1)} BB) : range de 3-bet polarisée pleine + flats larges.`)
+      if (scenario === 'vs3bet' && reRaiseRatio !== undefined) {
+        reasons.push(reRaiseRatio <= 2.3 ? `Petit 3-bet (~${reRaiseRatio.toFixed(1)}× l'ouverture) : bonne cote → tu continues bien plus large.`
+          : reRaiseRatio >= 3.5 ? `Gros 3-bet (~${reRaiseRatio.toFixed(1)}× l'ouverture) : resserre fort (surtout les flats).`
+          : `3-bet standard (~${reRaiseRatio.toFixed(1)}× l'ouverture).`)
+      }
       if (multiway) reasons.push('Plusieurs joueurs déjà dans le coup : resserre (surtout les mains dépareillées).')
       return {
         actionText: ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
@@ -106,7 +125,7 @@ export default function RangeAssistant({
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack])
+  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiseToBB, reRaiseRatio])
 
   const [answer, setAnswer] = useState<string | null>(null)
 
@@ -178,7 +197,7 @@ export default function RangeAssistant({
               {/* Situation + recommendation banner */}
               {isPreflop && (
                 <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">
-                  Situation : <span className="text-[#c9a227] font-bold">{position}</span> — {SCENARIO_LABEL[scenario as Scenario]}
+                  Situation : <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? `Face à ${numAllIn} tapis (all-in)` : SCENARIO_LABEL[scenario as Scenario]}
                 </p>
               )}
               <div className="flex items-center gap-4 rounded-xl border p-4 mb-4"
@@ -224,7 +243,8 @@ export default function RangeAssistant({
                 </div>
               </div>
               <div className="flex items-center justify-center gap-4 my-3 flex-wrap">
-                {(scenario === 'rfi' ? (['raise', 'fold'] as RangeAction[])
+                {(vsJam ? (['call', 'fold'] as RangeAction[])
+                  : scenario === 'rfi' ? (['raise', 'fold'] as RangeAction[])
                   : scenario === 'vsopen' ? (['3bet', 'call', 'fold'] as RangeAction[])
                   : (['4bet', 'call', 'fold'] as RangeAction[])
                 ).map(a => (

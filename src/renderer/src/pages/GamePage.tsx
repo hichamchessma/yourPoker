@@ -5,7 +5,7 @@ import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye 
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
-import { type Scenario, handKeyFromCards, buildRangeMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
+import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice } from '../lib/postflopAdvisor'
 import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
@@ -386,8 +386,8 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 }
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void
 }) {
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
   const initial = seat.name[0].toUpperCase()
@@ -421,12 +421,13 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
 
   return (
     <div className={`absolute flex flex-col items-center gap-0.5 transition-all duration-500 ${seat.isSittingOut?'opacity-50':''}`}
-      style={{...style,zIndex:seat.isActive?20:8}}
-      onMouseEnter={onHover ? (e) => onHover(true, e) : undefined}
-      onMouseLeave={onHover ? () => onHover(false) : undefined}>
-      {/* Hole cards — only the cards are dimmed when folded; name & stack stay readable */}
+      style={{...style,zIndex:seat.isActive?20:8}}>
+      {/* Hole cards — hovering here shows the RANGE (not the bet panel). Only the
+          cards are dimmed when folded; name & stack stay readable */}
       <div className={`flex relative mb-0.5 transition-all duration-500 ${seat.isFolded?'opacity-20 grayscale':''}`}
-        style={{height:hasCard0||hasCard1?80:0,overflow:'visible',minWidth:80}}>
+        style={{height:hasCard0||hasCard1?80:0,overflow:'visible',minWidth:80}}
+        onMouseEnter={onHoverCards ? (e) => onHoverCards(true, e) : undefined}
+        onMouseLeave={onHoverCards ? () => onHoverCards(false) : undefined}>
         <AnimatePresence>
           {hasCard0 && (
             <motion.div key="c0" initial={{y:-30,opacity:0,scale:0.6}} animate={{y:0,opacity:1,scale:1}}
@@ -447,12 +448,14 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         </AnimatePresence>
       </div>
 
-      {/* Info panel */}
+      {/* Info panel — hovering here (name / stack) shows the BET panel in manual mode */}
       <div className={`relative rounded-2xl border backdrop-blur-md overflow-hidden min-w-[115px] transition-all duration-500
         ${seat.isActive?'border-[#00d4ff]/55 shadow-[0_0_20px_rgba(0,212,255,0.28)]'
         :isWinner?'border-[#c9a227]/80 shadow-[0_0_30px_rgba(201,162,39,0.65)]'
         :isLoser?'border-white/5':'border-white/10'}`}
-        style={{background:isLoser?'rgba(0,0,0,0.8)':'rgba(4,10,24,0.94)'}}>
+        style={{background:isLoser?'rgba(0,0,0,0.8)':'rgba(4,10,24,0.94)'}}
+        onMouseEnter={onHover ? (e) => onHover(true, e) : undefined}
+        onMouseLeave={onHover ? () => onHover(false) : undefined}>
         {seat.isActive&&<div className="h-[2px] bg-gradient-to-r from-transparent via-[#00d4ff] to-transparent"/>}
         {isWinner&&<div className="h-[2px] bg-gradient-to-r from-transparent via-[#c9a227] to-transparent"/>}
         {seat.isSB&&!seat.isDealer&&(
@@ -727,6 +730,8 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   let preflopRaises = 0
   let lastAggressorName = ''
   let lastPreflopRaiserIdx = -1
+  const allInSeats = new Set<number>()
+  const preflopRaiseAmts: number[] = []
   for (let i = 0; i < actionIdx; i++) {
     const a = record.actions[i]
     if (a.seatIdx === -1) {
@@ -744,7 +749,8 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
       currentBet = a.amount
       if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') lastAggressorName = a.name
     }
-    if (a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')) { preflopRaises++; lastPreflopRaiserIdx = a.seatIdx }
+    if (a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')) { preflopRaises++; lastPreflopRaiserIdx = a.seatIdx; preflopRaiseAmts.push(a.amount) }
+    if (a.phase === 'preflop' && a.actionType === 'ALL-IN') allInSeats.add(a.seatIdx)
     pot = a.potAfter
   }
 
@@ -776,14 +782,19 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const playersBehind = record.players.filter(p =>
       p.idx !== hero.idx && !folded.has(p.idx) && (p.holeCards[0] !== null || p.holeCards[1] !== null) &&
       preflopActIndex(p.idx, record.players) > heroOrder).length
+    const numAllIn = [...allInSeats].filter(idx => idx !== hero.idx && !folded.has(idx)).length
+    const vsJam = numAllIn >= 1
     const vsOpenerPos = scenario === 'vsopen' ? record.players.find(p => p.idx === lastPreflopRaiserIdx)?.position : undefined
-    const map = buildRangeMap(scenario, hero.position, scenario === 'rfi' ? playersBehind : undefined,
-      { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos })
+    const reRaiseRatio = scenario === 'vs3bet' && preflopRaiseAmts.length >= 2 && preflopRaiseAmts[0] > 0 ? preflopRaiseAmts[1] / preflopRaiseAmts[0] : undefined
+    const map = vsJam
+      ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn)
+      : buildRangeMap(scenario, hero.position, scenario === 'rfi' ? playersBehind : undefined,
+          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, effBB: record.bb > 0 ? effStack / record.bb : undefined })
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
-    const recLabel = rec === 'fold' ? 'FOLD' : rec === 'call' ? 'CALL' : rec === '3bet' ? '3-BET' : rec === '4bet' ? '4-BET' : 'OPEN/RAISE'
-    const ctx = scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert` : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}` : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
+    const recLabel = rec === 'fold' ? 'FOLD' : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL') : rec === '3bet' ? '3-BET' : rec === '4bet' ? '4-BET' : 'OPEN/RAISE'
+    const ctx = vsJam ? `en ${hero.position}, face à ${numAllIn} tapis (all-in)` : scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert` : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}` : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
     lines.push(`Situation : ${ctx}. Ta main : ${key}.`)
     lines.push(`Range de référence : ${key} se joue ${recLabel}.`)
     // For an "open too wide" call, separate a genuine punt from a borderline open
@@ -2727,6 +2738,15 @@ export default function GamePage(): JSX.Element {
   const heroVsOpenerPos = heroScenario === 'vsopen'
     ? gs.seats[[...handActions].reverse().find(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))?.seatIdx ?? -1]?.position
     : undefined
+  // Number of opponents currently all-in preflop → "facing a jam" call-off coach.
+  const heroNumAllIn = gs.phase === 'preflop'
+    ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn).length
+    : 0
+  // vs-3bet: size of the 3-bet relative to the open (3 ≈ standard) → continue width.
+  const heroReRaiseRatio = (() => {
+    const amts = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).map(a => a.amount)
+    return amts.length >= 2 && amts[0] > 0 ? amts[1] / amts[0] : undefined
+  })()
   // Villain aggression → range-aware equity. Count opponents' bets/raises this
   // hand; barrels = how many post-flop streets they've fired.
   const villainAggro = handActions.filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
@@ -2845,6 +2865,22 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualMode, manualPanel, manualBet, bbAmt])
 
+  // Backspace (the "Retour" key) undoes the last manual action — except while
+  // editing the bet field, where it deletes a digit as usual.
+  useEffect(() => {
+    if (!manualMode) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Backspace') return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      e.preventDefault()
+      undoManual()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualMode])
+
   // Decision clock: when the hero's time runs out, auto-act. Facing a bet that
   // must be called/raised → auto-fold and sit out next hand. Otherwise (a free
   // check is available) → auto-check and the hand continues normally.
@@ -2922,10 +2958,10 @@ export default function GamePage(): JSX.Element {
         )}
         {manualMode && (
           <button onClick={undoManual} disabled={manualUndoDepth === 0}
-            title="Annuler la dernière action saisie"
+            title="Annuler la dernière action saisie (touche Retour ⌫)"
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-widest transition-all disabled:opacity-30 enabled:hover:bg-white/10"
             style={{ borderColor: 'rgba(240,192,96,0.4)', background: 'rgba(255,255,255,0.05)', color: '#f0c878' }}>
-            <ArrowLeft size={11}/> Annuler{manualUndoDepth > 0 ? ` (${manualUndoDepth})` : ''}
+            <ArrowLeft size={11}/> Annuler{manualUndoDepth > 0 ? ` (${manualUndoDepth})` : ''} <span className="opacity-50">⌫</span>
           </button>
         )}
         <div className="flex items-center gap-2">
@@ -3100,38 +3136,29 @@ export default function GamePage(): JSX.Element {
                   turnPaused={gs.paused || coachOpen || manualMode}
                   hideTimer={manualMode}
                   onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
-                  onHover={(entering, e) => {
+                  onHoverCards={(entering, e) => {
+                    // CARDS zone → range / coach only (and close the bet panel if it
+                    // was open for this on-turn seat, so cards = range, never bets).
+                    if (entering && manualModeRef.current && gsRef.current.actQueue[0] === seat.idx) setManualPanel(null)
                     if (seat.isHero) {
-                      // Hero: open the coach hover-card; keep it open briefly on leave
-                      // so the cursor can travel onto the panel (Q&A stays clickable).
-                      if (entering && e) {
-                        if (coachTimerRef.current) clearTimeout(coachTimerRef.current)
-                        setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY })
-                      } else {
-                        coachTimerRef.current = setTimeout(() => {
-                          if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s))
-                        }, 350)
-                      }
-                    } else {
-                      // Opponent: show the range and KEEP it while the cursor roams
-                      // the table — it's only cleared when leaving the table (handled
-                      // on the table container) or when hovering another player.
-                      if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                      if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                      else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
+                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                  }}
+                  onHover={(entering, e) => {
+                    // NAME / STACK zone. For the on-turn player in manual mode this
+                    // reveals the BET panel only (and hides the range). Otherwise it
+                    // behaves like a normal range/coach hover.
+                    const onTurnManual = manualModeRef.current && gsRef.current.actQueue[0] === seat.idx && !seat.isFolded
+                      && gsRef.current.phase !== 'showdown' && gsRef.current.phase !== 'idle'
+                    if (onTurnManual) {
+                      if (entering) { setHoverSeat(s => (s === seat.idx ? null : s)); if (manualPanel !== seat.idx) { setManualBet(''); setManualPanel(seat.idx) } }
+                      return
                     }
-                    // Manual mode: hovering the on-turn player reveals the action panel
-                    // (alongside their range/advice). It then stays put until you act,
-                    // undo, or dismiss it — so you can reach it without it vanishing.
-                    if (entering && manualModeRef.current && gsRef.current.actQueue[0] === seat.idx && !seat.isFolded
-                        && gsRef.current.phase !== 'showdown' && gsRef.current.phase !== 'idle'
-                        && manualPanel !== seat.idx) {
-                      // Pre-fill a clean default "raise to" (min legal raise, in BB,
-                      // no trailing ".0") so Enter works straight away.
-                      const sNow = gsRef.current.seats[seat.idx]
-                      const minToChips = Math.min(sNow.bet + sNow.stack, gsRef.current.currentBet + gsRef.current.minRaise)
-                      const defBB = bbAmt > 0 ? minToChips / bbAmt : 1
-                      setManualBet(defBB % 1 === 0 ? String(defBB) : defBB.toFixed(1))
-                      setManualPanel(seat.idx)
-                    }
+                    if (seat.isHero) {
+                      if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                      else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
+                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                   }}
                 />
               )
@@ -3650,6 +3677,8 @@ export default function GamePage(): JSX.Element {
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}
                 vsOpenerPos={heroVsOpenerPos}
+                reRaiseRatio={heroReRaiseRatio}
+                numAllIn={heroNumAllIn}
                 actionRecap={gs.log.slice(-10)}
                 onClose={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(null) }}
               />

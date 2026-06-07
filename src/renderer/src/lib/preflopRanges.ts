@@ -126,8 +126,10 @@ const VS_3BET_DEF: Record<string, { value: string[]; call: number }> = {
   'BTN/SB':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],        call: 12 },
 }
 
-// Polarized bluffs. 3-bet bluffs (vs an open) — suited wheel aces + suited gappers.
-const THREEBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s', 'A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s', '86s', '75s', '64s'])
+// Polarized 3-bet bluffs (vs an open), BEST first (blockers + playability): suited
+// wheel aces, then suited gappers / connectors. Ordered so we can keep a fraction
+// of them depending on the open size (big opens kill 3-bet bluffing).
+const THREEBET_BLUFF_ORDER = ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s', 'A2s', 'J9s', 'T8s', '97s', '86s', '75s', '64s']
 // 4-bet bluffs (vs a 3-bet) — tight: just the ace-blocker suited wheel hands.
 const FOURBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s'])
 
@@ -136,6 +138,7 @@ export interface RangeOpts {
   raiseToBB?: number    // size of the open we're facing (in BB)
   multiway?: boolean    // other players already in the pot
   vsOpenerPos?: string  // position of the player who opened into us (vs-open only)
+  reRaiseRatio?: number // vs-3bet: 3-bet size ÷ the open size (3 ≈ standard)
 }
 
 // How much to widen/tighten our defense based on WHO opened. A late, wide opener
@@ -180,26 +183,72 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // Polarized 3-bet (explicit value + blocker/suited bluffs), then a flat band.
     const def = VS_OPEN_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 10 }
     const value = new Set(def.value)
-    // Flat band scales with the opener's width: defend wider vs a late/wide open,
-    // tighter vs a tight UTG open. (3-bet value/bluffs stay fixed.)
+    // The OPEN SIZE drives how much we 3-bet-bluff: vs a small/standard open we
+    // bluff a full polarized set; vs a big open there's no fold equity and it's
+    // too costly, so the bluffs drop off (only value 3-bets remain vs a huge one).
+    const openBB = opts.raiseToBB ?? 2.5
+    const bluffFrac = openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0
+    const bluffs = new Set(THREEBET_BLUFF_ORDER.slice(0, Math.round(THREEBET_BLUFF_ORDER.length * bluffFrac)))
+    // Flat band scales with the opener's width and the open size (adjustCall).
     const cont = topByPct(adjustCall(def.call, opts) * defenseFactor(opts) + 3) // +3% ≈ covers the value combos
     for (const h of RANKED) {
-      const a: RangeAction = value.has(h.key) || THREEBET_BLUFFS.has(h.key) ? '3bet'
+      const a: RangeAction = value.has(h.key) || bluffs.has(h.key) ? '3bet'
         : cont.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
   } else {
     // vs a 3-bet: explicit polarized value 4-bets (QQ+/AK) + ace-blocker bluffs,
-    // then a position-scaled CALL band of strong-but-not-nut hands, fold the rest.
+    // then a CALL band of strong-but-not-nut hands, fold the rest. The continue
+    // width scales with the 3-bet RATIO (a small 2× 3-bet gives a great price →
+    // continue wider; a big 3.5×+ → tighter) and with stack depth.
     const def = VS_3BET_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 8 }
     const value = new Set(def.value)
-    const cont = topByPct(adjustCall(def.call, opts) + 3) // +3% ≈ covers the value combos so the band starts at the calls
+    const ratio = opts.reRaiseRatio ?? 3
+    const ratioFactor = ratio <= 2.2 ? 1.45 : ratio <= 2.6 ? 1.2 : ratio <= 3.2 ? 1.0 : ratio <= 4 ? 0.75 : 0.55
+    const depthFactor = opts.effBB === undefined ? 1 : opts.effBB < 25 ? 0.55 : opts.effBB > 80 ? 1.1 : 1
+    // Absolute 3-bet size vs stack: a big 3-bet (e.g. 30bb) = low SPR / lots
+    // committed → flat a much tighter, nuttier range than a small 10bb 3-bet of
+    // the SAME ratio (high SPR, can set-mine / play speculative).
+    const threebetBB = opts.raiseToBB ?? ratio * 2.5
+    const commitFactor = threebetBB >= 25 ? 0.7 : threebetBB >= 15 ? 0.85 : 1
+    const multiwayFactor = opts.multiway ? 0.8 : 1
+    const cont = topByPct(def.call * ratioFactor * depthFactor * commitFactor * multiwayFactor + 3)
     for (const h of RANKED) {
       const a: RangeAction = value.has(h.key) || FOURBET_BLUFFS.has(h.key) ? '4bet'
         : cont.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
   }
+  return map
+}
+
+// Facing one or more ALL-IN jams pre-flop you can only CALL or FOLD — there is no
+// flat-behind and no re-raise. The call-off range is a tight premium block: looser
+// when short (you're getting a price) and MUCH tighter for each extra all-in (more
+// ranges to beat, and you can't realise position). Replaces the misleading vs-3bet
+// "flat band" (you'd never flat 55/KQs vs two 100bb jams).
+// Call-off PRIORITY order (≈ equity vs a jamming range, strongest first). Unlike
+// the open-playability score, AK/AQ rank ABOVE medium pairs here (a topByPct on
+// comboScore would keep JJ but drop AKs, which is wrong vs a jam).
+const JAM_PRIORITY = [
+  'AA','KK','QQ','AKs','AKo','JJ','AQs','TT','AQo','AJs','KQs','99','AJo','ATs','KJs','KQo','88',
+  'KTs','QJs','A9s','77','ATo','JTs','KJo','A8s','QTs','A5s','66','A7s','K9s','A4s','A6s','QJo',
+  'A3s','KTo','A2s','55','T9s','JTo','Q9s','J9s','QTo','K8s','44','98s','A9o','K7s','33','T8s','22',
+  '87s','A8o','Q8s','K9o','97s','J8s','76s','T7s','65s','A7o','Q9o','86s','54s','K6s','75s',
+]
+function combosOfKey(k: string): number { return k.length === 2 ? 6 : (k[2] === 's' ? 4 : 12) }
+export function buildJamCallMap(effBB: number, numAllIn: number): Map<string, RangeAction> {
+  let pct = effBB <= 10 ? 42 : effBB <= 18 ? 22 : effBB <= 30 ? 13 : effBB <= 50 ? 8 : effBB <= 80 ? 5 : 3.2
+  pct *= Math.pow(0.52, Math.max(0, numAllIn - 1))   // each extra jam ~halves the call-off
+  pct = Math.max(1.2, Math.min(95, pct))             // never below the very top (AA/KK/QQ)
+  const target = (pct / 100) * TOTAL_COMBOS
+  const call = new Set<string>()
+  let acc = 0
+  for (const k of JAM_PRIORITY) { if (acc >= target) break; call.add(k); acc += combosOfKey(k) }
+  // Very wide (short-stack) call-offs: top up by playability for the long tail.
+  if (acc < target) for (const h of RANKED) { if (acc >= target) break; if (!call.has(h.key)) { call.add(h.key); acc += h.combos } }
+  const map = new Map<string, RangeAction>()
+  for (const h of RANKED) map.set(h.key, call.has(h.key) ? 'call' : 'fold')
   return map
 }
 
