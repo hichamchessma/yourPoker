@@ -5,6 +5,8 @@
 // combos) form each range. Approximation of common 6-max charts, not a solver.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { rfiRange, vsOpenChart, vs3betChart } from './preflopCharts'
+
 export type RangeAction = 'raise' | '3bet' | '4bet' | 'call' | 'fold'
 export type Scenario = 'rfi' | 'vsopen' | 'vs3bet'
 
@@ -54,17 +56,12 @@ const RANKED: Hand[] = (() => {
   return hands.sort((a, b) => b.score - a.score)
 })()
 
-// The set of hand keys forming the top `pct`% of all combos.
-function topByPct(pct: number): Set<string> {
-  const target = (Math.max(0, Math.min(100, pct)) / 100) * TOTAL_COMBOS
-  const set = new Set<string>()
-  let acc = 0
-  for (const h of RANKED) {
-    if (acc >= target) break
-    set.add(h.key)
-    acc += h.combos
-  }
-  return set
+// Keep only the strongest `keepFrac` of a hand set (by playability) — used to trim
+// a chart's flat band when facing a bigger raise / lower SPR.
+function trimWeakest(set: Set<string>, keepFrac: number): Set<string> {
+  if (keepFrac >= 1) return set
+  const ordered = RANKED.filter(h => set.has(h.key)).map(h => h.key) // strongest first
+  return new Set(ordered.slice(0, Math.max(0, Math.round(ordered.length * keepFrac))))
 }
 
 // ── Situation → range size (in % of all hands) ──────────────────────────────
@@ -95,44 +92,6 @@ function openPctByBehind(behind: number): number {
 const OPEN_PCT: Record<string, number> = {
   UTG: 15, 'UTG+1': 16, MP: 18, 'MP+1': 19, HJ: 22, CO: 28, BTN: 52, SB: 49, BB: 60, 'BTN/SB': 49,
 }
-// vs-open: polarized 3-bet VALUE (explicit, NOT a linear top-% which would 3-bet
-// medium pairs as value) + bluffs (THREEBET_BLUFFS) + a position-scaled FLAT band.
-const VS_OPEN_DEF: Record<string, { value: string[]; call: number }> = {
-  UTG:    { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 7 },
-  'UTG+1':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 7 },
-  MP:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 8 },
-  'MP+1': { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],               call: 8 },
-  HJ:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 9 },
-  CO:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 14 },
-  BTN:    { value: ['AA', 'KK', 'QQ', 'JJ', 'AKs', 'AKo', 'AQs'],  call: 19 },
-  SB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 5 },  // polarized OOP, small flat
-  BB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],        call: 26 }, // closes, defends wide
-  'BTN/SB':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],       call: 16 },
-}
-// vs-3bet defense by position. The 4-bet VALUE part is an EXPLICIT polarized set
-// (QQ+/AK), NOT a linear "top-%": the playability score ranks every pair above AK,
-// so a top-% cut would wrongly 4-bet 88-JJ. `call` is the continue width (in % of
-// hands) — the strong-but-not-nut hands we flat. Blinds/late positions defend wider.
-const VS_3BET_DEF: Record<string, { value: string[]; call: number }> = {
-  UTG:    { value: ['AA', 'KK', 'QQ', 'AKs'],                call: 5 },
-  'UTG+1':{ value: ['AA', 'KK', 'QQ', 'AKs'],                call: 5 },
-  MP:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 6 },
-  'MP+1': { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 6 },
-  HJ:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 8 },
-  CO:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 11 },
-  BTN:    { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo', 'AQs'],  call: 15 },
-  SB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 8 },
-  BB:     { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],         call: 18 },
-  'BTN/SB':{ value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'],        call: 12 },
-}
-
-// Polarized 3-bet bluffs (vs an open), BEST first (blockers + playability): suited
-// wheel aces, then suited gappers / connectors. Ordered so we can keep a fraction
-// of them depending on the open size (big opens kill 3-bet bluffing).
-const THREEBET_BLUFF_ORDER = ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s', 'A2s', 'J9s', 'T8s', '97s', '86s', '75s', '64s']
-// 4-bet bluffs (vs a 3-bet) — tight: just the ace-blocker suited wheel hands.
-const FOURBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s'])
-
 export interface RangeOpts {
   effBB?: number        // effective stack in big blinds
   raiseToBB?: number    // size of the open we're facing (in BB)
@@ -141,81 +100,44 @@ export interface RangeOpts {
   reRaiseRatio?: number // vs-3bet: 3-bet size ÷ the open size (3 ≈ standard)
 }
 
-// How much to widen/tighten our defense based on WHO opened. A late, wide opener
-// (BTN/SB steal) is beaten by a much wider continuing range than a tight UTG
-// open. Anchored so a ~CO-width open (≈25%) ⇒ factor 1.0 (≈ current behaviour),
-// then scales with the opener's RFI width. Undefined opener ⇒ 1.0 (no change),
-// which keeps every un-wired caller identical to before.
-function defenseFactor(o: RangeOpts): number {
-  if (!o.vsOpenerPos) return 1
-  const openerWidth = openPctFor(o.vsOpenerPos)
-  return Math.max(0.6, Math.min(1.8, openerWidth / 25))
-}
-
-// Adjust a call width for stack depth, the raise size faced, and multiway.
-function adjustCall(base: number, o: RangeOpts): number {
-  let c = base
-  if (o.raiseToBB !== undefined) {
-    // The open SIZE drives the price you're getting. A bigger raise → defend
-    // tighter; a SMALL open / min-raise → defend MUCH wider (you risk little to
-    // win the dead money), especially closing the action from the BB. Previously
-    // the model only tightened vs big raises and never widened vs small ones, so
-    // a BB facing a 2bb min-raise "defended" the same 31% as vs a 3x — way too
-    // tight for the price.
-    if (o.raiseToBB > 2.5) c *= Math.max(0.5, 1 - (o.raiseToBB - 2.5) * 0.08)
-    else if (o.raiseToBB < 2.5) c *= 1 + (2.5 - o.raiseToBB) * 0.7  // 2bb open → ×1.35
-  }
-  if (o.effBB !== undefined) { if (o.effBB < 25) c *= 0.6; else if (o.effBB > 80) c *= 1.15 } // short folds more, deep calls more
-  if (o.multiway) c *= 0.8 // tighten multiway
-  return Math.max(0, c)
-}
-
 // Action map for every hand in the grid, for a given scenario + hero position.
 // `playersBehind` (players still to act after the hero) adapts RFI width to the
 // table size; `opts` tunes for stack depth, raise size and multiway.
 export function buildRangeMap(scenario: Scenario, position: string, playersBehind?: number, opts: RangeOpts = {}): Map<string, RangeAction> {
   const map = new Map<string, RangeAction>()
   if (scenario === 'rfi') {
-    const pct = playersBehind !== undefined ? openPctByBehind(playersBehind) : (OPEN_PCT[position] ?? 18)
-    const raise = topByPct(pct)
+    // Reference RFI chart lookup (real ranges), not a heuristic top-% cut.
+    const raise = rfiRange(playersBehind, position)
     for (const h of RANKED) map.set(h.key, raise.has(h.key) ? 'raise' : 'fold')
   } else if (scenario === 'vsopen') {
-    // Polarized 3-bet (explicit value + blocker/suited bluffs), then a flat band.
-    const def = VS_OPEN_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 10 }
-    const value = new Set(def.value)
-    // The OPEN SIZE drives how much we 3-bet-bluff: vs a small/standard open we
-    // bluff a full polarized set; vs a big open there's no fold equity and it's
-    // too costly, so the bluffs drop off (only value 3-bets remain vs a huge one).
+    // Reference vs-open chart (value 3-bets + bluffs + flat band), then sizing:
+    // a big open kills 3-bet bluffing (no fold equity) and trims the flats.
+    const chart = vsOpenChart(position, opts.vsOpenerPos)
     const openBB = opts.raiseToBB ?? 2.5
     const bluffFrac = openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0
-    const bluffs = new Set(THREEBET_BLUFF_ORDER.slice(0, Math.round(THREEBET_BLUFF_ORDER.length * bluffFrac)))
-    // Flat band scales with the opener's width and the open size (adjustCall).
-    const cont = topByPct(adjustCall(def.call, opts) * defenseFactor(opts) + 3) // +3% ≈ covers the value combos
+    const callKeep = openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5
+    const bluffs = new Set(chart.bluff.slice(0, Math.round(chart.bluff.length * bluffFrac)))
+    const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {
-      const a: RangeAction = value.has(h.key) || bluffs.has(h.key) ? '3bet'
-        : cont.has(h.key) ? 'call' : 'fold'
+      const a: RangeAction = chart.value.has(h.key) || bluffs.has(h.key) ? '3bet'
+        : call.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
   } else {
-    // vs a 3-bet: explicit polarized value 4-bets (QQ+/AK) + ace-blocker bluffs,
-    // then a CALL band of strong-but-not-nut hands, fold the rest. The continue
-    // width scales with the 3-bet RATIO (a small 2× 3-bet gives a great price →
-    // continue wider; a big 3.5×+ → tighter) and with stack depth.
-    const def = VS_3BET_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 8 }
-    const value = new Set(def.value)
+    // Reference vs-3bet chart (4-bets + bluffs + flat band). The flat band shrinks
+    // with the 3-bet RATIO (small 2× = great price → keep all; big 3.5×+ → trim),
+    // with how much is committed (absolute size / SPR) and with stack depth.
+    const chart = vs3betChart(position)
     const ratio = opts.reRaiseRatio ?? 3
-    const ratioFactor = ratio <= 2.2 ? 1.45 : ratio <= 2.6 ? 1.2 : ratio <= 3.2 ? 1.0 : ratio <= 4 ? 0.75 : 0.55
-    const depthFactor = opts.effBB === undefined ? 1 : opts.effBB < 25 ? 0.55 : opts.effBB > 80 ? 1.1 : 1
-    // Absolute 3-bet size vs stack: a big 3-bet (e.g. 30bb) = low SPR / lots
-    // committed → flat a much tighter, nuttier range than a small 10bb 3-bet of
-    // the SAME ratio (high SPR, can set-mine / play speculative).
+    const ratioFactor = ratio <= 2.2 ? 1.0 : ratio <= 2.6 ? 0.92 : ratio <= 3.2 ? 0.85 : ratio <= 4 ? 0.7 : 0.55
     const threebetBB = opts.raiseToBB ?? ratio * 2.5
     const commitFactor = threebetBB >= 25 ? 0.7 : threebetBB >= 15 ? 0.85 : 1
-    const multiwayFactor = opts.multiway ? 0.8 : 1
-    const cont = topByPct(def.call * ratioFactor * depthFactor * commitFactor * multiwayFactor + 3)
+    const depthFactor = opts.effBB === undefined ? 1 : opts.effBB < 25 ? 0.5 : 1
+    const callKeep = Math.max(0.25, ratioFactor * commitFactor * depthFactor * (opts.multiway ? 0.7 : 1))
+    const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {
-      const a: RangeAction = value.has(h.key) || FOURBET_BLUFFS.has(h.key) ? '4bet'
-        : cont.has(h.key) ? 'call' : 'fold'
+      const a: RangeAction = chart.value.has(h.key) || chart.bluff.includes(h.key) ? '4bet'
+        : call.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
   }
