@@ -5,10 +5,10 @@ import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye 
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
-import { type Scenario, handKeyFromCards, buildRangeMap } from '../lib/preflopRanges'
+import { type Scenario, handKeyFromCards, buildRangeMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice } from '../lib/postflopAdvisor'
 import {
-  initRange, applyAction, rangeView, actionSummary, preflopProbs,
+  initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
   type RangeWeights, type ActCat,
 } from '../lib/rangeEstimator'
 
@@ -47,7 +47,7 @@ interface ScenarioCfg {
   heroCards: [Card | null, Card | null]
   board: (Card | null)[]
   potBB: number
-  opponents: Array<{ level: number; discipline: string }>
+  opponents: Array<{ level: number; discipline: string; cards?: [Card | null, Card | null] }>
 }
 interface ChipFlight {
   id: number; fromX: number; fromY: number; toX: number; toY: number
@@ -109,6 +109,44 @@ function betOffset(leftPct: number, topPct: number): { x: number; y: number } {
   return { x: (dx / len) * dist, y: (dy / len) * dist }
 }
 
+// ─── Range → concrete cards sampling (used by "Revive situation") ─────────────
+// Expand a 169-hand key (e.g. "AKs", "99", "T9o") into every concrete two-card
+// combo that doesn't collide with already-used cards (board + other hands).
+function combosForKey(key: string, used: Set<string>): [Card, Card][] {
+  const r1 = key[0], r2 = key[1], kind = key[2] // 's' | 'o' | undefined (pair)
+  const out: [Card, Card][] = []
+  const free = (r: string, s: Suit) => !used.has(r + s)
+  if (r1 === r2) {
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++)
+      if (free(r1, SUITS[i]) && free(r1, SUITS[j])) out.push([{ rank: r1, suit: SUITS[i] }, { rank: r1, suit: SUITS[j] }])
+  } else if (kind === 's') {
+    for (const s of SUITS) if (free(r1, s) && free(r2, s)) out.push([{ rank: r1, suit: s }, { rank: r2, suit: s }])
+  } else {
+    for (const s1 of SUITS) for (const s2 of SUITS)
+      if (s1 !== s2 && free(r1, s1) && free(r2, s2)) out.push([{ rank: r1, suit: s1 }, { rank: r2, suit: s2 }])
+  }
+  return out
+}
+// Draw ONE concrete hand from a weighted range, ∝ each hand's posterior weight
+// (the weight already encodes how the player's actions narrowed their range).
+// Respects card removal so two players never share a card with the board/hero.
+function sampleHandFromRange(range: RangeWeights, used: Set<string>): [Card, Card] | null {
+  const feasible: { combos: [Card, Card][]; w: number }[] = []
+  let total = 0
+  for (const key of HAND_KEYS) {
+    const w = range[key] ?? 0
+    if (w <= 0) continue
+    const combos = combosForKey(key, used)
+    if (combos.length === 0) continue
+    feasible.push({ combos, w }); total += w
+  }
+  if (total <= 0 || feasible.length === 0) return null
+  let r = Math.random() * total
+  for (const f of feasible) { r -= f.w; if (r <= 0) return f.combos[Math.floor(Math.random() * f.combos.length)] }
+  const last = feasible[feasible.length - 1]
+  return last.combos[Math.floor(Math.random() * last.combos.length)]
+}
+
 // ─── Bot AI helpers ───────────────────────────────────────────────────────────
 // Chen formula — fine-grained preflop hand ranking (~ -1 … 20). MUST stay
 // identical to the copy in lib/rangeEstimator.ts so bots & the range estimator
@@ -125,9 +163,14 @@ function preflopStrength(c1: Card, c2: Card): number {
   if (hi - lo <= 2 && hi < 12) s += 1                        // straight bonus (both below Q)
   return s                                                   // unrounded → finer thresholds
 }
+// Position bonus drives the OPEN width (preflopProbs.openTh) for bots & the range
+// estimator. When folded to, the SB is a STEAL seat (only the BB behind + dead
+// money), so it opens nearly as wide as the button — not like an early seat.
+// (Only affects the unopened/open branch; SB's defend-vs-raise ranges are
+// threshold-based and unchanged.)
 const POS_BONUS: Record<string, number> = {
   'BTN':1.00,'BTN/SB':1.00,'CO':0.88,'HJ':0.78,
-  'MP':0.72,'MP+1':0.72,'UTG':0.62,'UTG+1':0.65,'SB':0.70,'BB':0.82,
+  'MP':0.72,'MP+1':0.72,'UTG':0.62,'UTG+1':0.65,'SB':0.95,'BB':0.82,
 }
 
 // ─── Deck & evaluation ───────────────────────────────────────────────────────
@@ -343,8 +386,8 @@ function DealerButtonToken({ size=46 }: { size?:number }) {
 }
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, onHover }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void
 }) {
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
   const initial = seat.name[0].toUpperCase()
@@ -418,7 +461,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         {seat.isBB&&(
           <span className="absolute -top-2.5 -left-1 w-5 h-5 rounded-full bg-red-600 text-white text-[7px] font-black flex items-center justify-center shadow z-10">BB</span>
         )}
-        {seat.isActive&&(
+        {seat.isActive&&!hideTimer&&(
           <div className="mx-2.5 mt-1.5 h-[3px] rounded-full bg-white/8 overflow-hidden">
             <div key={`${turnNonce}:${turnPaused ? 'p' : 'r'}`} className="h-full rounded-full bg-[#00d4ff]"
               style={{ animation:`turnDrain ${turnSeconds}s linear forwards`, animationPlayState: turnPaused ? 'paused' : 'running' }}/>
@@ -482,13 +525,20 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
 }
 
 // ─── Table SVG ────────────────────────────────────────────────────────────────
-function TableSVG() {
+type RoomVariant = 'default' | 'scenario' | 'sim'
+const FELT_STOPS: Record<RoomVariant, [string, string, string, string]> = {
+  default:  ['#1b7e8c', '#0e5b67', '#083e48', '#041a20'], // teal — the live training table
+  scenario: ['#9a4150', '#6a2c39', '#3d1620', '#180809'], // warm garnet — "Setup Position" studio
+  sim:      ['#5b3fa6', '#3c2a72', '#241848', '#0c0820'], // indigo — "Revive" sandbox
+}
+function TableSVG({ variant = 'default' }: { variant?: RoomVariant }) {
+  const f = FELT_STOPS[variant]
   return (
     <svg viewBox="0 0 840 450" width="100%" style={{display:'block'}}>
       <defs>
         <radialGradient id="tF" cx="50%" cy="38%" r="58%">
-          <stop offset="0%" stopColor="#1b7e8c"/><stop offset="42%" stopColor="#0e5b67"/>
-          <stop offset="78%" stopColor="#083e48"/><stop offset="100%" stopColor="#041a20"/>
+          <stop offset="0%" stopColor={f[0]}/><stop offset="42%" stopColor={f[1]}/>
+          <stop offset="78%" stopColor={f[2]}/><stop offset="100%" stopColor={f[3]}/>
         </radialGradient>
         <radialGradient id="tG" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="rgba(28,180,200,0.12)"/><stop offset="100%" stopColor="transparent"/>
@@ -525,10 +575,47 @@ function TableSVG() {
         <circle cx="0" cy="0" r="12" fill="none" stroke="white" strokeWidth="1.2"/>
         <text x="0" y="5" textAnchor="middle" fontSize="12" fill="white" fontFamily="serif">♠</text>
       </g>
+      {variant !== 'default' && (
+        <text x="420" y="300" textAnchor="middle" fontSize="20" letterSpacing="9" fontWeight="bold"
+          fill={variant === 'scenario' ? '#f0c060' : '#b9a6ff'} opacity="0.16" fontFamily="sans-serif">
+          {variant === 'scenario' ? 'SETUP POSITION' : 'SIMULATION'}
+        </text>
+      )}
     </svg>
   )
 }
-function Room() {
+function Room({ variant = 'default' }: { variant?: RoomVariant }) {
+  if (variant === 'scenario') {
+    // "Setup Position" studio — warm garnet/amber, distinct from the teal training
+    // room and the indigo Revive sandbox. Same logic, just its own identity.
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0" style={{background:'radial-gradient(120% 95% at 50% 26%, #2a1018 0%, #1a0a10 50%, #0a0406 100%)'}}/>
+        <div className="absolute inset-x-0 top-0" style={{height:'82%',background:'radial-gradient(ellipse 70% 60% at 50% -6%, rgba(240,180,80,0.30) 0%, rgba(180,90,40,0.14) 42%, transparent 72%)'}}/>
+        <div className="absolute inset-x-0 bottom-0" style={{height:'70%',background:'radial-gradient(ellipse 62% 56% at 50% 84%, rgba(200,70,90,0.16) 0%, transparent 64%)'}}/>
+        <div className="absolute inset-0" style={{background:'radial-gradient(125% 105% at 50% 46%, transparent 54%, rgba(0,0,0,0.58) 100%)'}}/>
+        <div className="absolute inset-x-0 top-0" style={{height:'24%',background:'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%)'}}/>
+        <div className="absolute inset-x-0 bottom-0" style={{height:'20%',background:'linear-gradient(0deg, rgba(0,0,0,0.78) 0%, transparent 100%)'}}/>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full" style={{background:'rgba(255,220,150,0.95)',boxShadow:'0 0 22px 11px rgba(230,170,70,0.45), 0 0 72px 34px rgba(200,110,40,0.25)'}}/>
+      </div>
+    )
+  }
+  if (variant === 'sim') {
+    // "Lab / simulation" ambiance — cool desaturated indigo, blueprint grid,
+    // so the test table reads instantly as a sandbox, not the real cash game.
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0" style={{background:'radial-gradient(120% 95% at 50% 26%, #1a1840 0%, #0e0c26 50%, #060512 100%)'}}/>
+        <div className="absolute inset-x-0 top-0" style={{height:'82%',background:'radial-gradient(ellipse 70% 60% at 50% -6%, rgba(150,120,255,0.30) 0%, rgba(90,70,200,0.12) 42%, transparent 72%)'}}/>
+        {/* blueprint grid */}
+        <div className="absolute inset-0" style={{opacity:0.16,backgroundImage:'linear-gradient(rgba(150,170,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(150,170,255,0.5) 1px, transparent 1px)',backgroundSize:'46px 46px'}}/>
+        <div className="absolute inset-0" style={{background:'radial-gradient(125% 105% at 50% 46%, transparent 52%, rgba(0,0,0,0.6) 100%)'}}/>
+        <div className="absolute inset-x-0 top-0" style={{height:'24%',background:'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%)'}}/>
+        <div className="absolute inset-x-0 bottom-0" style={{height:'20%',background:'linear-gradient(0deg, rgba(0,0,0,0.78) 0%, transparent 100%)'}}/>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full" style={{background:'rgba(190,170,255,0.95)',boxShadow:'0 0 22px 11px rgba(150,120,255,0.45), 0 0 72px 34px rgba(110,80,220,0.25)'}}/>
+      </div>
+    )
+  }
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
       {/* deep cool lounge base */}
@@ -615,6 +702,16 @@ function boardForPhase(board: (Card | null)[], phase: Phase): Card[] {
   if (phase === 'river' || phase === 'showdown') return b
   return []
 }
+// Pre-flop action order for a seat (0 = first to act = UTG / left of the BB),
+// derived from the button position stored on the record. Used to count how many
+// live players still act behind the hero (→ RFI steal width).
+function preflopActIndex(seatIdx: number, players: HandHistoryRecord['players']): number {
+  const n = players.length
+  const dealerIdx = players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
+  const bbOffset = n === 2 ? 1 : 2
+  const firstOffset = (bbOffset + 1) % n
+  return ((((seatIdx - dealerIdx) % n + n) % n) - firstOffset + n) % n
+}
 function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCritique | null {
   const act = record.actions[actionIdx]
   if (!act || act.seatIdx < 0 || !act.isHero) return null
@@ -629,6 +726,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   record.players.forEach(p => { bet[p.idx] = 0; committed[p.idx] = 0 })
   let preflopRaises = 0
   let lastAggressorName = ''
+  let lastPreflopRaiserIdx = -1
   for (let i = 0; i < actionIdx; i++) {
     const a = record.actions[i]
     if (a.seatIdx === -1) {
@@ -646,7 +744,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
       currentBet = a.amount
       if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') lastAggressorName = a.name
     }
-    if (a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')) preflopRaises++
+    if (a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')) { preflopRaises++; lastPreflopRaiserIdx = a.seatIdx }
     pot = a.potAfter
   }
 
@@ -671,7 +769,16 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
 
   if (phase === 'preflop') {
     const scenario: Scenario = preflopRaises >= 2 ? 'vs3bet' : preflopRaises === 1 ? 'vsopen' : 'rfi'
-    const map = buildRangeMap(scenario, hero.position)
+    // Players still to act behind the hero (live, not yet folded) — a fold-around
+    // to the SB becomes a true 1-behind blind battle → the RFI width widens to a
+    // steal range instead of an early-position open.
+    const heroOrder = preflopActIndex(hero.idx, record.players)
+    const playersBehind = record.players.filter(p =>
+      p.idx !== hero.idx && !folded.has(p.idx) && (p.holeCards[0] !== null || p.holeCards[1] !== null) &&
+      preflopActIndex(p.idx, record.players) > heroOrder).length
+    const vsOpenerPos = scenario === 'vsopen' ? record.players.find(p => p.idx === lastPreflopRaiserIdx)?.position : undefined
+    const map = buildRangeMap(scenario, hero.position, scenario === 'rfi' ? playersBehind : undefined,
+      { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos })
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
@@ -679,7 +786,11 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const ctx = scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert` : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}` : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
     lines.push(`Situation : ${ctx}. Ta main : ${key}.`)
     lines.push(`Range de référence : ${key} se joue ${recLabel}.`)
+    // For an "open too wide" call, separate a genuine punt from a borderline open
+    // that's only a hair outside the range — the latter is a mix, not a leak.
+    const openMargin = scenario === 'rfi' ? handOpenRank(key) - openPctFor(hero.position, playersBehind) : 99
     if (heroCat === recCat) { verdict = 'good'; headline = `Bon coup — ${recLabel}` ; lines.push('Ton choix colle à la range standard de cette position/situation. ✅') }
+    else if (recCat === 'fold' && heroCat === 'aggr' && openMargin <= 12) { verdict = 'ok'; headline = 'Open borderline'; lines.push(`${key} est juste en dehors de la range standard (${recLabel === 'FOLD' ? 'fold' : recLabel}) — un open marginal qui se défend/se mixe ici, pas une fuite.`) }
     else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Trop large'; lines.push(`${key} n’est pas dans ta range ici — jouer ce coup perd de l’argent sur le long terme.`) }
     else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = 'Trop passif'; lines.push(`${key} devrait ${recLabel} (value + initiative), pas seulement suivre — tu laisses de la valeur et de la fold equity.`) }
     else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold trop serré'; lines.push(`${key} est assez fort pour ${recLabel} — le coucher est une fuite.`) }
@@ -759,9 +870,10 @@ function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number)
   return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
 }
 
-function HandHistoryModal({ records, onClose }: {
+function HandHistoryModal({ records, onClose, onRevive }: {
   records: HandHistoryRecord[]
   onClose: () => void
+  onRevive: (record: HandHistoryRecord, stepIdx: number) => void
 }) {
   const [selectedId, setSelectedId] = useState<number|null>(records.length > 0 ? records[records.length-1].id : null)
   const [stepIdx, setStepIdx] = useState<number>(0)
@@ -831,10 +943,20 @@ function HandHistoryModal({ records, onClose }: {
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
             <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
           </div>
-          <button onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 text-lg">
-            ✕
-          </button>
+          <div className="flex items-center gap-2.5">
+            {/* Revive: re-create THIS exact spot as a playable sandbox. Opponents'
+                cards are re-drawn from the range their line implies at this step. */}
+            <button onClick={() => onRevive(record, stepIdx)}
+              title="Recrée cette situation exacte en simulation jouable — les adversaires gardent leur range, leurs cartes sont retirées au hasard dedans"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-black uppercase tracking-[0.18em] text-[11px] transition-all hover:scale-[1.03]"
+              style={{ background: 'linear-gradient(135deg,#a78bff,#6d4ed6,#3c2a72)', color: '#0a0716', boxShadow: '0 0 22px rgba(140,110,255,0.45)' }}>
+              ⚡ Revive situation
+            </button>
+            <button onClick={onClose}
+              className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 text-lg">
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-1 min-h-0">
@@ -1141,6 +1263,25 @@ export default function GamePage(): JSX.Element {
   const [heroBetAmt, setHeroBetAmt] = useState(bbAmt * 2)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  // ── "Revive situation" — replay a historical spot as a playable sandbox.
+  const [simMode, setSimMode] = useState(false)
+  const simModeRef = useRef(false)
+  const [simResult, setSimResult] = useState<GState | null>(null)   // set at sim showdown → prompt
+  const simSeedRef = useRef<{ record: HandHistoryRecord; stepIdx: number } | null>(null)
+  // ── Scenario "manual authoring" mode: you drive every action in turn order by
+  // clicking the on-turn player; bots never auto-play; the coach updates live.
+  const [manualMode, setManualMode] = useState(false)
+  const manualModeRef = useRef(false)
+  const [manualPanel, setManualPanel] = useState<number | null>(null) // seat whose action panel is open
+  const [manualBet, setManualBet] = useState('')                       // bet/raise "to" amount input (in BB)
+  // Undo stack for manual authoring — one snapshot per action so you can step back.
+  const manualUndoRef = useRef<Array<{ gs: GState; actions: HistoryAction[]; ranges: Record<number, RangeWeights>; rangeMeta: Record<number, { move: string; effect: string }> }>>([])
+  const [manualUndoDepth, setManualUndoDepth] = useState(0)
+  const savedRealRef = useRef<null | {
+    gs: GState; actions: HistoryAction[]; handStartStacks: Record<number, number>
+    ranges: Record<number, RangeWeights>; rangeMeta: Record<number, { move: string; effect: string }>
+    mood: Record<number, number>
+  }>(null)
   const [showLog, setShowLog] = useState(false)
   const [sitOut, setSitOut] = useState(false)
   const [rebuyAmt, setRebuyAmt] = useState(stackBB * bbAmt)
@@ -1162,6 +1303,11 @@ export default function GamePage(): JSX.Element {
   const rangeMetaRef = useRef<Record<number, { move: string; effect: string }>>({})
 
   const gsRef = useRef<GState>(gs)
+  // Bumped on every flow transition (revive / exit-sim / stop / next-hand) so a
+  // deferred street-transition timer (showdown/dealCommunity) from a previous
+  // context bails instead of mutating the wrong game state. Pause does NOT bump
+  // it — paused transitions must still resolve, exactly as before.
+  const flowGenRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextHandTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dealTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -1256,6 +1402,9 @@ export default function GamePage(): JSX.Element {
   }
 
   function saveCurrentHand(finalGs: GState) {
+    // In a "Revive" sandbox we don't persist to history nor auto-deal a new
+    // hand — the showdown is reached, so prompt to replay or quit the sim.
+    if (simModeRef.current) { setSimResult(finalGs); return }
     updateMoods(finalGs)
     const heroSeat = finalGs.seats.find(s => s.isHero)
     const heroBefore = handStartStacksRef.current[heroSeat?.idx ?? -1] ?? 0
@@ -1705,7 +1854,8 @@ export default function GamePage(): JSX.Element {
     if (newState.phase === 'river' || newState.phase === 'showdown') {
       // Clear the front bets now so they merge into the pot, then reveal.
       setGs(newState); gsRef.current = newState
-      setTimeout(() => showdown(gsRef.current), 650)
+      const gen = flowGenRef.current
+      setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(gsRef.current) }, 650)
     } else {
       const nextPhase: Phase =
         newState.phase === 'preflop' ? 'flop' :
@@ -1736,7 +1886,9 @@ export default function GamePage(): JSX.Element {
     setGs(newState)
     gsRef.current = newState
     // Let the board land, then open a fresh betting round on this street.
+    const gen = flowGenRef.current
     setTimeout(() => {
+      if (flowGenRef.current !== gen) return
       const first = firstActivePostflop(newState.seats, newState.dealerIdx)
       startStreet(newState, first)
     }, 750)
@@ -1759,7 +1911,8 @@ export default function GamePage(): JSX.Element {
     // 0 or 1 player can still act (others all-in) → no more betting, run the
     // rest of the board out to showdown.
     if (queue.length <= 1) {
-      if (state.phase === 'river') setTimeout(() => showdown(state), 400)
+      const gen = flowGenRef.current
+      if (state.phase === 'river') setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(state) }, 400)
       else {
         const nextPhase: Phase =
           state.phase === 'preflop' ? 'flop' :
@@ -1770,6 +1923,13 @@ export default function GamePage(): JSX.Element {
       return
     }
 
+    if (manualModeRef.current) {
+      // Manual authoring: just light up the first player to act and wait for input.
+      const first = queue[0]
+      const ns = { ...state, actQueue: queue, seats: state.seats.map((s, i) => ({ ...s, isActive: i === first })) }
+      setGs(ns); gsRef.current = ns
+      return
+    }
     const newState = { ...state, actQueue: queue }
     setGs(newState)
     gsRef.current = newState
@@ -1893,7 +2053,7 @@ export default function GamePage(): JSX.Element {
   // ─── Auto-advance logic ──────────────────────────────────────────────────
   function scheduleAutoNext(state: GState, delay: number) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    if (state.paused) return
+    if (state.paused || manualModeRef.current) return  // manual mode never auto-advances
 
     timeoutRef.current = setTimeout(() => {
       const cur = gsRef.current
@@ -1976,6 +2136,7 @@ export default function GamePage(): JSX.Element {
   }
 
   function advanceToNextHand() {
+    flowGenRef.current++
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
@@ -1993,6 +2154,8 @@ export default function GamePage(): JSX.Element {
 
   function scheduleNextHand() {
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    // A manually-authored scenario is a one-off spot — never auto-deal a new hand.
+    if (manualModeRef.current) return
     // Don't deal a new hand while the hero is busted (waiting on a rebuy).
     // Sitting out does NOT halt the table — the hero is simply dealt out.
     if (heroIsBusted(gsRef.current)) return
@@ -2066,14 +2229,28 @@ export default function GamePage(): JSX.Element {
   // cards + board, set pot). Opponents get random cards (Phase 1); the existing
   // street/betting machinery takes over from there.
   function startScenario(sc: ScenarioCfg, live: boolean) {
+    // "Jouer en live" off ⇒ manual authoring: you drive every action by clicking.
+    manualModeRef.current = !live
+    setManualMode(!live)
+    setManualPanel(null)
+    manualUndoRef.current = []; setManualUndoDepth(0)
     const n = sc.numPlayers
     const positions = POS[n] ?? POS[6]
     const posIdx = Math.max(0, positions.indexOf(sc.heroPos))
     const dealerIdx = ((0 - posIdx) % n + n) % n   // hero (seat 0) gets heroPos
 
+    // Opponent forced hole cards (seat i ↔ sc.opponents[i-1], hero = seat 0). Both
+    // cards must be set to count as "imposed", otherwise the seat draws randomly.
+    const oppCardsFor = (seatIdx: number): [Card | null, Card | null] | null => {
+      const o = sc.opponents[seatIdx - 1]
+      return o?.cards && o.cards[0] && o.cards[1] ? [o.cards[0], o.cards[1]] : null
+    }
+
     const known = new Set<string>()
     sc.heroCards.forEach(c => c && known.add(c.rank + c.suit))
     sc.board.forEach(c => c && known.add(c.rank + c.suit))
+    // Block every forced opponent card too, so the random draw never duplicates it.
+    for (let i = 1; i < n; i++) oppCardsFor(i)?.forEach(c => c && known.add(c.rank + c.suit))
     const deck = shuffle(mkDeck().filter(c => !known.has(c.rank + c.suit)))
 
     const boardCount = sc.startStreet === 'preflop' ? 0 : sc.startStreet === 'flop' ? 3 : sc.startStreet === 'turn' ? 4 : 5
@@ -2084,7 +2261,7 @@ export default function GamePage(): JSX.Element {
       ...s,
       isDealer: i === dealerIdx,
       position: positions[((i - dealerIdx) % n + n) % n] ?? `S${i + 1}`,
-      holeCards: (s.isHero ? [sc.heroCards[0], sc.heroCards[1]] : [deck.pop() ?? null, deck.pop() ?? null]) as [Card | null, Card | null],
+      holeCards: (s.isHero ? [sc.heroCards[0], sc.heroCards[1]] : (oppCardsFor(i) ?? [deck.pop() ?? null, deck.pop() ?? null])) as [Card | null, Card | null],
       cardsFaceUp: s.isHero,
       isFolded: false, isAllIn: false, bet: 0, totalBet: 0, isSittingOut: false, isActive: false, lastAction: null,
     }))
@@ -2107,7 +2284,7 @@ export default function GamePage(): JSX.Element {
       seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack + s.bet })
       recordAction({ phase: 'preflop', seatIdx: sbIdx, name: seats[sbIdx].name, isHero: seats[sbIdx].isHero, actionType: 'SB', amount: sbPost }, pot)
       recordAction({ phase: 'preflop', seatIdx: bbIdx, name: seats[bbIdx].name, isHero: seats[bbIdx].isHero, actionType: 'BB', amount: bbPost }, pot)
-      const state: GState = { phase: 'preflop', deck, seats, community: [null, null, null, null, null], pot, currentBet: bbAmt, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: ['=== Scénario (préflop) ==='], winners: [], paused: !live, autoRunning: live }
+      const state: GState = { phase: 'preflop', deck, seats, community: [null, null, null, null, null], pot, currentBet: bbAmt, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: ['=== Scénario (préflop) ==='], winners: [], paused: false, autoRunning: live }
       setGs(state); gsRef.current = state
       const firstToAct = (bbIdx + 1) % n
       setTimeout(() => startStreet(gsRef.current, firstToAct), 420)
@@ -2122,11 +2299,172 @@ export default function GamePage(): JSX.Element {
       if (boardCount >= 3) recordAction({ phase: 'flop', seatIdx: -1, name: '', isHero: false, actionType: 'Flop', amount: 0 }, pot)
       if (boardCount >= 4) recordAction({ phase: 'turn', seatIdx: -1, name: '', isHero: false, actionType: 'Turn', amount: 0 }, pot)
       if (boardCount >= 5) recordAction({ phase: 'river', seatIdx: -1, name: '', isHero: false, actionType: 'River', amount: 0 }, pot)
-      const state: GState = { phase: sc.startStreet, deck, seats, community, pot, currentBet: 0, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: [`=== Scénario (${sc.startStreet}) ===`], winners: [], paused: !live, autoRunning: live }
+      const state: GState = { phase: sc.startStreet, deck, seats, community, pot, currentBet: 0, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: [`=== Scénario (${sc.startStreet}) ===`], winners: [], paused: false, autoRunning: live }
       setGs(state); gsRef.current = state
       const first = firstActivePostflop(seats, dealerIdx)
       setTimeout(() => startStreet(gsRef.current, first), 450)
     }
+  }
+
+  // ─── "Revive situation" — re-create a historical spot as a playable sandbox ──
+  // Rebuilds the EXACT state at `stepIdx` of `record` (board, pot, stacks, live
+  // bets, who folded) and re-draws every still-in opponent's hole cards FROM THE
+  // RANGE their betting line implies at that step (reconstructRanges). The hero
+  // keeps their real cards; the board replays identically. Then play continues.
+  function reviveSituation(record: HandHistoryRecord, stepIdx: number) {
+    // Invalidate any deferred street-transition timer from the current context.
+    flowGenRef.current++
+    // Stop any pending real-game timers so they don't fire under the sim.
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+
+    // Snapshot the real game ONCE (first entry), to restore it on quit.
+    if (!simModeRef.current) {
+      savedRealRef.current = {
+        gs: gsRef.current,
+        actions: [...currentHandActionsRef.current],
+        handStartStacks: { ...handStartStacksRef.current },
+        ranges: JSON.parse(JSON.stringify(rangeRef.current)),
+        rangeMeta: JSON.parse(JSON.stringify(rangeMetaRef.current)),
+        mood: { ...moodRef.current },
+      }
+    }
+    simSeedRef.current = { record, stepIdx }
+    simModeRef.current = true; setSimMode(true); setSimResult(null); setHistoryOpen(false)
+
+    const step = computeStepState(record, stepIdx)
+    const ranges = reconstructRanges(record, stepIdx)
+    const phase: Phase = step.currentPhase === 'showdown' ? 'river' : step.currentPhase
+    const boardCount = phase === 'preflop' ? 0 : phase === 'flop' ? 3 : phase === 'turn' ? 4 : 5
+    const dealerIdx = record.players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
+    const heroP = record.players.find(p => p.isHero)
+
+    // Card removal: hero cards + the WHOLE original board (so a re-drawn hand can
+    // never collide with a future community card we'll deal later).
+    const used = new Set<string>()
+    record.board.forEach(c => c && used.add(c.rank + c.suit))
+    heroP?.holeCards.forEach(c => c && used.add(c.rank + c.suit))
+
+    const community: (Card | null)[] = [null, null, null, null, null]
+    for (let i = 0; i < boardCount; i++) community[i] = record.board[i] as Card
+    const boardCards = community.filter(Boolean) as Card[]
+
+    let seats: Seat[] = record.players.map(p => {
+      const ss = step.players.find(x => x.idx === p.idx)!
+      const folded = ss.isFolded
+      let hole: [Card | null, Card | null]
+      if (p.isHero) hole = [p.holeCards[0], p.holeCards[1]]
+      else if (folded) hole = [null, null]
+      else {
+        const combo = sampleHandFromRange(ranges[p.idx] ?? initRange(boardCards), used)
+        if (combo) { used.add(combo[0].rank + combo[0].suit); used.add(combo[1].rank + combo[1].suit); hole = [combo[0], combo[1]] }
+        else hole = [null, null]
+      }
+      const streetBet = step.streetBets[p.idx] ?? 0
+      const stack = ss.stack
+      const committed = (p.startStack ?? stack) - stack
+      return {
+        idx: p.idx, name: p.name, isHero: p.isHero, stack,
+        holeCards: hole, cardsFaceUp: p.isHero,
+        bet: streetBet, totalBet: committed,
+        isFolded: folded, isAllIn: stack <= 0 && !folded && committed > 0,
+        isActive: false, lastAction: null, level: p.level,
+        position: p.position, isDealer: p.idx === dealerIdx, isSB: false, isBB: false,
+        isEliminated: false, isSittingOut: false, seatType: p.seatType,
+      }
+    })
+    const { sbIdx, bbIdx } = findBlinds(seats, dealerIdx)
+    seats = seats.map((s, i) => ({ ...s, isSB: i === sbIdx, isBB: i === bbIdx }))
+
+    // Seed the deck so future community cards replay IDENTICALLY to the original.
+    const remaining = (record.board.filter(Boolean) as Card[]).slice(boardCount)
+    const blocked = new Set(used); remaining.forEach(c => blocked.add(c.rank + c.suit))
+    const others = shuffle(mkDeck().filter(c => !blocked.has(c.rank + c.suit)))
+    const deck = [...others, ...[...remaining].reverse()]
+
+    const currentBet = seats.reduce((m, s) => Math.max(m, s.bet), 0)
+
+    // Continue the SAME hand's bookkeeping → live coach (aggression/barrels/
+    // priorRaises) stays coherent with what built the spot.
+    currentHandActionsRef.current = record.actions.slice(0, stepIdx + 1).map(a => ({ ...a }))
+    rangeRef.current = ranges; rangeMetaRef.current = {}; moodRef.current = {}
+    handStartStacksRef.current = {}
+    record.players.forEach(p => { handStartStacksRef.current[p.idx] = p.startStack })
+
+    const state: GState = {
+      phase, deck, seats, community, pot: step.pot, currentBet, minRaise: bbAmt,
+      actQueue: [], dealerIdx, handNum: record.handNum,
+      log: [`=== Simulation (${PHASE_LABEL[phase]}) ===`], winners: [],
+      paused: false, autoRunning: true,
+    }
+    setGs(state); gsRef.current = state
+
+    // Resume betting where the hand was: fresh street if nobody has acted on it
+    // yet, else only re-prompt the players who still owe action.
+    const phaseActs = record.actions.slice(0, stepIdx + 1)
+      .filter(a => a.seatIdx >= 0 && a.phase === phase && a.actionType !== 'SB' && a.actionType !== 'BB')
+    const actedThisStreet = new Set(phaseActs.map(a => a.seatIdx))
+    setTimeout(() => resumeReviveBetting(gsRef.current, dealerIdx, bbIdx, step.lastActorIdx, currentBet, actedThisStreet), 480)
+  }
+
+  function resumeReviveBetting(state: GState, dealerIdx: number, bbIdx: number, lastActorIdx: number, currentBet: number, actedThisStreet: Set<number>) {
+    const n = state.seats.length
+    const canAct = (idx: number) => {
+      const s = state.seats[idx]
+      return !!s && !s.isFolded && !s.isAllIn && !s.isEliminated && s.stack > 0
+    }
+    if (actedThisStreet.size === 0) {
+      // Fresh street — open the round normally (engine builds the full queue).
+      const first = state.phase === 'preflop'
+        ? (n === 2 ? dealerIdx : (bbIdx + 1) % n)   // HU: dealer/SB acts first pre-flop
+        : firstActivePostflop(state.seats, dealerIdx)
+      startStreet(state, first)
+      return
+    }
+    // Mid-street — queue only those who still owe action, clockwise from the
+    // last actor. A later raise re-opens the round via nextQueueAfter as usual.
+    const first = (Math.max(0, lastActorIdx) + 1) % n
+    const queue: number[] = []
+    for (let i = 0; i < n; i++) {
+      const idx = (first + i) % n
+      if (!canAct(idx)) continue
+      if (state.seats[idx].bet < currentBet || !actedThisStreet.has(idx)) queue.push(idx)
+    }
+    if (queue.length === 0) { endStreet(state); return }
+    const ns = { ...state, actQueue: queue }
+    setGs(ns); gsRef.current = ns
+    scheduleAutoNext(ns, 420)
+  }
+
+  // Restart / replay the sandbox: re-draw opponents (hero keeps their cards).
+  function restartSim() {
+    const seed = simSeedRef.current
+    if (seed) reviveSituation(seed.record, seed.stepIdx)
+  }
+
+  // Leave the sandbox: restore the real game exactly as it was, reopen history.
+  function exitSim() {
+    flowGenRef.current++
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+    const saved = savedRealRef.current
+    simModeRef.current = false; setSimMode(false); setSimResult(null); simSeedRef.current = null
+    if (saved) {
+      currentHandActionsRef.current = saved.actions
+      handStartStacksRef.current = saved.handStartStacks
+      rangeRef.current = saved.ranges
+      rangeMetaRef.current = saved.rangeMeta
+      moodRef.current = saved.mood
+      // Restore the real hand HALTED — the player resumes it with "Reprendre"
+      // (matches "la partie en pause reprend"). Idle/showdown stay as they were.
+      const resumePaused = saved.gs.phase !== 'idle' && saved.gs.phase !== 'showdown'
+      const restored = resumePaused ? { ...saved.gs, paused: true } : saved.gs
+      setGs(restored); gsRef.current = restored
+      savedRealRef.current = null
+    }
+    setHistoryOpen(true)
   }
 
   function startHandContinue(state: GState) {
@@ -2192,6 +2530,9 @@ export default function GamePage(): JSX.Element {
   }
 
   function stopGame() {
+    flowGenRef.current++
+    manualModeRef.current = false; setManualMode(false); setManualPanel(null)
+    manualUndoRef.current = []; setManualUndoDepth(0)
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
@@ -2259,6 +2600,7 @@ export default function GamePage(): JSX.Element {
     const cur = gsRef.current
     const hero = cur.seats.find(s => s.isHero)
     if (!hero || !hero.isActive) return
+    if (manualModeRef.current) pushManualUndo()
 
     let newState = executeAction(hero.idx, action, amount, cur)
     newState = { ...newState, actQueue: nextQueueAfter(newState, hero.idx, cur) }
@@ -2272,8 +2614,69 @@ export default function GamePage(): JSX.Element {
       return
     }
 
+    if (manualModeRef.current) { advanceManual(newState); return }
     setGs(newState); gsRef.current = newState
     scheduleAutoNext(newState, 400)
+  }
+
+  // ── Manual authoring (scenario): apply one player's action, then light up the
+  // next player to act — never auto-running bots. The coach updates because
+  // executeAction feeds currentHandActionsRef + trackRange like any real action.
+  function advanceManual(ns: GState) {
+    if (ns.actQueue.length === 0) {
+      // Street complete → collect + deal the next street; startStreet re-lights the
+      // first actor (manual branch) once the board lands.
+      setGs(ns); gsRef.current = ns
+      endStreet(ns)
+      return
+    }
+    const nextIdx = ns.actQueue[0]
+    const s2 = { ...ns, seats: ns.seats.map((s, i) => ({ ...s, isActive: i === nextIdx })) }
+    setGs(s2); gsRef.current = s2
+  }
+
+  // Snapshot the live state before a manual action so it can be undone.
+  function pushManualUndo() {
+    manualUndoRef.current.push({
+      gs: gsRef.current,
+      actions: [...currentHandActionsRef.current],
+      ranges: JSON.parse(JSON.stringify(rangeRef.current)),
+      rangeMeta: JSON.parse(JSON.stringify(rangeMetaRef.current)),
+    })
+    setManualUndoDepth(manualUndoRef.current.length)
+  }
+  // Step back one manual action — restores pot, bets, board, ranges and the
+  // on-turn player. Multiple undos walk back across street boundaries too.
+  function undoManual() {
+    const snap = manualUndoRef.current.pop()
+    setManualUndoDepth(manualUndoRef.current.length)
+    if (!snap) return
+    flowGenRef.current++  // cancel any pending street-transition timer
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+    setManualPanel(null); setManualBet('')
+    currentHandActionsRef.current = snap.actions
+    rangeRef.current = snap.ranges
+    rangeMetaRef.current = snap.rangeMeta
+    setGs(snap.gs); gsRef.current = snap.gs
+  }
+
+  function manualAct(seatIdx: number, action: string, rawAmount = 0) {
+    const cur = gsRef.current
+    if (!manualModeRef.current) return
+    if (cur.actQueue[0] !== seatIdx) return           // turn-order guard: only the on-turn seat
+    pushManualUndo()
+    setManualPanel(null); setManualBet('')
+    let ns = executeAction(seatIdx, action, rawAmount, cur)
+    ns = { ...ns, actQueue: nextQueueAfter(ns, seatIdx, cur) }
+    const stillIn = ns.seats.filter(s => !s.isFolded && !s.isEliminated)
+    if (stillIn.length === 1) {
+      const winner = foldWin(stillIn[0].idx, ns)
+      setGs(winner); gsRef.current = winner
+      saveCurrentHand(winner)
+      return
+    }
+    advanceManual(ns)
   }
 
   // ─── Bot style label ─────────────────────────────────────────────────────
@@ -2285,6 +2688,8 @@ export default function GamePage(): JSX.Element {
   // ─── Derived state ───────────────────────────────────────────────────────
   const hero = gs.seats.find(s => s.isHero)
   const isHeroTurn = hero?.isActive ?? false
+  const isScenario = !!cfg.scenario
+  const roomVariant: RoomVariant = simMode ? 'sim' : isScenario ? 'scenario' : 'default'
   // Hero is all-in inside a still-running hand (chips committed, board to come).
   const heroAllInLive = !!hero && hero.stack <= 0 && hero.isAllIn && !hero.isFolded
     && (hero.holeCards[0] !== null || hero.holeCards[1] !== null)
@@ -2317,6 +2722,11 @@ export default function GamePage(): JSX.Element {
     : preflopRaiseActions >= 2 ? 'vs3bet'
     : preflopRaiseActions === 1 ? 'vsopen'
     : 'rfi'
+  // Position of the opener we're facing (vs-open) → defend wider vs a late/wide
+  // open, tighter vs a tight UTG open. Same source as the critique to stay coherent.
+  const heroVsOpenerPos = heroScenario === 'vsopen'
+    ? gs.seats[[...handActions].reverse().find(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))?.seatIdx ?? -1]?.position
+    : undefined
   // Villain aggression → range-aware equity. Count opponents' bets/raises this
   // hand; barrels = how many post-flop streets they've fired.
   const villainAggro = handActions.filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
@@ -2384,7 +2794,7 @@ export default function GamePage(): JSX.Element {
   //   f = fold · c = check/call · &(1) = ⅓ pot · é(2) = ⅔ pot · p = pot · a = all-in
   //   (& and é are the AZERTY 1/2 keys; the bare 1/2 digits work too as a fallback)
   useEffect(() => {
-    if (!isHeroTurn || gs.paused) return
+    if (!isHeroTurn || gs.paused || manualMode) return  // manual mode has its own panel shortcuts
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const el = document.activeElement
@@ -2402,14 +2812,46 @@ export default function GamePage(): JSX.Element {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHeroTurn, gs.paused, gs.currentBet, gs.pot, callAmt, canCheck, canRaise, isOpenBet, heroMaxTo, bbAmt])
+  }, [isHeroTurn, gs.paused, gs.currentBet, gs.pot, callAmt, canCheck, canRaise, isOpenBet, heroMaxTo, bbAmt, manualMode])
+
+  // Manual-mode shortcuts — active while the bet panel is open, for ANY on-turn
+  // player: f = fold · c = check/call · a = all-in · Enter = send typed amount ·
+  // Esc = close the panel. Work even with the number input focused (letters don't
+  // type into it), and the digits still go to the input normally.
+  useEffect(() => {
+    if (!manualMode || manualPanel === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const idx = manualPanel
+      const cur = gsRef.current
+      const s = cur.seats[idx]
+      if (!s) return
+      const toCall = Math.max(0, cur.currentBet - s.bet)
+      const maxTo = s.bet + s.stack
+      const canCheckP = toCall === 0
+      const k = e.key.toLowerCase()
+      if (k === 'escape') { e.preventDefault(); setManualPanel(null); setManualBet('') }
+      else if (k === 'f') { e.preventDefault(); manualAct(idx, 'FOLD', 0) }
+      else if (k === 'c') { e.preventDefault(); manualAct(idx, canCheckP ? 'CHECK' : 'CALL', toCall) }
+      else if (k === 'a') { e.preventDefault(); manualAct(idx, canCheckP ? 'BET' : 'RAISE', maxTo) }
+      else if (k === 'enter') {
+        const minTo = Math.min(maxTo, cur.currentBet + cur.minRaise)
+        const typedTo = Math.round((parseFloat(manualBet) || 0) * bbAmt)
+        if (typedTo >= (canCheckP ? bbAmt : minTo)) { e.preventDefault(); manualAct(idx, canCheckP ? 'BET' : 'RAISE', typedTo) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualMode, manualPanel, manualBet, bbAmt])
 
   // Decision clock: when the hero's time runs out, auto-act. Facing a bet that
   // must be called/raised → auto-fold and sit out next hand. Otherwise (a free
   // check is available) → auto-check and the hand continues normally.
   useEffect(() => {
     // The clock freezes while the coach hover-card is open (resumes on leave).
-    if (!isHeroTurn || gs.paused || coachOpen) return
+    // In manual authoring mode there is no clock at all — you take your time.
+    if (!isHeroTurn || gs.paused || coachOpen || manualMode) return
     const t = setTimeout(() => {
       const cur = gsRef.current
       const h = cur.seats.find(s => s.isHero)
@@ -2425,7 +2867,7 @@ export default function GamePage(): JSX.Element {
     }, decisionTimer * 1000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHeroTurn, gs.paused, coachOpen, gs.handNum, gs.currentBet])
+  }, [isHeroTurn, gs.paused, coachOpen, gs.handNum, gs.currentBet, manualMode])
 
   // Apply a queued pre-action ("check box") the instant it's the hero's turn.
   useEffect(() => {
@@ -2460,12 +2902,32 @@ export default function GamePage(): JSX.Element {
       {/* ── HEADER (draggable title bar) ── */}
       <header className="app-drag flex items-center gap-3 px-4 py-2 border-b border-white/8 flex-shrink-0 relative z-30"
         style={{background:'rgba(5,8,16,0.97)'}}>
-        <button onClick={() => navigate('/training')}
+        <button onClick={() => (simMode ? exitSim() : navigate(isScenario ? '/setup' : '/training'))}
           className="app-drag-none flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors">
           <ArrowLeft size={15}/>
-          <span className="text-[10px] uppercase tracking-widest font-bold">Quitter</span>
+          <span className="text-[10px] uppercase tracking-widest font-bold">{simMode ? 'Quitter la simulation' : 'Quitter'}</span>
         </button>
         <div className="h-4 w-px bg-white/10"/>
+        {simMode && (
+          <span className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-[0.18em]"
+            style={{ borderColor: 'rgba(167,139,255,0.5)', background: 'rgba(120,90,230,0.18)', color: '#c8b6ff' }}>
+            ⚡ Simulation · partie réelle en pause
+          </span>
+        )}
+        {!simMode && isScenario && (
+          <span className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-[0.18em]"
+            style={{ borderColor: 'rgba(240,192,96,0.5)', background: 'rgba(200,120,50,0.16)', color: '#f0c878' }}>
+            ✦ Setup Position{manualMode ? ' · mode manuel' : ''}
+          </span>
+        )}
+        {manualMode && (
+          <button onClick={undoManual} disabled={manualUndoDepth === 0}
+            title="Annuler la dernière action saisie"
+            className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-widest transition-all disabled:opacity-30 enabled:hover:bg-white/10"
+            style={{ borderColor: 'rgba(240,192,96,0.4)', background: 'rgba(255,255,255,0.05)', color: '#f0c878' }}>
+            <ArrowLeft size={11}/> Annuler{manualUndoDepth > 0 ? ` (${manualUndoDepth})` : ''}
+          </button>
+        )}
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Main</span>
           <span className="text-[10px] font-bold text-[#c9a227]">#{gs.handNum}</span>
@@ -2480,8 +2942,14 @@ export default function GamePage(): JSX.Element {
         </div>
         <div className="flex-1"/>
 
-        {/* History button */}
-        {handHistory.length > 0 && (
+        {/* History button — replaced by Restart inside a Revive sandbox. */}
+        {simMode ? (
+          <button onClick={restartSim}
+            className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
+            style={{ borderColor: 'rgba(167,139,255,0.5)', background: 'rgba(120,90,230,0.18)', color: '#c8b6ff' }}>
+            <RefreshCw size={11}/> Restart
+          </button>
+        ) : handHistory.length > 0 && (
           <button onClick={() => setHistoryOpen(true)}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/10 transition-all text-[9px] font-bold uppercase tracking-widest">
             Historique ({handHistory.length})
@@ -2540,7 +3008,7 @@ export default function GamePage(): JSX.Element {
 
       {/* ── TABLE AREA ── */}
       <div className="flex-1 relative overflow-hidden min-h-0">
-        <Room/>
+        <Room variant={roomVariant}/>
 
         {/* Idle overlay */}
         <AnimatePresence>
@@ -2575,7 +3043,7 @@ export default function GamePage(): JSX.Element {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
               style={{padding:'18px 28px'}}>
               <div style={{width:'100%',maxWidth:1120}}>
-                <TableSVG/>
+                <TableSVG variant={roomVariant}/>
               </div>
             </div>
 
@@ -2629,7 +3097,8 @@ export default function GamePage(): JSX.Element {
                   isShowdown={isShowdown}
                   turnSeconds={decisionTimer}
                   turnNonce={`${gs.handNum}:${gs.currentBet}`}
-                  turnPaused={gs.paused || coachOpen}
+                  turnPaused={gs.paused || coachOpen || manualMode}
+                  hideTimer={manualMode}
                   onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
                   onHover={(entering, e) => {
                     if (seat.isHero) {
@@ -2649,10 +3118,44 @@ export default function GamePage(): JSX.Element {
                       // on the table container) or when hovering another player.
                       if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                     }
+                    // Manual mode: hovering the on-turn player reveals the action panel
+                    // (alongside their range/advice). It then stays put until you act,
+                    // undo, or dismiss it — so you can reach it without it vanishing.
+                    if (entering && manualModeRef.current && gsRef.current.actQueue[0] === seat.idx && !seat.isFolded
+                        && gsRef.current.phase !== 'showdown' && gsRef.current.phase !== 'idle'
+                        && manualPanel !== seat.idx) {
+                      // Pre-fill a clean default "raise to" (min legal raise, in BB,
+                      // no trailing ".0") so Enter works straight away.
+                      const sNow = gsRef.current.seats[seat.idx]
+                      const minToChips = Math.min(sNow.bet + sNow.stack, gsRef.current.currentBet + gsRef.current.minRaise)
+                      const defBB = bbAmt > 0 ? minToChips / bbAmt : 1
+                      setManualBet(defBB % 1 === 0 ? String(defBB) : defBB.toFixed(1))
+                      setManualPanel(seat.idx)
+                    }
                   }}
                 />
               )
             })}
+
+            {/* Manual authoring: a stylish arrow marks whose turn it is. Hovering the
+                seat (like for the range) reveals the action panel — no click needed. */}
+            {manualMode && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown' && (() => {
+              const idx = gs.actQueue[0]
+              if (idx === undefined) return null
+              const seat = gs.seats[idx]
+              if (!seat || seat.isFolded) return null
+              const pos = getSeatPosPct(idx, gs.seats.length)
+              return (
+                <div className="absolute z-20 pointer-events-none flex flex-col items-center"
+                  style={{ left: pos.left, top: `calc(${pos.top} - 7.5%)`, transform: 'translate(-50%,-50%)' }}>
+                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[#f0c878] mb-0.5 animate-pulse"
+                    style={{ textShadow: '0 0 8px rgba(240,192,96,0.7)' }}>à parler</span>
+                  <svg width="26" height="16" viewBox="0 0 26 16" className="animate-bounce" style={{ filter: 'drop-shadow(0 2px 4px rgba(240,180,70,0.6))' }}>
+                    <path d="M13 16 L2 3 Q13 8 24 3 Z" fill="#f0c060" stroke="#fff3c0" strokeWidth="0.8"/>
+                  </svg>
+                </div>
+              )
+            })()}
 
             {/* Dealer button */}
             {gs.phase !== 'idle' && gs.seats.length > 0 && (() => {
@@ -2994,10 +3497,106 @@ export default function GamePage(): JSX.Element {
         </div>
       )}
 
+      {/* ── MANUAL action panel (scenario authoring) ── */}
+      <AnimatePresence>
+        {manualMode && manualPanel !== null && (() => {
+          const seat = gs.seats[manualPanel]
+          if (!seat) return null
+          const toCall = Math.max(0, gs.currentBet - seat.bet)
+          const maxTo = seat.bet + seat.stack
+          const minTo = Math.min(maxTo, gs.currentBet + gs.minRaise)
+          const canCheck = toCall === 0
+          const potNow = gs.pot
+          // "raise to" total for a fraction of the pot (bet vs raise math).
+          const sizeTo = (frac: number) => Math.min(maxTo, canCheck
+            ? Math.max(bbAmt, Math.round(potNow * frac))
+            : Math.max(minTo, gs.currentBet + Math.round((potNow + toCall) * frac)))
+          const typedTo = Math.round((parseFloat(manualBet) || 0) * bbAmt)
+          const sendBet = (to: number) => manualAct(manualPanel, canCheck ? 'BET' : 'RAISE', to)
+          return (
+            <div className="fixed inset-x-0 bottom-24 z-[85] flex justify-center pointer-events-none">
+              <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 16, opacity: 0 }}
+                className="rounded-2xl border p-4 w-[440px] pointer-events-auto" style={{ background: '#180c08', borderColor: 'rgba(240,192,96,0.45)', boxShadow: '0 0 50px rgba(200,120,40,0.3)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[12px] font-black uppercase tracking-widest text-[#f0c878]">
+                    {seat.isHero ? 'Toi' : seat.name} <span className="text-[#c9a227]/70">{seat.position}</span> — action
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/45">{toCall > 0 ? `à payer $${toCall}` : 'aucune mise à payer'} · pot ${potNow}</span>
+                    <button onClick={() => { setManualPanel(null); setManualBet('') }} className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white text-xs">✕</button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => manualAct(manualPanel, 'FOLD', 0)}
+                    className="flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest border border-red-700/40 bg-red-900/25 text-red-300 hover:bg-red-900/40">Fold</button>
+                  <button onClick={() => manualAct(manualPanel, canCheck ? 'CHECK' : 'CALL', toCall)}
+                    className="flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest border border-emerald-600/40 bg-emerald-900/25 text-emerald-300 hover:bg-emerald-900/40">
+                    {canCheck ? 'Check' : `Call $${toCall}`}</button>
+                </div>
+                <div className="mt-2.5 rounded-xl border border-white/10 bg-black/30 p-2.5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{canCheck ? 'Bet' : 'Raise'} to (BB)</span>
+                    <input autoFocus type="number" value={manualBet} onChange={e => setManualBet(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && typedTo >= (canCheck ? bbAmt : minTo)) { e.preventDefault(); sendBet(typedTo) } }}
+                      placeholder={(() => { const v = minTo / bbAmt; return v % 1 === 0 ? String(v) : v.toFixed(1) })()}
+                      className="w-20 bg-black/50 border border-white/15 rounded px-2 py-1 text-[13px] text-white text-center outline-none focus:border-[#c9a227]/60" />
+                    <button disabled={typedTo < (canCheck ? bbAmt : minTo)} onClick={() => sendBet(typedTo)}
+                      className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest disabled:opacity-30"
+                      style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)', color: '#1a0e02' }}>
+                      {canCheck ? 'Bet' : 'Raise'} ${typedTo || 0}
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {([['½ pot', 0.5], ['¾ pot', 0.75], ['pot', 1]] as const).map(([lbl, f]) => (
+                      <button key={lbl} onClick={() => sendBet(sizeTo(f))}
+                        className="flex-1 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest border border-white/10 bg-white/5 text-white/60 hover:bg-white/10">
+                        {lbl} <span className="text-white/35">${sizeTo(f)}</span></button>
+                    ))}
+                    <button onClick={() => sendBet(maxTo)}
+                      className="flex-1 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest border border-[#c9a227]/30 bg-[#c9a227]/10 text-[#c9a227] hover:bg-[#c9a227]/20">All-in ${maxTo}</button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )
+        })()}
+      </AnimatePresence>
+
       {/* ── HAND HISTORY MODAL ── */}
       <AnimatePresence>
         {historyOpen && handHistory.length > 0 && (
-          <HandHistoryModal records={handHistory} onClose={() => setHistoryOpen(false)}/>
+          <HandHistoryModal records={handHistory} onClose={() => setHistoryOpen(false)} onRevive={reviveSituation}/>
+        )}
+      </AnimatePresence>
+
+      {/* ── Revive sandbox: end-of-hand prompt (replay re-draws opponents) ── */}
+      <AnimatePresence>
+        {simMode && simResult && (
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+            className="fixed inset-0 z-[90] flex items-center justify-center" style={{background:'rgba(6,5,18,0.78)'}}>
+            <motion.div initial={{scale:0.92,y:18}} animate={{scale:1,y:0}}
+              className="rounded-2xl border p-7 text-center max-w-md"
+              style={{ background:'#0e0c22', borderColor:'rgba(167,139,255,0.4)', boxShadow:'0 0 60px rgba(120,90,230,0.35)' }}>
+              <div className="text-4xl mb-2">⚡</div>
+              <h2 className="text-lg font-black uppercase tracking-[0.18em] text-[#c8b6ff]">Main terminée</h2>
+              <p className="text-[12px] text-white/55 mt-2 mb-1">
+                {simResult.winners.map(wi => simResult.seats.find(s => s.idx === wi)?.name ?? '?').join(', ') || '—'} remporte le coup
+                {(() => { const h = simResult.seats.find(s => s.isHero); return h && simResult.winners.includes(h.idx) ? ' — tu gagnes 🎉' : '' })()}
+              </p>
+              <p className="text-[10px] text-white/35 mb-5">Rejouer redistribue de nouvelles cartes aux adversaires (dans leur range) — tes cartes ne changent pas.</p>
+              <div className="flex items-center justify-center gap-3">
+                <button onClick={restartSim}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-[0.16em] text-[12px] transition-all hover:scale-[1.03]"
+                  style={{ background:'linear-gradient(135deg,#a78bff,#6d4ed6)', color:'#0a0716' }}>
+                  <RefreshCw size={14}/> Rejouer le coup
+                </button>
+                <button onClick={exitSim}
+                  className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
+                  Quitter
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -3050,6 +3649,7 @@ export default function GamePage(): JSX.Element {
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}
+                vsOpenerPos={heroVsOpenerPos}
                 actionRecap={gs.log.slice(-10)}
                 onClose={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(null) }}
               />

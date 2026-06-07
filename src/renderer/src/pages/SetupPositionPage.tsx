@@ -9,7 +9,7 @@ import WindowControls from '../components/layout/WindowControls'
 interface Card { rank: string; suit: string }
 type Street = 'preflop' | 'flop' | 'turn' | 'river'
 type Discipline = 'tight' | 'normal' | 'loose'
-interface Opp { level: number; discipline: Discipline }
+interface Opp { level: number; discipline: Discipline; cards: [Card | null, Card | null] }
 export interface ScenarioConfig {
   numPlayers: number
   heroPos: string
@@ -21,6 +21,7 @@ export interface ScenarioConfig {
   potBB: number
   opponents: Opp[]
 }
+const emptyOpp = (): Opp => ({ level: 2, discipline: 'normal', cards: [null, null] })
 
 const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = ['♠', '♥', '♦', '♣']
@@ -117,12 +118,12 @@ export default function SetupPositionPage() {
   const [sb, setSb] = useState(1)
   const [bb, setBb] = useState(2)
   const [potBB, setPotBB] = useState(6)
-  const [startStreet, setStartStreet] = useState<Street>('flop')
+  const [startStreet, setStartStreet] = useState<Street>('preflop')
   const [heroCards, setHeroCards] = useState<[Card | null, Card | null]>([null, null])
   const [board, setBoard] = useState<(Card | null)[]>([null, null, null, null, null])
-  const [opponents, setOpponents] = useState<Opp[]>(Array.from({ length: 5 }, () => ({ level: 2, discipline: 'normal' as Discipline })))
-  const [playLive, setPlayLive] = useState(true)
-  const [picker, setPicker] = useState<{ target: 'hero' | 'board'; idx: number } | null>(null)
+  const [opponents, setOpponents] = useState<Opp[]>(Array.from({ length: 5 }, emptyOpp))
+  const [playLive, setPlayLive] = useState(false)  // default: manual authoring mode
+  const [picker, setPicker] = useState<{ target: 'hero' | 'board' | 'opp'; idx: number; slot: number } | null>(null)
   const [saved, setSaved] = useState<{ name: string; scenario: ScenarioConfig }[]>([])
   const [saveName, setSaveName] = useState('')
   const [error, setError] = useState('')
@@ -134,7 +135,7 @@ export default function SetupPositionPage() {
     setOpponents(prev => {
       const n = numPlayers - 1
       if (prev.length === n) return prev
-      if (prev.length < n) return [...prev, ...Array.from({ length: n - prev.length }, () => ({ level: 2, discipline: 'normal' as Discipline }))]
+      if (prev.length < n) return [...prev, ...Array.from({ length: n - prev.length }, emptyOpp)]
       return prev.slice(0, n)
     })
   }, [numPlayers]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -146,17 +147,22 @@ export default function SetupPositionPage() {
     const s = new Set<string>()
     heroCards.forEach(c => c && s.add(c.rank + c.suit))
     board.forEach(c => c && s.add(c.rank + c.suit))
+    opponents.forEach(o => o.cards.forEach(c => c && s.add(c.rank + c.suit)))
     return s
-  }, [heroCards, board])
+  }, [heroCards, board, opponents])
 
   function setCard(c: Card) {
     if (!picker) return
     if (picker.target === 'hero') setHeroCards(prev => { const n = [...prev] as [Card | null, Card | null]; n[picker.idx] = c; return n })
-    else setBoard(prev => { const n = [...prev]; n[picker.idx] = c; return n })
+    else if (picker.target === 'board') setBoard(prev => { const n = [...prev]; n[picker.idx] = c; return n })
+    else setOpponents(prev => prev.map((o, i) => i === picker.idx ? { ...o, cards: (picker.slot === 0 ? [c, o.cards[1]] : [o.cards[0], c]) as [Card | null, Card | null] } : o))
   }
   function clearCard(target: 'hero' | 'board', idx: number) {
     if (target === 'hero') setHeroCards(prev => { const n = [...prev] as [Card | null, Card | null]; n[idx] = null; return n })
     else setBoard(prev => { const n = [...prev]; n[idx] = null; return n })
+  }
+  function clearOppCard(oppIdx: number, slot: number) {
+    setOpponents(prev => prev.map((o, i) => i === oppIdx ? { ...o, cards: (slot === 0 ? [null, o.cards[1]] : [o.cards[0], null]) as [Card | null, Card | null] } : o))
   }
 
   function buildScenario(): ScenarioConfig {
@@ -192,7 +198,8 @@ export default function SetupPositionPage() {
   }
   function loadScenario(s: ScenarioConfig) {
     setNumPlayers(s.numPlayers); setHeroPos(s.heroPos); setStackBB(s.stackBB); setSb(s.sb); setBb(s.bb)
-    setPotBB(s.potBB); setStartStreet(s.startStreet); setHeroCards(s.heroCards); setBoard(s.board); setOpponents(s.opponents)
+    setPotBB(s.potBB); setStartStreet(s.startStreet); setHeroCards(s.heroCards); setBoard(s.board)
+    setOpponents(s.opponents.map(o => ({ ...emptyOpp(), ...o, cards: (o.cards ?? [null, null]) as [Card | null, Card | null] })))
   }
   function deleteScenario(name: string) {
     const next = saved.filter(s => s.name !== name)
@@ -279,7 +286,7 @@ export default function SetupPositionPage() {
                 return (
                   <div key={i} className="relative">
                     {board[i] && <button onClick={() => clearCard('board', i)} className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center"><X size={9} /></button>}
-                    <CardSlot card={board[i]} size="sm" onClick={() => setPicker({ target: 'board', idx: i })} />
+                    <CardSlot card={board[i]} size="sm" onClick={() => setPicker({ target: 'board', idx: i, slot: 0 })} />
                   </div>
                 )
               })}
@@ -292,7 +299,7 @@ export default function SetupPositionPage() {
                 {[0, 1].map(i => (
                   <div key={i} className="relative">
                     {heroCards[i] && <button onClick={() => clearCard('hero', i)} className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center"><X size={9} /></button>}
-                    <CardSlot card={heroCards[i]} onClick={() => setPicker({ target: 'hero', idx: i })} />
+                    <CardSlot card={heroCards[i]} onClick={() => setPicker({ target: 'hero', idx: i, slot: 0 })} />
                   </div>
                 ))}
               </div>
@@ -352,10 +359,21 @@ export default function SetupPositionPage() {
                         style={o.discipline === d.id ? { background: d.color + '22', color: d.color, borderColor: d.color + '88' } : { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>{d.label}</button>
                     ))}
                   </div>
+                  {/* Optional forced hole cards — leave empty for a random/range draw. */}
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className="text-[8px] uppercase tracking-widest text-white/35 font-bold">Cartes</span>
+                    {[0, 1].map(slot => (
+                      <div key={slot} className="relative">
+                        {o.cards[slot] && <button onClick={() => clearOppCard(i, slot)} className="absolute -top-1 -right-1 z-10 w-3.5 h-3.5 rounded-full bg-red-600 text-white flex items-center justify-center"><X size={7} /></button>}
+                        <CardSlot card={o.cards[slot]} size="sm" onClick={() => setPicker({ target: 'opp', idx: i, slot })} />
+                      </div>
+                    ))}
+                    <span className="text-[8px] text-white/25 italic">{o.cards[0] || o.cards[1] ? 'imposées' : 'aléatoire'}</span>
+                  </div>
                 </div>
               ))}
             </div>
-            <p className="text-[8.5px] text-white/30 mt-2 leading-relaxed">La discipline ajustera (Phase 2) le tirage des cartes adverses dans la range qu'impliquent leurs mises : serré = haut de range, tilt = beaucoup plus large.</p>
+            <p className="text-[8.5px] text-white/30 mt-2 leading-relaxed">Laisse les cartes d'un bot vides = tirage aléatoire. Renseigne-les = main imposée pour simuler un spot précis.</p>
           </div>
 
           {/* save / load */}
@@ -378,10 +396,10 @@ export default function SetupPositionPage() {
             </div>
           </div>
 
-          {/* betting timeline placeholder (Phase 2) */}
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.01] p-3 text-center">
-            <span className="text-[10px] uppercase tracking-widest text-white/35 font-bold">Historique des mises</span>
-            <p className="text-[9px] text-white/25 mt-1">Éditeur timeline (BB) — Phase 2. Pour l'instant : adversaires aléatoires, pot de départ réglable ci-contre.</p>
+          {/* in-room manual bet authoring */}
+          <div className="rounded-2xl border border-[#c9a227]/20 bg-[#c9a227]/[0.04] p-3 text-center">
+            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">Édition des mises</span>
+            <p className="text-[9px] text-white/40 mt-1 leading-relaxed">Décoche <b className="text-white/60">« Jouer en live »</b> pour le <b className="text-white/60">mode manuel</b> : dans la salle, clique le joueur dont c'est le tour pour saisir son action (fold / check / call / mise). Le coach se met à jour à chaque mise.</p>
           </div>
         </div>
       </div>
@@ -389,9 +407,9 @@ export default function SetupPositionPage() {
       {/* Footer actions */}
       <div className="border-t border-white/5 px-6 py-3 flex items-center gap-3">
         <button onClick={reset} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white/50 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10"><RotateCcw size={13} /> Reset cartes</button>
-        <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 cursor-pointer">
+        <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 cursor-pointer" title={playLive ? 'Les bots jouent automatiquement' : 'Mode manuel : tu pilotes chaque mise au clic dans la salle'}>
           <input type="checkbox" checked={playLive} onChange={e => setPlayLive(e.target.checked)} className="accent-[#c9a227]" />
-          <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Jouer en live</span>
+          <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{playLive ? 'Jouer en live' : 'Mode manuel (édition mises)'}</span>
         </label>
         {error && <span className="text-[11px] text-red-400 font-bold">{error}</span>}
         <button onClick={launch}

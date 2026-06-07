@@ -37,7 +37,7 @@ interface UnifiedAdvice {
 export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
-  raiseToBB, multiway, actionRecap, onClose,
+  raiseToBB, multiway, vsOpenerPos, actionRecap, onClose,
   embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
@@ -57,6 +57,7 @@ export default function RangeAssistant({
   bb: number
   raiseToBB: number
   multiway: boolean
+  vsOpenerPos?: string
   actionRecap: string[]
   onClose: () => void
   embedded?: boolean
@@ -66,7 +67,7 @@ export default function RangeAssistant({
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
-  const rangeMap = isPreflop ? buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway }) : null
+  const rangeMap = isPreflop ? buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos }) : null
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
   const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
 

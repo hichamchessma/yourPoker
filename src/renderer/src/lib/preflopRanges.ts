@@ -24,12 +24,18 @@ function comboScore(hi: number, lo: number, suited: boolean, pair: boolean): num
   let s = hi * 3 + lo * 2.5
   if (suited) s += 14
   const gap = hi - lo - 1
-  s -= gap * 2.6
+  // Ace/King-high offsuit hands are opened for HIGH-CARD DOMINANCE (they crush a
+  // wide blind-defending range), not for straight potential — so the gap between
+  // their cards matters far less. A flat 2.6/gap penalty buried Kxo/Axo (e.g. K5o
+  // ranked ~60%, behind 64s/J7o) and made a normal SB-steal open read as "trop
+  // large". Use a gentler gap slope for dominance hands.
+  const gapPen = hi >= 13 ? 1.4 : 2.6
+  s -= gap * gapPen
   if (gap === 0) s += 7          // connectors (straight potential)
   else if (gap === 1) s += 4     // one-gappers
   else if (gap === 2) s += 2     // two-gappers
   if (hi === 14) s += 8          // ace (nut potential)
-  else if (hi === 13) s += 3     // king
+  else if (hi === 13) s += 5     // king (dominance)
   return s
 }
 
@@ -65,10 +71,14 @@ function topByPct(pct: number): Set<string> {
 // RFI open width as a function of how many players still act behind the hero
 // (blinds included). Fewer players behind → open wider. This auto-adapts to ANY
 // table size: heads-up, short-handed, 6-max or full-ring all fall out of it.
+// NOTE the dip at 1 (SB) vs 2 (BTN): the SB is the only "1 behind" spot and it
+// plays the whole hand OUT OF POSITION, so even though it steals wide it should
+// be a touch TIGHTER than the in-position button (raise-only). That OOP penalty
+// is why this isn't strictly monotonic in players-behind — position matters too.
 const OPEN_BY_BEHIND: Record<number, number> = {
   0: 60, // BB option (everyone folded to BB) — wide "playable" set
-  1: 45, // last to open before the BB (SB / HU button)
-  2: 47, // button with the two blinds behind
+  1: 49, // blind battle: SB folded-to (1 behind + dead money) but OOP → steal, ≤ BTN
+  2: 52, // button: 2 blinds behind AND in position the whole hand → widest opener
   3: 31, // cutoff
   4: 24,
   5: 20,
@@ -83,7 +93,7 @@ function openPctByBehind(behind: number): number {
 }
 // Fallback open % by label (used if the caller can't supply playersBehind).
 const OPEN_PCT: Record<string, number> = {
-  UTG: 15, 'UTG+1': 16, MP: 18, 'MP+1': 19, HJ: 22, CO: 28, BTN: 46, SB: 45, BB: 60, 'BTN/SB': 47,
+  UTG: 15, 'UTG+1': 16, MP: 18, 'MP+1': 19, HJ: 22, CO: 28, BTN: 52, SB: 49, BB: 60, 'BTN/SB': 49,
 }
 // vs-open: polarized 3-bet VALUE (explicit, NOT a linear top-% which would 3-bet
 // medium pairs as value) + bluffs (THREEBET_BLUFFS) + a position-scaled FLAT band.
@@ -122,15 +132,36 @@ const THREEBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s', 'A2s', 'K9s', 'Q9s', 'J9s'
 const FOURBET_BLUFFS = new Set(['A5s', 'A4s', 'A3s'])
 
 export interface RangeOpts {
-  effBB?: number       // effective stack in big blinds
-  raiseToBB?: number   // size of the open we're facing (in BB)
-  multiway?: boolean   // other players already in the pot
+  effBB?: number        // effective stack in big blinds
+  raiseToBB?: number    // size of the open we're facing (in BB)
+  multiway?: boolean    // other players already in the pot
+  vsOpenerPos?: string  // position of the player who opened into us (vs-open only)
+}
+
+// How much to widen/tighten our defense based on WHO opened. A late, wide opener
+// (BTN/SB steal) is beaten by a much wider continuing range than a tight UTG
+// open. Anchored so a ~CO-width open (≈25%) ⇒ factor 1.0 (≈ current behaviour),
+// then scales with the opener's RFI width. Undefined opener ⇒ 1.0 (no change),
+// which keeps every un-wired caller identical to before.
+function defenseFactor(o: RangeOpts): number {
+  if (!o.vsOpenerPos) return 1
+  const openerWidth = openPctFor(o.vsOpenerPos)
+  return Math.max(0.6, Math.min(1.8, openerWidth / 25))
 }
 
 // Adjust a call width for stack depth, the raise size faced, and multiway.
 function adjustCall(base: number, o: RangeOpts): number {
   let c = base
-  if (o.raiseToBB && o.raiseToBB > 2.5) c *= Math.max(0.5, 1 - (o.raiseToBB - 2.5) * 0.08) // bigger raise → call less
+  if (o.raiseToBB !== undefined) {
+    // The open SIZE drives the price you're getting. A bigger raise → defend
+    // tighter; a SMALL open / min-raise → defend MUCH wider (you risk little to
+    // win the dead money), especially closing the action from the BB. Previously
+    // the model only tightened vs big raises and never widened vs small ones, so
+    // a BB facing a 2bb min-raise "defended" the same 31% as vs a 3x — way too
+    // tight for the price.
+    if (o.raiseToBB > 2.5) c *= Math.max(0.5, 1 - (o.raiseToBB - 2.5) * 0.08)
+    else if (o.raiseToBB < 2.5) c *= 1 + (2.5 - o.raiseToBB) * 0.7  // 2bb open → ×1.35
+  }
   if (o.effBB !== undefined) { if (o.effBB < 25) c *= 0.6; else if (o.effBB > 80) c *= 1.15 } // short folds more, deep calls more
   if (o.multiway) c *= 0.8 // tighten multiway
   return Math.max(0, c)
@@ -149,7 +180,9 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // Polarized 3-bet (explicit value + blocker/suited bluffs), then a flat band.
     const def = VS_OPEN_DEF[position] ?? { value: ['AA', 'KK', 'QQ', 'AKs', 'AKo'], call: 10 }
     const value = new Set(def.value)
-    const cont = topByPct(adjustCall(def.call, opts) + 3) // +3% ≈ covers the value combos
+    // Flat band scales with the opener's width: defend wider vs a late/wide open,
+    // tighter vs a tight UTG open. (3-bet value/bluffs stay fixed.)
+    const cont = topByPct(adjustCall(def.call, opts) * defenseFactor(opts) + 3) // +3% ≈ covers the value combos
     for (const h of RANKED) {
       const a: RangeAction = value.has(h.key) || THREEBET_BLUFFS.has(h.key) ? '3bet'
         : cont.has(h.key) ? 'call' : 'fold'
@@ -168,6 +201,19 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     }
   }
   return map
+}
+
+// Cumulative % of all combos at which a hand enters the open ranking (0..100).
+// Lets callers tell a "borderline a touch too loose" open from a real punt.
+export function handOpenRank(key: string): number {
+  let acc = 0
+  for (const h of RANKED) { acc += h.combos; if (h.key === key) return (acc / TOTAL_COMBOS) * 100 }
+  return 100
+}
+// The RFI open width (%) used for a given position / players-behind — mirrors the
+// logic inside buildRangeMap so a critique can measure how far off an open was.
+export function openPctFor(position: string, playersBehind?: number): number {
+  return playersBehind !== undefined ? openPctByBehind(playersBehind) : (OPEN_PCT[position] ?? 18)
 }
 
 // Canonical hand key (e.g. "AKs", "QQ", "T9o") from two cards.
