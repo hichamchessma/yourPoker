@@ -89,11 +89,12 @@ export default function RangeAssistant({
       const chart = heroChartAction ?? 'fold'
       const equity = monteCarloEquity([card1, card2], [], opponents, 1000)
       const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
+      const shortStack = effBB <= 13
       const sizingText = chart === 'fold' ? 'couche-toi'
         : chart === 'call' ? (vsJam ? 'paie le tapis (all-in)' : 'suis la mise')
-        : chart === '3bet' ? 'relance (3-bet ≈ 3×)'
+        : chart === '3bet' ? (shortStack ? 'TAPIS (all-in)' : 'relance (3-bet ≈ 3×)')
         : chart === '4bet' ? 'sur-relance (4-bet)'
-        : 'ouvre / relance (≈ 2.5–3 BB)'
+        : shortStack ? 'TAPIS (all-in)' : 'ouvre / relance (≈ 2.5–3 BB)'
       const situationLabel = vsJam
         ? `face à ${numAllIn} tapis (all-in)`
         : SCENARIO_LABEL[scenario as Scenario].toLowerCase()
@@ -106,7 +107,8 @@ export default function RangeAssistant({
         `Équité brute estimée : ${pct(equity)} face à ${opponents} adversaire${opponents > 1 ? 's' : ''}.`,
         inPosition ? 'Tu es en position : tu peux jouer un peu plus large.' : 'Tu es hors de position : resserre légèrement.',
       ]
-      if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet/fold (peu de calls).`)
+      if (effBB <= 13) reasons.push(`Tapis court (~${Math.round(effBB)} BB) → PUSH/FOLD : tu mets tapis ou tu jettes, plus de jeu post-flop.`)
+      else if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet/fold (peu de calls).`)
       else if (effBB > 80) reasons.push(`Tapis profond (~${Math.round(effBB)} BB) : les mains assorties/connectées gagnent en valeur.`)
       if (scenario === 'vsopen' && raiseToBB > 4) reasons.push(`Grosse ouverture (~${raiseToBB.toFixed(1)} BB) : pas de fold equity → on coupe les bluffs de 3-bet, value only.`)
       else if (scenario === 'vsopen' && raiseToBB <= 2.6) reasons.push(`Petite ouverture (~${raiseToBB.toFixed(1)} BB) : range de 3-bet polarisée pleine + flats larges.`)

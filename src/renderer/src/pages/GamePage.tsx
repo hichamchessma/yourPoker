@@ -11,6 +11,10 @@ import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
   type RangeWeights, type ActCat,
 } from '../lib/rangeEstimator'
+import {
+  type Speed as TourSpeed, HANDS_PER_LEVEL, blindStructure,
+  placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
+} from '../lib/tournament'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Suit = '♠' | '♥' | '♦' | '♣'
@@ -39,6 +43,13 @@ interface GameConfig {
   slots: Array<{ type: string; level: number }>
   scenario?: ScenarioCfg
   playLive?: boolean
+  tournament?: TournamentCfg
+}
+// MTT config coming from TournamentSetupPage.
+interface TournamentCfg {
+  field: number; tableSize: number; startBB: number; speed: TourSpeed
+  buyIn: number; paidPct: number; curve: 'standard' | 'topheavy' | 'flat'
+  reentry: boolean; botLevel: number
 }
 // Custom-scenario start state coming from SetupPositionPage.
 interface ScenarioCfg {
@@ -1276,12 +1287,28 @@ export default function GamePage(): JSX.Element {
   const numPlayers = cfg.numPlayers ?? 6
   const selectedSeat = cfg.selectedSeat ?? 0
   const stackBB = cfg.stackBB ?? 100
-  const sbAmt = cfg.sb ?? 1
-  const bbAmt = cfg.bb ?? 2
-  const anteAmt = cfg.ante ?? 0
   const displayName = cfg.displayName ?? 'Hero'
   const slots = cfg.slots ?? Array.from({length: numPlayers - 1}, () => ({type:'bot', level:2}))
   const decisionTimer = cfg.decisionTimer && cfg.decisionTimer > 0 ? cfg.decisionTimer : 25
+
+  // ─── Tournament (MTT) — escalating blinds + field model ────────────────────
+  const tournament = cfg.tournament
+  const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed) : []), [tournament])
+  const [tourLevelIdx, setTourLevelIdx] = useState(0)
+  const tourRef = useRef({ levelIdx: 0, handsThisLevel: 0, handsPlayed: 0, playersLeft: tournament?.field ?? 0, busted: false, place: 0 })
+  const [tourHud, setTourHud] = useState({ playersLeft: tournament?.field ?? 0, handsToLevel: 0 })
+  const [tourResult, setTourResult] = useState<{ place: number; prize: number } | null>(null)
+  // Engine-safe current blinds (read from the ref so timer-driven hands use the
+  // up-to-date level even across stale closures).
+  const tourBlinds = () => {
+    if (!tournament || tourLevels.length === 0) return { sb: cfg.sb ?? 1, bb: cfg.bb ?? 2, ante: cfg.ante ?? 0 }
+    const L = tourLevels[Math.min(tourRef.current.levelIdx, tourLevels.length - 1)]
+    return { sb: L.sb, bb: L.bb, ante: L.ante }
+  }
+  const tourPayouts = () => tournament ? payoutTable(tournament.buyIn * tournament.field, placesPaid(tournament.field, tournament.paidPct), tournament.curve) : []
+  const curLevel = tournament && tourLevels.length ? tourLevels[Math.min(tourLevelIdx, tourLevels.length - 1)] : null
+  const sbAmt = curLevel ? curLevel.sb : (cfg.sb ?? 1)
+  const bbAmt = curLevel ? curLevel.bb : (cfg.bb ?? 2)
 
   // ─── State ───────────────────────────────────────────────────────────────
   const [gs, setGs] = useState<GState>(() => ({
@@ -1363,6 +1390,19 @@ export default function GamePage(): JSX.Element {
       scenarioStartedRef.current = true
       startScenario(cfg.scenario as ScenarioCfg, cfg.playLive !== false)
     }, 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Auto-start a tournament once on mount (the player already clicked "Lancer").
+  const tourStartedRef = useRef(false)
+  useEffect(() => {
+    if (!tournament) return
+    const t = setTimeout(() => {
+      if (tourStartedRef.current) return
+      tourStartedRef.current = true
+      startHand(createSeats(), 0, 0)
+    }, 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -1471,6 +1511,14 @@ export default function GamePage(): JSX.Element {
     }
     setHandHistory(h => [...h, record])
     currentHandActionsRef.current = []
+    // Tournament: if the hero just busted (freezeout), finish the tournament with
+    // their placement + prize. Re-entry is offered from the result overlay.
+    if (tournament && !tourRef.current.busted && heroIsBusted(finalGs)) {
+      tourRef.current.busted = true
+      const place = Math.max(2, tourRef.current.playersLeft || tournament.field)
+      setTourResult({ place, prize: prizeForPlace(place, tourPayouts()) })
+      return
+    }
     scheduleNextHand()
   }
 
@@ -2166,11 +2214,28 @@ export default function GamePage(): JSX.Element {
     }, botDelay)
   }
 
+  // Advance the tournament one hand: escalate the level on schedule, shrink the
+  // field. Runs at each hand boundary (before the next hand is dealt).
+  function tourTick() {
+    if (!tournament || tourLevels.length === 0) return
+    const t = tourRef.current
+    t.handsPlayed++
+    t.handsThisLevel++
+    const hpl = HANDS_PER_LEVEL[tournament.speed]
+    if (t.handsThisLevel >= hpl && t.levelIdx < tourLevels.length - 1) {
+      t.handsThisLevel = 0; t.levelIdx++; setTourLevelIdx(t.levelIdx)
+    }
+    const tableAlive = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+    t.playersLeft = Math.max(tableAlive, fieldRemaining(tournament.field, t.handsPlayed, hpl))
+    setTourHud({ playersLeft: t.playersLeft, handsToLevel: Math.max(0, hpl - t.handsThisLevel) })
+  }
+
   function advanceToNextHand() {
     flowGenRef.current++
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+    tourTick()
     const cur = gsRef.current
     const newDealerIdx = (cur.dealerIdx + 1) % numPlayers
     startHand(cur.seats, newDealerIdx, cur.handNum)
@@ -2209,28 +2274,30 @@ export default function GamePage(): JSX.Element {
     rangeRef.current = {}; rangeMetaRef.current = {}
     seats.forEach(s => { if (!s.isSittingOut) rangeRef.current[s.idx] = initRange() })
 
-    // Post antes (go straight into the pot)
-    let pot = 0
-    if (anteAmt > 0) {
-      seats.forEach(s => {
-        const ante = Math.min(anteAmt, s.stack)
-        s.stack -= ante
-        s.totalBet += ante
-        pot += ante
-      })
-    }
-
-    // Post blinds — these sit as bet stacks in front of SB/BB until collected
+    // Current blinds — escalate each level in a tournament, fixed in cash.
+    const { sb: sbA, bb: bbA, ante: anteA } = tourBlinds()
     const { sbIdx, bbIdx } = findBlinds(seats, dealerIdx)
     const sbSeat = seats[sbIdx]
     const bbSeat = seats[bbIdx]
 
-    const sbPost = Math.min(sbAmt, sbSeat.stack)
+    // Antes go straight into the pot: tournament = a single BIG-BLIND ANTE (paid by
+    // the BB), cash = the legacy per-seat ante.
+    let pot = 0
+    if (anteA > 0) {
+      if (tournament) {
+        const a = Math.min(anteA, bbSeat.stack); bbSeat.stack -= a; bbSeat.totalBet += a; pot += a
+      } else {
+        seats.forEach(s => { const ante = Math.min(anteA, s.stack); s.stack -= ante; s.totalBet += ante; pot += ante })
+      }
+    }
+
+    // Post blinds — these sit as bet stacks in front of SB/BB until collected
+    const sbPost = Math.min(sbA, sbSeat.stack)
     sbSeat.stack -= sbPost; sbSeat.bet = sbPost; sbSeat.totalBet += sbPost
     if (sbSeat.stack <= 0) sbSeat.isAllIn = true // posted the blind all-in
     pot += sbPost
 
-    const bbPost = Math.min(bbAmt, bbSeat.stack)
+    const bbPost = Math.min(bbA, bbSeat.stack)
     bbSeat.stack -= bbPost; bbSeat.bet = bbPost; bbSeat.totalBet += bbPost
     if (bbSeat.stack <= 0) bbSeat.isAllIn = true
     pot += bbPost
@@ -2242,7 +2309,7 @@ export default function GamePage(): JSX.Element {
     const newState: GState = {
       phase: 'dealing',
       deck, seats, community: [null,null,null,null,null],
-      pot, currentBet: bbAmt, minRaise: bbAmt,
+      pot, currentBet: bbA, minRaise: bbA,
       actQueue: [], dealerIdx, handNum,
       log: [`=== Main #${handNum} ===`, `Dealer: ${seats[dealerIdx]?.name}`, `SB: ${sbSeat.name} (${sbPost})`, `BB: ${bbSeat.name} (${bbPost})`],
       winners: [], paused: false, autoRunning: true,
@@ -2600,6 +2667,15 @@ export default function GamePage(): JSX.Element {
     })
     // Deal a fresh hand now that the hero is funded again.
     setTimeout(() => advanceToNextHand(), 250)
+  }
+
+  // Tournament re-entry: a fresh starting stack, field grows back by one, resume.
+  function reEnterTournament() {
+    if (!tournament) return
+    tourRef.current.busted = false
+    tourRef.current.playersLeft += 1
+    setTourResult(null)
+    rebuyHero(tournament.startBB * tourLevels[0].bb)
   }
 
   function togglePause() {
@@ -2964,7 +3040,7 @@ export default function GamePage(): JSX.Element {
       {/* ── HEADER (draggable title bar) ── */}
       <header className="app-drag flex items-center gap-3 px-4 py-2 border-b border-white/8 flex-shrink-0 relative z-30"
         style={{background:'rgba(5,8,16,0.97)'}}>
-        <button onClick={() => (simMode ? exitSim() : navigate(isScenario ? '/setup' : '/training'))}
+        <button onClick={() => (simMode ? exitSim() : navigate(tournament ? '/tournament' : isScenario ? '/setup' : '/training'))}
           className="app-drag-none flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors">
           <ArrowLeft size={15}/>
           <span className="text-[10px] uppercase tracking-widest font-bold">{simMode ? 'Quitter la simulation' : 'Quitter'}</span>
@@ -3071,6 +3147,43 @@ export default function GamePage(): JSX.Element {
       {/* ── TABLE AREA ── */}
       <div className="flex-1 relative overflow-hidden min-h-0">
         <Room variant={roomVariant}/>
+
+        {/* ── TOURNAMENT HUD ── */}
+        {tournament && gs.phase !== 'idle' && curLevel && (() => {
+          const startChips = tournament.startBB * tourLevels[0].bb
+          const totalChips = tournament.field * startChips
+          const playersLeft = tourHud.playersLeft
+          const avgStack = totalChips / Math.max(1, playersLeft)
+          const heroStack = hero?.stack ?? 0
+          const rank = estimateRank(heroStack, avgStack, playersLeft)
+          const places = placesPaid(tournament.field, tournament.paidPct)
+          const itm = rank <= places
+          const toBubble = playersLeft - places
+          const Cell = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
+            <div className="flex flex-col items-center px-3">
+              <span className="text-[7px] uppercase tracking-widest text-white/35 font-bold">{label}</span>
+              <span className={`text-[12px] font-black font-mono ${accent ? 'text-[#f0c060]' : 'text-white/85'}`}>{value}</span>
+            </div>
+          )
+          return (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10"
+              style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
+              <Cell label="Niveau" value={`${tourLevelIdx + 1}`} accent />
+              <Cell label="Blindes" value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
+              <Cell label="↑ niv. dans" value={`${tourHud.handsToLevel} mains`} />
+              <Cell label="Joueurs" value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
+              <Cell label="Stack moy." value={`${Math.round(avgStack / curLevel.bb)} BB`} />
+              <Cell label="Ton stack" value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
+              <Cell label="Place" value={`${rank.toLocaleString()}e`} />
+              <div className="flex flex-col items-center px-3">
+                <span className="text-[7px] uppercase tracking-widest text-white/35 font-bold">Statut</span>
+                <span className={`text-[11px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/60'}`}>
+                  {itm ? `ITM ($${prizeForPlace(rank, tourPayouts()).toLocaleString()})` : toBubble <= 5 ? `Bulle (${toBubble})` : `${places} payés`}
+                </span>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Idle overlay */}
         <AnimatePresence>
@@ -3613,6 +3726,38 @@ export default function GamePage(): JSX.Element {
             </div>
           )
         })()}
+      </AnimatePresence>
+
+      {/* ── TOURNAMENT result (hero busted) ── */}
+      <AnimatePresence>
+        {tournament && tourResult && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[95] flex items-center justify-center" style={{ background: 'rgba(8,5,2,0.82)' }}>
+            <motion.div initial={{ scale: 0.92, y: 18 }} animate={{ scale: 1, y: 0 }}
+              className="rounded-2xl border p-8 text-center max-w-md"
+              style={{ background: '#160f04', borderColor: 'rgba(240,192,96,0.4)', boxShadow: '0 0 60px rgba(200,140,40,0.35)' }}>
+              <div className="text-5xl mb-2">{tourResult.prize > 0 ? '🏅' : '☠️'}</div>
+              <h2 className="text-lg font-black uppercase tracking-[0.18em] text-[#f0c060]">Tournoi terminé</h2>
+              <p className="text-[15px] text-white/80 mt-2">Tu finis <b className="text-white">{tourResult.place.toLocaleString()}e</b> / {tournament.field.toLocaleString()}</p>
+              <p className={`text-[13px] mt-1 font-bold ${tourResult.prize > 0 ? 'text-emerald-400' : 'text-white/40'}`}>
+                {tourResult.prize > 0 ? `Gain : $${tourResult.prize.toLocaleString()} 🎉` : 'Hors des places payées'}
+              </p>
+              <div className="flex items-center justify-center gap-3 mt-6">
+                {tournament.reentry && (
+                  <button onClick={reEnterTournament}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-[0.16em] text-[12px] transition-all hover:scale-[1.03]"
+                    style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)', color: '#1a0e02' }}>
+                    <RefreshCw size={14}/> Re-entry
+                  </button>
+                )}
+                <button onClick={() => navigate('/tournament')}
+                  className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
+                  Quitter
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* ── HAND HISTORY MODAL ── */}

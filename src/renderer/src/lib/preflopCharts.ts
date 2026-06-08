@@ -114,6 +114,33 @@ export function rfiRange(playersBehind: number | undefined, position: string): S
 export interface ChartRange { value: Set<string>; bluff: string[]; call: Set<string> }
 interface DefEntry { value: string[]; bluff: string[]; call: string[] }
 
+// ── PUSH / FOLD (short stacks) — when you're short you SHOVE or fold (no post-
+//    flop play). Ranges widen as the stack shortens and toward late position.
+//    Buckets by effective BB: very short (≤8), short (≤13), mid (≤17). ──────────
+const PUSH = {
+  vshort: { // ≤ 8 BB — shove very wide
+    early: ['22+', 'A2s+', 'A7o+', 'K8s+', 'KTo+', 'Q9s+', 'QJo', 'J9s+', 'JTo', 'T9s'],
+    late: ['22+', 'A2s+', 'A2o+', 'K2s+', 'K6o+', 'Q4s+', 'Q8o+', 'J6s+', 'J8o+', 'T6s+', 'T8o+', '96s+', '98o', '85s+', '75s+', '64s+', '54s', '43s'],
+  },
+  short: { // ≤ 13 BB
+    early: ['44+', 'A8s+', 'ATo+', 'KTs+', 'KJo+', 'QJs'],
+    late: ['22+', 'A2s+', 'A7o+', 'K7s+', 'K9o+', 'Q8s+', 'QTo+', 'J8s+', 'JTo', 'T8s+', '97s+', '87s', '76s', '65s'],
+  },
+}
+// Pure shove-or-fold only applies when genuinely short (≤13 BB). Above that you
+// can open-raise and play, so the normal charts take over (no tight-push cliff).
+export function pushBucket(effBB: number): 'vshort' | 'short' | null {
+  if (effBB <= 8) return 'vshort'
+  if (effBB <= 13) return 'short'
+  return null
+}
+export function pushFoldRange(effBB: number, playersBehind: number | undefined, position: string): Set<string> {
+  const b = pushBucket(effBB)
+  if (!b) return new Set()
+  const behind = playersBehind !== undefined ? playersBehind : (POS_TO_BEHIND[position] ?? 4)
+  return expandRange(behind <= 3 ? PUSH[b].late : PUSH[b].early)
+}
+
 // ── vs-OPEN (facing a single raise) — value 3-bets / 3-bet bluffs (ordered best
 //    first) / flat band, by HERO position × OPENER bucket. 4 buckets so a UTG open
 //    is defended tighter than an HJ open, and a CO open differently from a BTN

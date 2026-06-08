@@ -5,7 +5,7 @@
 // combos) form each range. Approximation of common 6-max charts, not a solver.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { rfiRange, isoRange, vsOpenChart, squeezeChart, vs3betChart, vs4betChart } from './preflopCharts'
+import { rfiRange, isoRange, vsOpenChart, squeezeChart, vs3betChart, vs4betChart, pushBucket, pushFoldRange } from './preflopCharts'
 
 export type RangeAction = 'raise' | '3bet' | '4bet' | 'call' | 'fold'
 export type Scenario = 'rfi' | 'iso' | 'vsopen' | 'squeeze' | 'vs3bet' | 'vs4bet'
@@ -106,6 +106,15 @@ export interface RangeOpts {
 // table size; `opts` tunes for stack depth, raise size and multiway.
 export function buildRangeMap(scenario: Scenario, position: string, playersBehind?: number, opts: RangeOpts = {}): Map<string, RangeAction> {
   const map = new Map<string, RangeAction>()
+  // Short-stack overlay: shallow effective stacks → SHOVE-or-fold (no postflop).
+  // Applies to opening / iso / facing-an-open / squeeze; the 'raise' cell means
+  // ALL-IN here. Facing an actual jam is handled separately (buildJamCallMap).
+  const pb = opts.effBB !== undefined ? pushBucket(opts.effBB) : null
+  if (pb && (scenario === 'rfi' || scenario === 'iso' || scenario === 'vsopen' || scenario === 'squeeze')) {
+    const shove = pushFoldRange(opts.effBB!, playersBehind, position)
+    for (const h of RANKED) map.set(h.key, shove.has(h.key) ? 'raise' : 'fold')
+    return map
+  }
   if (scenario === 'rfi') {
     // Reference RFI chart lookup (real ranges), not a heuristic top-% cut.
     const raise = rfiRange(playersBehind, position)
