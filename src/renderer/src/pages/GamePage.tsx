@@ -728,6 +728,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   const folded = new Set<number>()
   record.players.forEach(p => { bet[p.idx] = 0; committed[p.idx] = 0 })
   let preflopRaises = 0
+  let preflopCallers = 0
   let lastAggressorName = ''
   let lastPreflopRaiserIdx = -1
   const allInSeats = new Set<number>()
@@ -742,6 +743,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     }
     if (a.actionType === 'FOLD') { folded.add(a.seatIdx); pot = a.potAfter; continue }
     if (a.actionType === 'CHECK') { pot = a.potAfter; continue }
+    if (a.phase === 'preflop' && a.actionType === 'CALL') preflopCallers++
     const delta = a.amount - (bet[a.seatIdx] ?? 0)
     committed[a.seatIdx] = (committed[a.seatIdx] ?? 0) + Math.max(0, delta)
     bet[a.seatIdx] = a.amount
@@ -774,7 +776,10 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   let headline = ''
 
   if (phase === 'preflop') {
-    const scenario: Scenario = preflopRaises >= 2 ? 'vs3bet' : preflopRaises === 1 ? 'vsopen' : 'rfi'
+    const scenario: Scenario = preflopRaises >= 3 ? 'vs4bet'
+      : preflopRaises === 2 ? 'vs3bet'
+      : preflopRaises === 1 ? (preflopCallers > 0 ? 'squeeze' : 'vsopen')
+      : preflopCallers > 0 ? 'iso' : 'rfi'
     // Players still to act behind the hero (live, not yet folded) — a fold-around
     // to the SB becomes a true 1-behind blind battle → the RFI width widens to a
     // steal range instead of an early-position open.
@@ -786,15 +791,30 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const vsJam = numAllIn >= 1
     const vsOpenerPos = scenario === 'vsopen' ? record.players.find(p => p.idx === lastPreflopRaiserIdx)?.position : undefined
     const reRaiseRatio = scenario === 'vs3bet' && preflopRaiseAmts.length >= 2 && preflopRaiseAmts[0] > 0 ? preflopRaiseAmts[1] / preflopRaiseAmts[0] : undefined
+    // 3-bettor in position (acts after us post-flop)? n = seats, dealer = BTN seat.
+    const dealerIdxC = record.players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
+    const nC = record.players.length
+    const postIdx = (s: number) => (((s - dealerIdxC) % nC + nC) % nC - 1 + nC) % nC
+    const threeBettorIP = scenario === 'vs3bet' && lastPreflopRaiserIdx >= 0 ? postIdx(lastPreflopRaiserIdx) > postIdx(hero.idx) : undefined
     const map = vsJam
       ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn)
-      : buildRangeMap(scenario, hero.position, scenario === 'rfi' ? playersBehind : undefined,
-          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, effBB: record.bb > 0 ? effStack / record.bb : undefined })
+      : buildRangeMap(scenario, hero.position, (scenario === 'rfi' || scenario === 'iso') ? playersBehind : undefined,
+          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, threeBettorIP, effBB: record.bb > 0 ? effStack / record.bb : undefined })
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
-    const recLabel = rec === 'fold' ? 'FOLD' : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL') : rec === '3bet' ? '3-BET' : rec === '4bet' ? '4-BET' : 'OPEN/RAISE'
-    const ctx = vsJam ? `en ${hero.position}, face à ${numAllIn} tapis (all-in)` : scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert` : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}` : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
+    const recLabel = rec === 'fold' ? 'FOLD'
+      : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL')
+      : rec === '3bet' ? (scenario === 'squeeze' ? 'SQUEEZE (3-bet)' : '3-BET')
+      : rec === '4bet' ? (scenario === 'vs4bet' ? '5-BET / TAPIS' : '4-BET')
+      : scenario === 'iso' ? 'ISO-RAISE' : 'OPEN/RAISE'
+    const ctx = vsJam ? `en ${hero.position}, face à ${numAllIn} tapis (all-in)`
+      : scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert`
+      : scenario === 'iso' ? `en ${hero.position}, des limpers devant (iso-raise)`
+      : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}`
+      : scenario === 'squeeze' ? `en ${hero.position}, face à une relance + suiveur (squeeze)`
+      : scenario === 'vs4bet' ? `en ${hero.position}, face à un 4-bet`
+      : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
     lines.push(`Situation : ${ctx}. Ta main : ${key}.`)
     lines.push(`Range de référence : ${key} se joue ${recLabel}.`)
     // For an "open too wide" call, separate a genuine punt from a borderline open
@@ -2728,16 +2748,18 @@ export default function GamePage(): JSX.Element {
   // who later folded/re-acted is still counted correctly).
   const handActions = currentHandActionsRef.current
   const preflopRaiseActions = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+  const preflopCallers = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && a.actionType === 'CALL').length
   const heroScenario: Scenario | 'postflop' =
     gs.phase !== 'preflop' ? 'postflop'
-    : preflopRaiseActions >= 2 ? 'vs3bet'
-    : preflopRaiseActions === 1 ? 'vsopen'
-    : 'rfi'
+    : preflopRaiseActions >= 3 ? 'vs4bet'
+    : preflopRaiseActions === 2 ? 'vs3bet'
+    : preflopRaiseActions === 1 ? (preflopCallers > 0 ? 'squeeze' : 'vsopen')
+    : preflopCallers > 0 ? 'iso' : 'rfi'
+  // The last pre-flop raiser (opener for vs-open, 3-bettor for vs-3bet).
+  const lastPreRaiserSeat = [...handActions].reverse().find(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))?.seatIdx ?? -1
   // Position of the opener we're facing (vs-open) → defend wider vs a late/wide
   // open, tighter vs a tight UTG open. Same source as the critique to stay coherent.
-  const heroVsOpenerPos = heroScenario === 'vsopen'
-    ? gs.seats[[...handActions].reverse().find(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))?.seatIdx ?? -1]?.position
-    : undefined
+  const heroVsOpenerPos = heroScenario === 'vsopen' ? gs.seats[lastPreRaiserSeat]?.position : undefined
   // Number of opponents currently all-in preflop → "facing a jam" call-off coach.
   const heroNumAllIn = gs.phase === 'preflop'
     ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn).length
@@ -2773,6 +2795,10 @@ export default function GamePage(): JSX.Element {
   const heroInPosition = hero
     ? !gs.seats.some(s => s.idx !== hero.idx && inHand(s) && !s.isFolded && postActIndexOf(s.idx) > postActIndexOf(hero.idx))
     : true
+  // vs-3bet: is the 3-bettor in position (acts after us post-flop) → flat tighter.
+  const heroThreeBettorIP = heroScenario === 'vs3bet' && lastPreRaiserSeat >= 0 && hero
+    ? postActIndexOf(lastPreRaiserSeat) > postActIndexOf(hero.idx)
+    : undefined
   // Effective stack (chips that can actually be played for) = min of hero's and
   // the biggest live opponent's total chips → drives SPR / commit decisions.
   const heroEffStack = (() => {
@@ -3678,6 +3704,7 @@ export default function GamePage(): JSX.Element {
                 multiway={heroMultiway}
                 vsOpenerPos={heroVsOpenerPos}
                 reRaiseRatio={heroReRaiseRatio}
+                threeBettorIP={heroThreeBettorIP}
                 numAllIn={heroNumAllIn}
                 actionRecap={gs.log.slice(-10)}
                 onClose={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(null) }}

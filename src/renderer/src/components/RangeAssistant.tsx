@@ -37,7 +37,7 @@ interface UnifiedAdvice {
 export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
-  raiseToBB, multiway, vsOpenerPos, reRaiseRatio, numAllIn = 0, actionRecap, onClose,
+  raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0, actionRecap, onClose,
   embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
@@ -59,6 +59,7 @@ export default function RangeAssistant({
   multiway: boolean
   vsOpenerPos?: string
   reRaiseRatio?: number
+  threeBettorIP?: boolean
   numAllIn?: number
   actionRecap: string[]
   onClose: () => void
@@ -73,7 +74,7 @@ export default function RangeAssistant({
   const vsJam = isPreflop && numAllIn >= 1
   const rangeMap = !isPreflop ? null
     : vsJam ? buildJamCallMap(effBB, numAllIn)
-    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio })
+    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP })
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
   const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
 
@@ -115,6 +116,8 @@ export default function RangeAssistant({
           : `3-bet standard (~${reRaiseRatio.toFixed(1)}× l'ouverture).`)
       }
       if (multiway) reasons.push('Plusieurs joueurs déjà dans le coup : resserre (surtout les mains dépareillées).')
+      if ((chart === '3bet' || chart === '4bet' || chart === 'raise') && equity < 0.45)
+        reasons.push('Main jouée en BLUFF / semi-bluff polarisé : sa valeur vient de la fold equity + des blockers + la jouabilité quand on est payé — PAS de l’équité au showdown. Ne te fie pas au % brut affiché ici.')
       return {
         actionText: ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
         equity, potOdds, madeHand: heroKey ?? '—', draws: [], reasons,
@@ -244,8 +247,8 @@ export default function RangeAssistant({
               </div>
               <div className="flex items-center justify-center gap-4 my-3 flex-wrap">
                 {(vsJam ? (['call', 'fold'] as RangeAction[])
-                  : scenario === 'rfi' ? (['raise', 'fold'] as RangeAction[])
-                  : scenario === 'vsopen' ? (['3bet', 'call', 'fold'] as RangeAction[])
+                  : scenario === 'rfi' || scenario === 'iso' ? (['raise', 'fold'] as RangeAction[])
+                  : scenario === 'vsopen' || scenario === 'squeeze' ? (['3bet', 'call', 'fold'] as RangeAction[])
                   : (['4bet', 'call', 'fold'] as RangeAction[])
                 ).map(a => (
                   <div key={a} className="flex items-center gap-1.5">

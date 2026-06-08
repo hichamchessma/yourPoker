@@ -111,51 +111,102 @@ export function rfiRange(playersBehind: number | undefined, position: string): S
   return expandRange(rfiTierForBehind(behind))
 }
 
-// ── vs-OPEN (facing a single raise) — value 3-bets / 3-bet bluffs (ordered best
-//    first) / flat call band, by HERO position and OPENER bucket (early vs late).
-//    Fold = everything else. Tune freely; it's data. ───────────────────────────
+export interface ChartRange { value: Set<string>; bluff: string[]; call: Set<string> }
 interface DefEntry { value: string[]; bluff: string[]; call: string[] }
-const VS_OPEN: Record<string, { early: DefEntry; late: DefEntry }> = {
+
+// ── vs-OPEN (facing a single raise) — value 3-bets / 3-bet bluffs (ordered best
+//    first) / flat band, by HERO position × OPENER bucket. 4 buckets so a UTG open
+//    is defended tighter than an HJ open, and a CO open differently from a BTN
+//    steal. Missing buckets fall back to the nearest defined one. ───────────────
+type Bucket = 'ep' | 'mp' | 'co' | 'btn'
+const BUCKET_ORDER: Bucket[] = ['ep', 'mp', 'co', 'btn']
+function bucketOf(openerPos?: string): Bucket {
+  if (!openerPos) return 'mp'
+  if (['UTG', 'UTG+1', 'UTG+2'].includes(openerPos)) return 'ep'
+  if (['MP', 'MP+1', 'LJ', 'HJ'].includes(openerPos)) return 'mp'
+  if (openerPos === 'CO') return 'co'
+  return 'btn' // BTN, BTN/SB, SB steal
+}
+type Row = Partial<Record<Bucket, DefEntry>>
+function pickBucket(row: Row, b: Bucket): DefEntry {
+  const i = BUCKET_ORDER.indexOf(b)
+  for (let d = 0; d < BUCKET_ORDER.length; d++) {
+    const up = BUCKET_ORDER[i + d], dn = BUCKET_ORDER[i - d]
+    if (up && row[up]) return row[up]!
+    if (dn && row[dn]) return row[dn]!
+  }
+  return Object.values(row)[0]!
+}
+const VS_OPEN: Record<string, Row> = {
   BB: {
-    early: { value: ['JJ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'KJs', 'A3s', 'QJs'],
-      call: ['22-TT', 'A2s-AJs', 'KTs+', 'QTs+', 'J9s+', 'T9s', '98s', '87s', '76s', 'ATo+', 'KJo+', 'QJo'] },
-    late: { value: ['TT+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s', 'A4s', 'A3s', 'A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s'],
+    ep:  { value: ['JJ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'KJs'],
+      call: ['22-TT', 'ATs-AJs', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', 'AJo+', 'KQo'] },
+    mp:  { value: ['TT+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'KJs', 'QJs'],
+      call: ['22-99', 'A9s-AJs', 'KTs+', 'QTs+', 'J9s+', 'T9s', '98s', '87s', '76s', 'ATo+', 'KJo+', 'QJo'] },
+    co:  { value: ['TT+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s', 'J9s'],
+      call: ['22-99', 'A2s+', 'KTs+', 'Q9s+', 'J9s+', 'T8s+', '98s', '87s', '76s', '65s', 'A9o+', 'KTo+', 'QTo+', 'JTo'] },
+    btn: { value: ['TT+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s-A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s'],
       call: ['22-99', 'A2s+', 'K2s+', 'Q6s+', 'J7s+', 'T7s+', '96s+', '86s+', '75s+', '65s', '54s', 'A2o+', 'K9o+', 'Q9o+', 'JTo', 'T9o', '98o'] },
   },
   SB: {
-    early: { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'KJs'],
-      call: ['99-JJ', 'AJs', 'ATs', 'KQs', 'AQo'] },
-    late: { value: ['TT+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'KTs', 'QTs'],
-      call: ['66-99', 'ATs+', 'KJs+', 'QJs', 'JTs', 'AQo', 'KQo'] },
+    mp:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'KJs'], call: ['99-JJ', 'AJs', 'ATs', 'KQs', 'AQo'] },
+    co:  { value: ['TT+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'KJs'], call: ['88-JJ', 'ATs+', 'KJs+', 'QJs', 'AQo', 'KQo'] },
+    btn: { value: ['TT+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s-A2s', 'K9s', 'KTs', 'QTs'], call: ['66-TT', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'AQo', 'KQo', 'AJo'] },
   },
   BTN: {
-    early: { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s'],
+    ep:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s'],
       call: ['22-JJ', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', '76s', 'AQo', 'AJo', 'KQo'] },
-    late: { value: ['JJ+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s', 'A4s', 'A3s', 'A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s', '86s', '75s'],
-      call: ['22-TT', 'A2s+', 'KTs+', 'Q9s+', 'J9s+', 'T8s+', '98s', '87s', '76s', '65s', 'ATo+', 'KJo+', 'QJo'] },
+    mp:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s', 'J9s'],
+      call: ['22-JJ', 'A9s+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', '76s', '65s', 'AJo+', 'KQo'] },
+    co:  { value: ['JJ+', 'AKs', 'AKo', 'AQs', 'AJs'], bluff: ['A5s-A2s', 'K9s', 'Q9s', 'J9s', 'T8s', '97s'],
+      call: ['22-TT', 'A2s+', 'KTs+', 'Q9s+', 'J9s+', 'T8s+', '98s', '87s', '76s', '65s', '54s', 'ATo+', 'KJo+', 'QJo'] },
   },
   CO: {
-    early: { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'KJs'],
-      call: ['22-JJ', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', 'AQo', 'KQo'] },
-    late: { value: ['JJ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s'],
-      call: ['22-TT', 'A9s+', 'KTs+', 'Q9s+', 'J9s+', 'T9s', '98s', '87s', 'ATo+', 'KQo'] },
+    ep:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'KJs'], call: ['22-JJ', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', 'AQo', 'KQo'] },
+    mp:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s'], call: ['22-JJ', 'A9s+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', 'ATo+', 'KQo'] },
+  },
+  HJ: {
+    ep:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s'], call: ['22-JJ', 'ATs+', 'KJs+', 'QJs', 'JTs', 'T9s', 'AJo+', 'KQo'] },
+    mp:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'K9s'], call: ['22-JJ', 'A9s+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', 'ATo+', 'KQo'] },
+  },
+  MP: {
+    ep:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s'], call: ['22-JJ', 'ATs+', 'KJs+', 'QJs', 'JTs', 'AJo+', 'KQo'] },
   },
   DEFAULT: {
-    early: { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'K9s'],
-      call: ['22-JJ', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', 'AJo+', 'KQo'] },
-    late: { value: ['JJ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'K9s', 'Q9s'],
-      call: ['22-TT', 'A8s+', 'KTs+', 'Q9s+', 'J9s+', 'T9s', '98s', '87s', '76s', 'ATo+', 'KQo'] },
+    mp:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'K9s'], call: ['22-JJ', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', 'AJo+', 'KQo'] },
   },
 }
-const LATE_OPENERS = new Set(['CO', 'BTN', 'BTN/SB', 'SB'])
-export function vsOpenChart(heroPos: string, openerPos?: string): { value: Set<string>; bluff: string[]; call: Set<string> } {
+export function vsOpenChart(heroPos: string, openerPos?: string): ChartRange {
   const row = VS_OPEN[heroPos] ?? VS_OPEN.DEFAULT
-  const e = openerPos && LATE_OPENERS.has(openerPos) ? row.late : row.early
+  const e = pickBucket(row, bucketOf(openerPos))
+  return { value: expandRange(e.value), bluff: expandOrdered(e.bluff), call: expandRange(e.call) }
+}
+
+// ── ISO-RAISE (limpers in front, no raise) — punish limpers with a value-raise
+//    range (no light bluffs; raise-or-fold). Wider in late position. ────────────
+const ISO_EARLY = ['77+', 'ATs+', 'KTs+', 'QTs+', 'JTs', 'AJo+', 'KQo']
+const ISO_LATE = ['44+', 'A9s+', 'KTs+', 'QTs+', 'J9s+', 'T9s', '98s', 'ATo+', 'KJo+', 'QJo']
+export function isoRange(playersBehind: number | undefined, position: string): Set<string> {
+  const behind = playersBehind !== undefined ? playersBehind : (POS_TO_BEHIND[position] ?? 4)
+  return expandRange(behind <= 2 ? ISO_LATE : ISO_EARLY) // 0-2 behind = late = wider
+}
+
+// ── SQUEEZE (raise + at least one caller, hero behind) — polarized & MULTIWAY, so
+//    mostly 3-bet-or-fold: value + blocker bluffs, very small flat band. ─────────
+const SQUEEZE: Record<string, DefEntry> = {
+  BTN: { value: ['JJ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'KJs', 'QJs'], call: ['99-TT', 'AQs', 'AJs', 'KQs', 'ATs'] },
+  CO:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'KJs'], call: ['TT-JJ', 'AQs', 'AJs'] },
+  SB:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['JJ', 'AQs'] },
+  BB:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s'], call: ['TT-JJ', 'AQs', 'AJs'] },
+  DEFAULT: { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['JJ', 'AQs'] },
+}
+export function squeezeChart(heroPos: string): ChartRange {
+  const e = SQUEEZE[heroPos] ?? SQUEEZE.DEFAULT
   return { value: expandRange(e.value), bluff: expandOrdered(e.bluff), call: expandRange(e.call) }
 }
 
 // ── vs-3BET (we opened, face a re-raise) — value 4-bets / 4-bet bluffs / flat
-//    call band, by HERO (opener) position. Fold = the rest. ────────────────────
+//    band, by HERO (opener) position. Fold = the rest. ─────────────────────────
 const VS_3BET: Record<string, DefEntry> = {
   EP:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['JJ', 'TT', 'AQs', 'AJs', 'KQs'] },
   MP:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['TT-JJ', 'AQs', 'AJs', 'KQs', 'KJs'] },
@@ -166,7 +217,19 @@ const VS_3BET: Record<string, DefEntry> = {
   BB:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s', 'A3s'], call: ['88-JJ', 'AQs', 'AJs', 'ATs', 'KQs', 'KJs', 'QJs'] },
   DEFAULT: { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['TT-JJ', 'AQs', 'AJs', 'KQs'] },
 }
-export function vs3betChart(heroPos: string): { value: Set<string>; bluff: string[]; call: Set<string> } {
+export function vs3betChart(heroPos: string): ChartRange {
   const e = VS_3BET[heroPos] ?? VS_3BET.DEFAULT
+  return { value: expandRange(e.value), bluff: expandOrdered(e.bluff), call: expandRange(e.call) }
+}
+
+// ── vs-4BET (we 3-bet, face a 4-bet) — very tight: jam the nuts, flat the next
+//    tier IP, fold the rest. `value` = 5-bet jam, `call` = flat. ────────────────
+const VS_4BET: Record<string, DefEntry> = {
+  BTN: { value: ['KK+', 'AKs'], bluff: [], call: ['QQ', 'JJ', 'AKo', 'AQs'] },
+  CO:  { value: ['KK+', 'AKs'], bluff: [], call: ['QQ', 'AKo'] },
+  DEFAULT: { value: ['KK+', 'AKs'], bluff: [], call: ['QQ', 'AKo'] },
+}
+export function vs4betChart(heroPos: string): ChartRange {
+  const e = VS_4BET[heroPos] ?? VS_4BET.DEFAULT
   return { value: expandRange(e.value), bluff: expandOrdered(e.bluff), call: expandRange(e.call) }
 }

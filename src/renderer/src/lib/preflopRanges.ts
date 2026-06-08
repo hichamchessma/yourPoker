@@ -5,10 +5,10 @@
 // combos) form each range. Approximation of common 6-max charts, not a solver.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { rfiRange, vsOpenChart, vs3betChart } from './preflopCharts'
+import { rfiRange, isoRange, vsOpenChart, squeezeChart, vs3betChart, vs4betChart } from './preflopCharts'
 
 export type RangeAction = 'raise' | '3bet' | '4bet' | 'call' | 'fold'
-export type Scenario = 'rfi' | 'vsopen' | 'vs3bet'
+export type Scenario = 'rfi' | 'iso' | 'vsopen' | 'squeeze' | 'vs3bet' | 'vs4bet'
 
 export const GRID_RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
 const RVAL: Record<string, number> = { A: 14, K: 13, Q: 12, J: 11, T: 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 }
@@ -98,6 +98,7 @@ export interface RangeOpts {
   multiway?: boolean    // other players already in the pot
   vsOpenerPos?: string  // position of the player who opened into us (vs-open only)
   reRaiseRatio?: number // vs-3bet: 3-bet size ÷ the open size (3 ≈ standard)
+  threeBettorIP?: boolean // vs-3bet: the 3-bettor acts AFTER us postflop (cold 3-bet) → flat tighter
 }
 
 // Action map for every hand in the grid, for a given scenario + hero position.
@@ -109,13 +110,17 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // Reference RFI chart lookup (real ranges), not a heuristic top-% cut.
     const raise = rfiRange(playersBehind, position)
     for (const h of RANKED) map.set(h.key, raise.has(h.key) ? 'raise' : 'fold')
-  } else if (scenario === 'vsopen') {
-    // Reference vs-open chart (value 3-bets + bluffs + flat band), then sizing:
-    // a big open kills 3-bet bluffing (no fold equity) and trims the flats.
-    const chart = vsOpenChart(position, opts.vsOpenerPos)
+  } else if (scenario === 'iso') {
+    // Limpers in front → iso-raise a value range (raise or fold, no light bluffs).
+    const raise = isoRange(playersBehind, position)
+    for (const h of RANKED) map.set(h.key, raise.has(h.key) ? 'raise' : 'fold')
+  } else if (scenario === 'vsopen' || scenario === 'squeeze') {
+    // vs-open: polarized 3-bet + flat band (sizing trims bluffs & flats vs a big
+    // open). squeeze: open + caller(s) → polarized & multiway, tiny flat.
+    const chart = scenario === 'squeeze' ? squeezeChart(position) : vsOpenChart(position, opts.vsOpenerPos)
     const openBB = opts.raiseToBB ?? 2.5
-    const bluffFrac = openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0
-    const callKeep = openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5
+    const bluffFrac = scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0
+    const callKeep = scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5
     const bluffs = new Set(chart.bluff.slice(0, Math.round(chart.bluff.length * bluffFrac)))
     const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {
@@ -123,17 +128,26 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
         : call.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
+  } else if (scenario === 'vs4bet') {
+    // Facing a 4-bet (after our 3-bet): jam the nuts, flat the next tier IP, fold.
+    const chart = vs4betChart(position)
+    for (const h of RANKED) {
+      const a: RangeAction = chart.value.has(h.key) ? '4bet' : chart.call.has(h.key) ? 'call' : 'fold'
+      map.set(h.key, a)
+    }
   } else {
     // Reference vs-3bet chart (4-bets + bluffs + flat band). The flat band shrinks
     // with the 3-bet RATIO (small 2× = great price → keep all; big 3.5×+ → trim),
-    // with how much is committed (absolute size / SPR) and with stack depth.
+    // with how much is committed (absolute size / SPR), stack depth, and whether
+    // the 3-bettor is IN POSITION (cold 3-bet → we're OOP → flat tighter).
     const chart = vs3betChart(position)
     const ratio = opts.reRaiseRatio ?? 3
     const ratioFactor = ratio <= 2.2 ? 1.0 : ratio <= 2.6 ? 0.92 : ratio <= 3.2 ? 0.85 : ratio <= 4 ? 0.7 : 0.55
     const threebetBB = opts.raiseToBB ?? ratio * 2.5
     const commitFactor = threebetBB >= 25 ? 0.7 : threebetBB >= 15 ? 0.85 : 1
     const depthFactor = opts.effBB === undefined ? 1 : opts.effBB < 25 ? 0.5 : 1
-    const callKeep = Math.max(0.25, ratioFactor * commitFactor * depthFactor * (opts.multiway ? 0.7 : 1))
+    const ipFactor = opts.threeBettorIP ? 0.7 : 1
+    const callKeep = Math.max(0.2, ratioFactor * commitFactor * depthFactor * ipFactor * (opts.multiway ? 0.7 : 1))
     const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {
       const a: RangeAction = chart.value.has(h.key) || chart.bluff.includes(h.key) ? '4bet'
@@ -210,6 +224,9 @@ export const ACTION_LABEL: Record<RangeAction, string> = {
 }
 export const SCENARIO_LABEL: Record<Scenario, string> = {
   rfi: 'Ouverture (personne n’a relancé)',
+  iso: 'Iso-raise (des limpers devant)',
   vsopen: 'Face à une relance',
+  squeeze: 'Squeeze (relance + suiveur)',
   vs3bet: 'Face à un 3-bet',
+  vs4bet: 'Face à un 4-bet',
 }
