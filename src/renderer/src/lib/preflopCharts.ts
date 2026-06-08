@@ -218,14 +218,22 @@ export function isoRange(playersBehind: number | undefined, position: string): S
   return expandRange(behind <= 2 ? ISO_LATE : ISO_EARLY) // 0-2 behind = late = wider
 }
 
-// ── SQUEEZE (raise + at least one caller, hero behind) — polarized & MULTIWAY, so
-//    mostly 3-bet-or-fold: value + blocker bluffs, very small flat band. ─────────
+// ── SQUEEZE (raise + at least one caller, hero behind) — polarized 3-bet (value +
+//    a couple of tight blocker bluffs, since multiway = low fold equity) AND a WIDE
+//    FLAT band when DEEP: you cold-call to SET-MINE all pairs + play suited
+//    speculatives in position for the great multiway price. The flat band is
+//    trimmed by stack depth in buildRangeMap (no set-mining when short). ─────────
 const SQUEEZE: Record<string, DefEntry> = {
-  BTN: { value: ['JJ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s', 'KJs', 'QJs'], call: ['99-TT', 'AQs', 'AJs', 'KQs', 'ATs'] },
-  CO:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'KJs'], call: ['TT-JJ', 'AQs', 'AJs'] },
-  SB:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['JJ', 'AQs'] },
-  BB:  { value: ['QQ+', 'AKs', 'AKo', 'AQs'], bluff: ['A5s', 'A4s', 'A3s'], call: ['TT-JJ', 'AQs', 'AJs'] },
-  DEFAULT: { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], call: ['JJ', 'AQs'] },
+  BTN: { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'],
+    call: ['22-JJ', 'A2s-AQs', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', '76s', '65s', '54s', 'AJo+', 'KQo'] },
+  CO:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'],
+    call: ['22-JJ', 'A4s-AQs', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', '76s', 'AJo+', 'KQo'] },
+  SB:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s'], // OOP — tighter flat
+    call: ['22-JJ', 'A9s+', 'KJs+', 'QJs', 'JTs', 'AQo'] },
+  BB:  { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'], // closes, great price
+    call: ['22-JJ', 'A2s+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', '76s', '65s', 'AJo+', 'KQo'] },
+  DEFAULT: { value: ['QQ+', 'AKs', 'AKo'], bluff: ['A5s', 'A4s'],
+    call: ['22-JJ', 'A7s+', 'KTs+', 'QTs+', 'JTs', 'T9s', '98s', '87s', 'AJo+', 'KQo'] },
 }
 export function squeezeChart(heroPos: string): ChartRange {
   const e = SQUEEZE[heroPos] ?? SQUEEZE.DEFAULT

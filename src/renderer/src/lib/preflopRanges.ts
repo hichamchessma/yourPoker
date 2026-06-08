@@ -130,8 +130,11 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // open). squeeze: open + caller(s) → polarized & multiway, tiny flat.
     const chart = scenario === 'squeeze' ? squeezeChart(position) : vsOpenChart(position, opts.vsOpenerPos)
     const openBB = opts.raiseToBB ?? 2.5
+    // Stack depth gates the flat/set-mine band: deep (100bb) → flat ALL pairs &
+    // suited speculatives for implied odds; shallow → no set-mining (tighter).
+    const depthCall = opts.effBB === undefined ? 1 : opts.effBB >= 40 ? 1 : opts.effBB >= 30 ? 0.85 : opts.effBB >= 22 ? 0.6 : 0.4
     const bluffFrac = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0) * icm
-    const callKeep = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5) * icm
+    const callKeep = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5) * icm * depthCall
     const bluffs = new Set(chart.bluff.slice(0, Math.round(chart.bluff.length * bluffFrac)))
     const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {

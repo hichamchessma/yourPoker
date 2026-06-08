@@ -123,6 +123,10 @@ export default function RangeAssistant({
       if (multiway) reasons.push('Plusieurs joueurs déjà dans le coup : resserre (surtout les mains dépareillées).')
       if ((chart === '3bet' || chart === '4bet' || chart === 'raise') && equity < 0.45)
         reasons.push('Main jouée en BLUFF / semi-bluff polarisé : sa valeur vient de la fold equity + des blockers + la jouabilité quand on est payé — PAS de l’équité au showdown. Ne te fie pas au % brut affiché ici.')
+      if (chart === 'call' && heroKey && /^(22|33|44|55|66|77|88|99|TT)$/.test(heroKey) && effBB > 30)
+        reasons.push(`Set-mine : tu paies bon marché pour toucher un brelan (~1 fois sur 8) et empiler un tapis profond (~${Math.round(effBB)} BB) — les cotes implicites rendent le call rentable même si l'équité brute paraît basse.`)
+      else if (chart === 'call' && heroKey && (heroKey.endsWith('s') && effBB > 30))
+        reasons.push('Main assortie jouée IP en profondeur : tu suis pour la jouabilité + les cotes implicites (couleur/quinte), pas seulement la cote directe.')
       if (icmPressure > 0.3)
         reasons.push(`Pression ICM (~${Math.round(icmPressure * 100)}%) : près de la bulle / d’un saut de prix, busté coûte cher. Resserre tes tapis et tes call-off — survivre vaut plus que d’encaisser un petit edge.`)
       return {
