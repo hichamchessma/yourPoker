@@ -99,6 +99,7 @@ export interface RangeOpts {
   vsOpenerPos?: string  // position of the player who opened into us (vs-open only)
   reRaiseRatio?: number // vs-3bet: 3-bet size ÷ the open size (3 ≈ standard)
   threeBettorIP?: boolean // vs-3bet: the 3-bettor acts AFTER us postflop (cold 3-bet) → flat tighter
+  icmTighten?: number   // tournament ICM: <1 shrinks the gambling ranges near the bubble / pay jumps
 }
 
 // Action map for every hand in the grid, for a given scenario + hero position.
@@ -109,9 +110,10 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
   // Short-stack overlay: shallow effective stacks → SHOVE-or-fold (no postflop).
   // Applies to opening / iso / facing-an-open / squeeze; the 'raise' cell means
   // ALL-IN here. Facing an actual jam is handled separately (buildJamCallMap).
+  const icm = opts.icmTighten ?? 1
   const pb = opts.effBB !== undefined ? pushBucket(opts.effBB) : null
   if (pb && (scenario === 'rfi' || scenario === 'iso' || scenario === 'vsopen' || scenario === 'squeeze')) {
-    const shove = pushFoldRange(opts.effBB!, playersBehind, position)
+    const shove = trimWeakest(pushFoldRange(opts.effBB!, playersBehind, position), icm) // ICM: shove tighter near the bubble
     for (const h of RANKED) map.set(h.key, shove.has(h.key) ? 'raise' : 'fold')
     return map
   }
@@ -128,8 +130,8 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // open). squeeze: open + caller(s) → polarized & multiway, tiny flat.
     const chart = scenario === 'squeeze' ? squeezeChart(position) : vsOpenChart(position, opts.vsOpenerPos)
     const openBB = opts.raiseToBB ?? 2.5
-    const bluffFrac = scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0
-    const callKeep = scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5
+    const bluffFrac = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0) * icm
+    const callKeep = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5) * icm
     const bluffs = new Set(chart.bluff.slice(0, Math.round(chart.bluff.length * bluffFrac)))
     const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {
@@ -156,7 +158,7 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     const commitFactor = threebetBB >= 25 ? 0.7 : threebetBB >= 15 ? 0.85 : 1
     const depthFactor = opts.effBB === undefined ? 1 : opts.effBB < 25 ? 0.5 : 1
     const ipFactor = opts.threeBettorIP ? 0.7 : 1
-    const callKeep = Math.max(0.2, ratioFactor * commitFactor * depthFactor * ipFactor * (opts.multiway ? 0.7 : 1))
+    const callKeep = Math.max(0.2, ratioFactor * commitFactor * depthFactor * ipFactor * icm * (opts.multiway ? 0.7 : 1))
     const call = trimWeakest(chart.call, callKeep)
     for (const h of RANKED) {
       const a: RangeAction = chart.value.has(h.key) || chart.bluff.includes(h.key) ? '4bet'
@@ -182,9 +184,10 @@ const JAM_PRIORITY = [
   '87s','A8o','Q8s','K9o','97s','J8s','76s','T7s','65s','A7o','Q9o','86s','54s','K6s','75s',
 ]
 function combosOfKey(k: string): number { return k.length === 2 ? 6 : (k[2] === 's' ? 4 : 12) }
-export function buildJamCallMap(effBB: number, numAllIn: number): Map<string, RangeAction> {
+export function buildJamCallMap(effBB: number, numAllIn: number, icmTighten = 1): Map<string, RangeAction> {
   let pct = effBB <= 10 ? 42 : effBB <= 18 ? 22 : effBB <= 30 ? 13 : effBB <= 50 ? 8 : effBB <= 80 ? 5 : 3.2
   pct *= Math.pow(0.52, Math.max(0, numAllIn - 1))   // each extra jam ~halves the call-off
+  pct *= icmTighten                                  // ICM: calling-off tighter near the bubble / pay jumps
   pct = Math.max(1.2, Math.min(95, pct))             // never below the very top (AA/KK/QQ)
   const target = (pct / 100) * TOTAL_COMBOS
   const call = new Set<string>()

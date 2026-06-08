@@ -37,7 +37,8 @@ interface UnifiedAdvice {
 export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
-  raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0, actionRecap, onClose,
+  raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0,
+  icmTighten = 1, icmPressure = 0, actionRecap, onClose,
   embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
@@ -61,6 +62,8 @@ export default function RangeAssistant({
   reRaiseRatio?: number
   threeBettorIP?: boolean
   numAllIn?: number
+  icmTighten?: number
+  icmPressure?: number
   actionRecap: string[]
   onClose: () => void
   embedded?: boolean
@@ -73,8 +76,8 @@ export default function RangeAssistant({
   // Facing an all-in jam (one or more) → call-off range, not the normal flat range.
   const vsJam = isPreflop && numAllIn >= 1
   const rangeMap = !isPreflop ? null
-    : vsJam ? buildJamCallMap(effBB, numAllIn)
-    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP })
+    : vsJam ? buildJamCallMap(effBB, numAllIn, icmTighten)
+    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, icmTighten })
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
   const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
 
@@ -120,6 +123,8 @@ export default function RangeAssistant({
       if (multiway) reasons.push('Plusieurs joueurs déjà dans le coup : resserre (surtout les mains dépareillées).')
       if ((chart === '3bet' || chart === '4bet' || chart === 'raise') && equity < 0.45)
         reasons.push('Main jouée en BLUFF / semi-bluff polarisé : sa valeur vient de la fold equity + des blockers + la jouabilité quand on est payé — PAS de l’équité au showdown. Ne te fie pas au % brut affiché ici.')
+      if (icmPressure > 0.3)
+        reasons.push(`Pression ICM (~${Math.round(icmPressure * 100)}%) : près de la bulle / d’un saut de prix, busté coûte cher. Resserre tes tapis et tes call-off — survivre vaut plus que d’encaisser un petit edge.`)
       return {
         actionText: ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
         equity, potOdds, madeHand: heroKey ?? '—', draws: [], reasons,
@@ -130,7 +135,7 @@ export default function RangeAssistant({
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiseToBB, reRaiseRatio])
+  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiseToBB, reRaiseRatio, icmTighten, icmPressure])
 
   const [answer, setAnswer] = useState<string | null>(null)
 
@@ -203,6 +208,12 @@ export default function RangeAssistant({
               {isPreflop && (
                 <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">
                   Situation : <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? `Face à ${numAllIn} tapis (all-in)` : SCENARIO_LABEL[scenario as Scenario]}
+                </p>
+              )}
+              {isPreflop && icmPressure > 0.3 && (
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-2 py-1 rounded-md inline-block"
+                  style={{ color: '#f0c060', background: 'rgba(200,120,40,0.16)', border: '1px solid rgba(240,192,96,0.4)' }}>
+                  ⚠️ ICM / Bulle — resserre : survivre &gt; maximiser ({Math.round(icmPressure * 100)}%)
                 </p>
               )}
               <div className="flex items-center gap-4 rounded-xl border p-4 mb-4"

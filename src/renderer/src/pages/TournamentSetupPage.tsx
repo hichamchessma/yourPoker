@@ -4,7 +4,7 @@ import { Play, Minus, Plus, Trophy, Users, Coins, Timer, Medal } from 'lucide-re
 import { useAuthStore } from '../store/authStore'
 import WindowControls from '../components/layout/WindowControls'
 import {
-  type Speed, SPEED_LABEL, HANDS_PER_LEVEL, blindStructure, placesPaid, payoutTable,
+  type Speed, SPEED_LABEL, LEVEL_MINUTES_OPTIONS, blindStructure, placesPaid, payoutTable,
 } from '../lib/tournament'
 
 type Curve = 'standard' | 'topheavy' | 'flat'
@@ -24,6 +24,7 @@ export default function TournamentSetupPage() {
   const [tableSize, setTableSize] = useState(9)
   const [startBB, setStartBB] = useState(100)
   const [speed, setSpeed] = useState<Speed>('regular')
+  const [levelMinutes, setLevelMinutes] = useState(5)
   const [buyIn, setBuyIn] = useState(20)
   const [paidPct, setPaidPct] = useState(15)
   const [curve, setCurve] = useState<Curve>('standard')
@@ -44,7 +45,7 @@ export default function TournamentSetupPage() {
         numPlayers: tableSize, selectedSeat: 0, stackBB: startBB,
         sb: levels[0].sb, bb: levels[0].bb, ante: levels[0].ante, decisionTimer: 25,
         displayName, slots,
-        tournament: { field, tableSize, startBB, speed, buyIn, paidPct, curve, reentry, botLevel },
+        tournament: { field, tableSize, startBB, speed, levelMinutes, buyIn, paidPct, curve, reentry, botLevel },
       },
     })
   }
@@ -94,11 +95,19 @@ export default function TournamentSetupPage() {
                 <p className="text-[9px] text-white/30 mt-1">= {fmt(startChips)} jetons (blindes niv.1 {levels[0].sb}/{levels[0].bb})</p>
               </div>
               <div>
-                <Label>Vitesse</Label>
+                <Label>Vitesse (montée des blindes)</Label>
                 <div className="flex flex-col gap-1.5 mt-1.5">
                   {(['regular', 'turbo', 'hyper'] as Speed[]).map(s => (
-                    <Chip key={s} active={speed === s} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]} · {HANDS_PER_LEVEL[s]} mains/niv.</Chip>
+                    <Chip key={s} active={speed === s} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]}</Chip>
                   ))}
+                </div>
+                <div className="mt-2.5">
+                  <Label>Durée d'un niveau</Label>
+                  <div className="flex gap-1.5 mt-1.5">
+                    {LEVEL_MINUTES_OPTIONS.map(m => (
+                      <Chip key={m} active={levelMinutes === m} onClick={() => setLevelMinutes(m)}>{m} min</Chip>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -188,7 +197,7 @@ export default function TournamentSetupPage() {
                 </div>
               ))}
             </div>
-            <p className="text-[8.5px] text-white/30 mt-1.5">Les blindes montent tous les {HANDS_PER_LEVEL[speed]} mains. Stack départ : {startBB} BB.</p>
+            <p className="text-[8.5px] text-white/30 mt-1.5">Les blindes montent toutes les {levelMinutes} min. Stack départ : {startBB} BB.</p>
           </div>
         </div>
       </div>

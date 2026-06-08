@@ -8,9 +8,9 @@ export type Speed = 'regular' | 'turbo' | 'hyper'
 export interface Level { sb: number; bb: number; ante: number }
 export interface PayoutSpot { place: number; amount: number }
 
-// Hands per level — the trainer counts HANDS (no real clock). Faster speed = fewer.
-export const HANDS_PER_LEVEL: Record<Speed, number> = { regular: 10, turbo: 6, hyper: 4 }
 export const SPEED_LABEL: Record<Speed, string> = { regular: 'Régulier', turbo: 'Turbo', hyper: 'Hyper-Turbo' }
+// Level duration is a real CLOCK (minutes), chosen by the player.
+export const LEVEL_MINUTES_OPTIONS = [2, 3, 5, 10]
 
 // Generate a smooth, escalating blind ladder. Big-blind ante kicks in at level 3
 // (modern format: ante = 1 BB, posted by the big blind). Big blinds grow ~1.4×.
@@ -74,13 +74,11 @@ export function icm(stacks: number[], payouts: number[], cap = 8): number[] {
   return ev
 }
 
-// ── Field model — how many players remain after a given number of hands. The
-//    field roughly halves every "few" levels; busts accelerate as blinds rise.
-export function fieldRemaining(field: number, handsPlayed: number, handsPerLevel: number): number {
-  const level = handsPlayed / handsPerLevel
-  // Survival fraction decays; tuned so a big field reaches the final table over a
-  // realistic number of levels and never drops below 1.
-  const frac = Math.pow(0.78, level * 0.7 + handsPlayed / (field * 0.9 + 20))
+// ── Field model — how many players remain at a given level progress (level index
+//    + fraction through it). The field shrinks faster as blinds rise; tuned so a
+//    typical field reaches the final table over ~15-18 levels.
+export function fieldRemaining(field: number, levelFloat: number): number {
+  const frac = Math.pow(0.74, levelFloat * 0.55)
   return Math.max(1, Math.round(field * frac))
 }
 

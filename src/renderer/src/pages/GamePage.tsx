@@ -12,7 +12,7 @@ import {
   type RangeWeights, type ActCat,
 } from '../lib/rangeEstimator'
 import {
-  type Speed as TourSpeed, HANDS_PER_LEVEL, blindStructure,
+  type Speed as TourSpeed, blindStructure,
   placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
 } from '../lib/tournament'
 
@@ -47,7 +47,7 @@ interface GameConfig {
 }
 // MTT config coming from TournamentSetupPage.
 interface TournamentCfg {
-  field: number; tableSize: number; startBB: number; speed: TourSpeed
+  field: number; tableSize: number; startBB: number; speed: TourSpeed; levelMinutes: number
   buyIn: number; paidPct: number; curve: 'standard' | 'topheavy' | 'flat'
   reentry: boolean; botLevel: number
 }
@@ -1295,8 +1295,8 @@ export default function GamePage(): JSX.Element {
   const tournament = cfg.tournament
   const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed) : []), [tournament])
   const [tourLevelIdx, setTourLevelIdx] = useState(0)
-  const tourRef = useRef({ levelIdx: 0, handsThisLevel: 0, handsPlayed: 0, playersLeft: tournament?.field ?? 0, busted: false, place: 0 })
-  const [tourHud, setTourHud] = useState({ playersLeft: tournament?.field ?? 0, handsToLevel: 0 })
+  const tourRef = useRef({ levelIdx: 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60, playersLeft: tournament?.field ?? 0, finalTable: false, busted: false, place: 0 })
+  const [tourHud, setTourHud] = useState({ playersLeft: tournament?.field ?? 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60 })
   const [tourResult, setTourResult] = useState<{ place: number; prize: number } | null>(null)
   // Engine-safe current blinds (read from the ref so timer-driven hands use the
   // up-to-date level even across stale closures).
@@ -1393,6 +1393,30 @@ export default function GamePage(): JSX.Element {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Tournament CLOCK — levels rise on a real timer; the field shrinks with level
+  // progress. Frozen while paused / once the hero is out.
+  useEffect(() => {
+    if (!tournament) return
+    const id = setInterval(() => {
+      const t = tourRef.current
+      if (gsRef.current.paused || t.busted) return
+      if (t.secondsLeft > 0) t.secondsLeft -= 1
+      if (t.secondsLeft <= 0 && t.levelIdx < tourLevels.length - 1) {
+        t.levelIdx += 1; t.secondsLeft = tournament.levelMinutes * 60; setTourLevelIdx(t.levelIdx)
+      } else if (t.secondsLeft < 0) t.secondsLeft = 0
+      if (!t.finalTable) {
+        const lf = t.levelIdx + (1 - t.secondsLeft / Math.max(1, tournament.levelMinutes * 60))
+        const fm = fieldRemaining(tournament.field, lf)
+        if (fm <= tournament.tableSize) t.finalTable = true
+        else t.playersLeft = Math.max(tournament.tableSize, fm)
+      }
+      if (t.finalTable) t.playersLeft = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+      setTourHud({ playersLeft: t.playersLeft, secondsLeft: t.secondsLeft })
+    }, 1000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament])
 
   // Auto-start a tournament once on mount (the player already clicked "Lancer").
   const tourStartedRef = useRef(false)
@@ -2214,20 +2238,17 @@ export default function GamePage(): JSX.Element {
     }, botDelay)
   }
 
-  // Advance the tournament one hand: escalate the level on schedule, shrink the
-  // field. Runs at each hand boundary (before the next hand is dealt).
-  function tourTick() {
-    if (!tournament || tourLevels.length === 0) return
-    const t = tourRef.current
-    t.handsPlayed++
-    t.handsThisLevel++
-    const hpl = HANDS_PER_LEVEL[tournament.speed]
-    if (t.handsThisLevel >= hpl && t.levelIdx < tourLevels.length - 1) {
-      t.handsThisLevel = 0; t.levelIdx++; setTourLevelIdx(t.levelIdx)
+  // A busted bot seat is re-seated with a fresh player (moved from a breaking
+  // table) so the table stays full while the field is still big.
+  function refillSeat(s: Seat, chips: number): Seat {
+    const lvl = Math.max(1, Math.min(3, s.level || tournament?.botLevel || 2))
+    const pool = BNAMES[lvl as keyof typeof BNAMES] ?? BNAMES[2]
+    return {
+      ...s, stack: chips, isEliminated: false, isFolded: false, isAllIn: false,
+      isSittingOut: false, bet: 0, totalBet: 0, holeCards: [null, null], cardsFaceUp: false,
+      isWinner: false, handStrength: undefined, handScore: undefined, lastAction: null,
+      name: pool[Math.floor(Math.random() * pool.length)],
     }
-    const tableAlive = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
-    t.playersLeft = Math.max(tableAlive, fieldRemaining(tournament.field, t.handsPlayed, hpl))
-    setTourHud({ playersLeft: t.playersLeft, handsToLevel: Math.max(0, hpl - t.handsThisLevel) })
   }
 
   function advanceToNextHand() {
@@ -2235,10 +2256,28 @@ export default function GamePage(): JSX.Element {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
-    tourTick()
-    const cur = gsRef.current
-    const newDealerIdx = (cur.dealerIdx + 1) % numPlayers
-    startHand(cur.seats, newDealerIdx, cur.handNum)
+    let seats = gsRef.current.seats
+    if (tournament) {
+      const t = tourRef.current
+      if (!t.finalTable) {
+        // Table balancing: refill busted bots from the (still large) field.
+        const startChips = tournament.startBB * tourLevels[0].bb
+        const avgChips = Math.max(Math.round(startChips * 0.25), Math.round((tournament.field * startChips) / Math.max(1, t.playersLeft)))
+        seats = seats.map(s => (s.isEliminated && !s.isHero) ? refillSeat(s, avgChips) : s)
+      } else {
+        // Final table: no refill. If the hero is the last one standing → victory.
+        const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
+        if (alive.length === 1 && alive[0].isHero && !t.busted) {
+          t.busted = true; t.place = 1
+          setTourResult({ place: 1, prize: prizeForPlace(1, tourPayouts()) })
+          return
+        }
+        t.playersLeft = alive.length
+        setTourHud(h => ({ ...h, playersLeft: alive.length }))
+      }
+    }
+    const newDealerIdx = (gsRef.current.dealerIdx + 1) % numPlayers
+    startHand(seats, newDealerIdx, gsRef.current.handNum)
   }
 
   // Continuous flow: after a hand resolves, automatically deal the next one
@@ -2840,6 +2879,17 @@ export default function GamePage(): JSX.Element {
   const heroNumAllIn = gs.phase === 'preflop'
     ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn).length
     : 0
+  // Tournament ICM pressure (0..1): peaks on the bubble, lingers ITM from pay
+  // jumps. Tightens the coach's gambling ranges (push/fold, call-offs, flats).
+  const icmPressure = tournament ? (() => {
+    const placesP = placesPaid(tournament.field, tournament.paidPct)
+    const left = tourHud.playersLeft
+    if (left <= 1) return 0
+    const toBubble = left - placesP
+    if (toBubble <= 0) return 0.22 // already in the money — mild pay-jump pressure
+    return Math.max(0, Math.min(1, 1 - toBubble / (tournament.field * 0.12 + 6)))
+  })() : 0
+  const icmTighten = 1 - icmPressure * 0.45
   // vs-3bet: size of the 3-bet relative to the open (3 ≈ standard) → continue width.
   const heroReRaiseRatio = (() => {
     const amts = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).map(a => a.amount)
@@ -3170,7 +3220,7 @@ export default function GamePage(): JSX.Element {
               style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
               <Cell label="Niveau" value={`${tourLevelIdx + 1}`} accent />
               <Cell label="Blindes" value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
-              <Cell label="↑ niv. dans" value={`${tourHud.handsToLevel} mains`} />
+              <Cell label="↑ niveau dans" value={`${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
               <Cell label="Joueurs" value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
               <Cell label="Stack moy." value={`${Math.round(avgStack / curLevel.bb)} BB`} />
               <Cell label="Ton stack" value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
@@ -3274,7 +3324,7 @@ export default function GamePage(): JSX.Element {
                   turnNonce={`${gs.handNum}:${gs.currentBet}`}
                   turnPaused={gs.paused || coachOpen || manualMode}
                   hideTimer={manualMode}
-                  onRebuy={seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
+                  onRebuy={!tournament && seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
                   onHoverCards={(entering, e) => {
                     // CARDS zone → range / coach only (and close the bet panel if it
                     // was open for this on-turn seat, so cards = range, never bets).
@@ -3851,6 +3901,8 @@ export default function GamePage(): JSX.Element {
                 reRaiseRatio={heroReRaiseRatio}
                 threeBettorIP={heroThreeBettorIP}
                 numAllIn={heroNumAllIn}
+                icmTighten={icmTighten}
+                icmPressure={icmPressure}
                 actionRecap={gs.log.slice(-10)}
                 onClose={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(null) }}
               />
