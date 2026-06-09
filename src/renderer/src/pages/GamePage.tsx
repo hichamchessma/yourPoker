@@ -1368,6 +1368,7 @@ export default function GamePage(): JSX.Element {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null)
   const [heroPanelHover, setHeroPanelHover] = useState(false)
   const heroPanelHoverRef = useRef(false)
+  const coachOpenRef = useRef(false) // mirrors coachOpen so the tournament clock can read it
   const coachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const visionRef = useRef(true)
   const rangeRef = useRef<Record<number, RangeWeights>>({})
@@ -1413,7 +1414,9 @@ export default function GamePage(): JSX.Element {
     if (!tournament) return
     const id = setInterval(() => {
       const t = tourRef.current
-      if (gsRef.current.paused || t.busted) return
+      // Frozen while paused, busted, OR while you're studying (coach card open over
+      // your cards) — like calling a clock-pause to think; blinds won't go up.
+      if (gsRef.current.paused || t.busted || coachOpenRef.current) return
       if (t.secondsLeft > 0) t.secondsLeft -= 1
       if (t.secondsLeft <= 0 && t.levelIdx < tourLevels.length - 1) {
         t.levelIdx += 1; t.secondsLeft = tournament.levelMinutes * 60; setTourLevelIdx(t.levelIdx)
@@ -2865,6 +2868,7 @@ export default function GamePage(): JSX.Element {
     && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
   // Coach hover-card is open when hovering the hero's own profile (or the panel).
   const coachOpen = !!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)
+  coachOpenRef.current = coachOpen
   // Hero's represented (perceived) range — shown postflop in the coach panel.
   const heroRepView = (coachOpen && hero && gs.community.filter(Boolean).length >= 3 && rangeRef.current[hero.idx])
     ? rangeView(rangeRef.current[hero.idx]) : null
@@ -3233,7 +3237,7 @@ export default function GamePage(): JSX.Element {
               style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
               <Cell label="Niveau" value={`${tourLevelIdx + 1}`} accent />
               <Cell label="Blindes" value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
-              <Cell label="↑ niveau dans" value={`${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
+              <Cell label="↑ niveau dans" value={coachOpen ? '⏸ pause' : `${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
               <Cell label="Joueurs" value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
               <Cell label="Stack moy." value={`${Math.round(avgStack / curLevel.bb)} BB`} />
               <Cell label="Ton stack" value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
