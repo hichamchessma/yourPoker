@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import AuthPage from './pages/AuthPage'
 import LobbyPage from './pages/LobbyPage'
+import HandTrainerPage from './pages/HandTrainerPage'
 import TrainingSetupPage from './pages/TrainingSetupPage'
 import TournamentSetupPage from './pages/TournamentSetupPage'
 import SetupPositionPage from './pages/SetupPositionPage'
@@ -28,6 +29,7 @@ function App(): JSX.Element {
       >
         <Route index element={<Navigate to="/lobby" replace />} />
         <Route path="lobby" element={<LobbyPage />} />
+        <Route path="handtrainer" element={<HandTrainerPage />} />
         <Route path="training" element={<TrainingSetupPage />} />
         <Route path="tournament" element={<TournamentSetupPage />} />
         <Route path="setup" element={<SetupPositionPage />} />

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Home,
+  Target,
   GraduationCap,
   Medal,
   SlidersHorizontal,
@@ -25,6 +26,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'lobby', label: 'Accueil (Lobby)', icon: <Home size={20} />, path: '/lobby' },
+  { id: 'handtrainer', label: 'Hand Trainer', icon: <Target size={20} />, path: '/handtrainer' },
   { id: 'training', label: 'Entraînement CashGame', icon: <GraduationCap size={20} />, path: '/training' },
   { id: 'tournament', label: 'Entraînement Tournoi', icon: <Medal size={20} />, path: '/tournament' },
   { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup' },
