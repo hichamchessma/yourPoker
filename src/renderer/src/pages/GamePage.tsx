@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye, FastForward } from 'lucide-react'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
@@ -843,8 +843,13 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = 'Fold un peu serré'; lines.push(`${key} pouvait suivre (cote/jouabilité), mais le fold reste défendable.`) }
   } else {
     const villainBets = record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
-    const aggression = Math.min(0.85, villainBets.length * 0.28)
     const barrels = new Set(villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
+    // Size-aware aggression: a BIG bet polarizes the range to value far more than a
+    // small one — counting bets alone under-rates a single large turn/river barrel.
+    // pot already includes the bet hero faces, so pot-before-bet = pot - toCall.
+    const sizeFrac = toCall > 0 && (pot - toCall) > 0 ? toCall / (pot - toCall) : 0
+    const sizeBoost = sizeFrac >= 1 ? 0.55 : sizeFrac >= 0.66 ? 0.45 : sizeFrac >= 0.45 ? 0.36 : sizeFrac >= 0.25 ? 0.22 : 0.08
+    const aggression = Math.min(0.85, Math.max(villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
     const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
@@ -1318,6 +1323,9 @@ export default function GamePage(): JSX.Element {
   const [tourResult, setTourResult] = useState<{ place: number; prize: number } | null>(null)
   const handHistoryRef = useRef<HandHistoryRecord[]>([]) // complete list (state lags via setState)
   const savedSessionRef = useRef(false)                  // guard against double-persisting
+  // Fast-forward: bots act near-instantly; the flow only "stops" on the hero's turn.
+  const [fastFwd, setFastFwd] = useState(false)
+  const fastFwdRef = useRef(false)
   // Engine-safe current blinds (read from the ref so timer-driven hands use the
   // up-to-date level even across stale closures).
   const tourBlinds = () => {
@@ -1360,7 +1368,6 @@ export default function GamePage(): JSX.Element {
     ranges: Record<number, RangeWeights>; rangeMeta: Record<number, { move: string; effect: string }>
     mood: Record<number, number>
   }>(null)
-  const [showLog, setShowLog] = useState(false)
   const [sitOut, setSitOut] = useState(false)
   const [rebuyAmt, setRebuyAmt] = useState(stackBB * bbAmt)
   // Pre-action ("check box") queued while waiting for the hero's turn.
@@ -2013,7 +2020,7 @@ export default function GamePage(): JSX.Element {
       // Clear the front bets now so they merge into the pot, then reveal.
       setGs(newState); gsRef.current = newState
       const gen = flowGenRef.current
-      setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(gsRef.current) }, 650)
+      setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(gsRef.current) }, fastFwdRef.current ? 60 : 650)
     } else {
       const nextPhase: Phase =
         newState.phase === 'preflop' ? 'flop' :
@@ -2049,7 +2056,7 @@ export default function GamePage(): JSX.Element {
       if (flowGenRef.current !== gen) return
       const first = firstActivePostflop(newState.seats, newState.dealerIdx)
       startStreet(newState, first)
-    }, 750)
+    }, fastFwdRef.current ? 70 : 750)
   }
 
   function startStreet(state: GState, firstToAct: number) {
@@ -2070,7 +2077,7 @@ export default function GamePage(): JSX.Element {
     // rest of the board out to showdown.
     if (queue.length <= 1) {
       const gen = flowGenRef.current
-      if (state.phase === 'river') setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(state) }, 400)
+      if (state.phase === 'river') setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(state) }, fastFwdRef.current ? 50 : 400)
       else {
         const nextPhase: Phase =
           state.phase === 'preflop' ? 'flop' :
@@ -2212,6 +2219,7 @@ export default function GamePage(): JSX.Element {
   function scheduleAutoNext(state: GState, delay: number) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (state.paused || manualModeRef.current) return  // manual mode never auto-advances
+    delay = fastFwdRef.current ? 20 : delay
 
     timeoutRef.current = setTimeout(() => {
       const cur = gsRef.current
@@ -2262,7 +2270,7 @@ export default function GamePage(): JSX.Element {
 
     // Bot's turn
     activatePlayer(nextIdx)
-    const botDelay = 600 + Math.random() * 800
+    const botDelay = fastFwdRef.current ? 20 : 600 + Math.random() * 800
 
     timeoutRef.current = setTimeout(() => {
       const cur = gsRef.current
@@ -2354,7 +2362,7 @@ export default function GamePage(): JSX.Element {
     nextHandTimeoutRef.current = setTimeout(() => {
       if (gsRef.current.paused || heroIsBusted(gsRef.current)) return
       advanceToNextHand()
-    }, 3800)
+    }, fastFwdRef.current ? 350 : 3800)
   }
 
   // ─── Hand start ──────────────────────────────────────────────────────────
@@ -2687,10 +2695,46 @@ export default function GamePage(): JSX.Element {
     setGs(dealingState)
     gsRef.current = dealingState
 
-    // Clear any leftover deal timers, then pitch the cards one by one.
+    // Clear any leftover deal timers AND any pending bot-action timer — when
+    // fast-forwarding, hands chain so fast that a stale action timer could fire
+    // mid-deal and rebuild `seats` from a half-dealt snapshot, losing cards.
     dealTimeoutsRef.current.forEach(t => clearTimeout(t))
     dealTimeoutsRef.current = []
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
 
+    // Once every card is dealt, open the pre-flop betting round.
+    const openPreflop = () => {
+      const cur = gsRef.current
+      const { bbIdx } = findBlinds(cur.seats, cur.dealerIdx)
+      const firstToAct = numSeats === 2 ? cur.dealerIdx : (bbIdx + 1) % numSeats
+      const queue = buildActQueue(cur.seats, firstToAct)
+
+      recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: 'PREFLOP', amount: 0 }, cur.pot)
+
+      const newState: GState = { ...cur, phase: 'preflop', actQueue: queue }
+      setGs(newState); gsRef.current = newState
+      scheduleAutoNext(newState, 300)
+    }
+
+    // Fast-forward: deal EVERY card in a single atomic update. Pitching one card at
+    // a time via a shared ref races badly when the step is tiny (cards get lost), so
+    // in fast mode we skip the animation and set all hole cards at once.
+    if (fastFwdRef.current) {
+      const dealt = dealingSeats.map(s => {
+        const mine = assigns.filter(a => a.seatIdx === s.idx)
+        if (!mine.length) return s
+        const hc = [...s.holeCards] as [Card|null, Card|null]
+        mine.forEach(a => { hc[a.cardIdx] = a.card })
+        return { ...s, holeCards: hc }
+      })
+      const ds: GState = { ...dealingState, seats: dealt }
+      setGs(ds); gsRef.current = ds
+      const finishT = setTimeout(openPreflop, 40)
+      dealTimeoutsRef.current.push(finishT)
+      return
+    }
+
+    // Normal mode: pitch the cards one by one for the dealing animation.
     const STEP = 80
     assigns.forEach((a, i) => {
       const t = setTimeout(() => {
@@ -2707,19 +2751,7 @@ export default function GamePage(): JSX.Element {
       dealTimeoutsRef.current.push(t)
     })
 
-    // Once every card is dealt, open the pre-flop betting round.
-    const finishT = setTimeout(() => {
-      const cur = gsRef.current
-      const { bbIdx } = findBlinds(cur.seats, cur.dealerIdx)
-      const firstToAct = numSeats === 2 ? cur.dealerIdx : (bbIdx + 1) % numSeats
-      const queue = buildActQueue(cur.seats, firstToAct)
-
-      recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: 'PREFLOP', amount: 0 }, cur.pot)
-
-      const newState: GState = { ...cur, phase: 'preflop', actQueue: queue }
-      setGs(newState); gsRef.current = newState
-      scheduleAutoNext(newState, 300)
-    }, assigns.length * STEP + 220)
+    const finishT = setTimeout(openPreflop, assigns.length * STEP + 220)
     dealTimeoutsRef.current.push(finishT)
   }
 
@@ -2883,11 +2915,6 @@ export default function GamePage(): JSX.Element {
   }
 
   // ─── Bot style label ─────────────────────────────────────────────────────
-  function botStyle(seat: Seat): string {
-    if (seat.seatType === 'human') return 'Humain'
-    return ['', 'Amateur', 'Pro', 'Expert'][seat.level] ?? 'Bot'
-  }
-
   // ─── Derived state ───────────────────────────────────────────────────────
   const hero = gs.seats.find(s => s.isHero)
   const isHeroTurn = hero?.isActive ?? false
@@ -3189,6 +3216,18 @@ export default function GamePage(): JSX.Element {
         <div className="flex-1"/>
 
         {/* History button — replaced by Restart inside a Revive sandbox. */}
+        {/* Accélérer — tournament only: bots act near-instantly, flow stops only at the hero's decision. */}
+        {tournament && !simMode && gs.phase !== 'idle' && (
+          <button onClick={() => { const v = !fastFwdRef.current; fastFwdRef.current = v; setFastFwd(v); if (v) { const cur = gsRef.current; if (!cur.paused && !manualModeRef.current && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20) } }}
+            title={fastFwd ? 'Vitesse normale' : 'Accélérer — les bots jouent instantanément, ça ne s’arrête qu’à ta décision'}
+            className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
+            style={fastFwd
+              ? { borderColor: 'rgba(201,162,39,0.7)', background: 'rgba(201,162,39,0.22)', color: '#f2d375' }
+              : { borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
+            <FastForward size={11}/> {fastFwd ? 'Rapide ⚡' : 'Accélérer'}
+          </button>
+        )}
+
         {simMode ? (
           <button onClick={restartSim}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
@@ -3495,62 +3534,14 @@ export default function GamePage(): JSX.Element {
         <div className="flex-shrink-0 border-t border-white/8 relative z-20"
           style={{background:'rgba(4,7,16,0.98)', minHeight: 100}}>
 
-          {/* Hero info bar */}
-          <div className="flex items-center gap-4 px-4 py-2 border-b border-white/5">
-            {hero && (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-white/40 uppercase tracking-wide">Vous</span>
-                  <span className="text-[11px] font-bold text-[#00d4ff]">{hero.name}</span>
-                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#c9a227]/10 border border-[#c9a227]/20 text-[#c9a227] font-bold">{hero.position}</span>
-                </div>
-                <div className="h-3 w-px bg-white/10"/>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] text-white/40">Stack</span>
-                  <span className="text-[12px] font-mono font-bold text-emerald-300 tabular-nums" style={{textShadow:'0 1px 3px rgba(0,0,0,0.8)'}}>${hero.stack.toLocaleString()}</span>
-                </div>
-                {sitOutPending && (
-                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold uppercase tracking-wide">
-                    Sit out à la prochaine main
-                  </span>
-                )}
-                {hero.holeCards[0] && hero.holeCards[1] && (
-                  <>
-                    <div className="h-3 w-px bg-white/10"/>
-                    <div className="flex gap-1">
-                      <PlayingCard rank={hero.holeCards[0].rank} suit={hero.holeCards[0].suit} w={32} h={46}/>
-                      <PlayingCard rank={hero.holeCards[1].rank} suit={hero.holeCards[1].suit} w={32} h={46}/>
-                    </div>
-                    {gs.phase !== 'preflop' && gs.community.some(Boolean) && (
-                      <span className="text-[9px] text-white/50 italic">
-                        {bestHand([...(hero.holeCards.filter(Boolean) as Card[]), ...(gs.community.filter(Boolean) as Card[])]).name}
-                      </span>
-                    )}
-                  </>
-                )}
-                <div className="flex-1"/>
-                {/* Log toggle */}
-                <button onClick={() => setShowLog(v => !v)}
-                  className="text-[8px] text-white/30 hover:text-white/60 uppercase tracking-widest">
-                  {showLog ? <ChevronDown size={12}/> : <ChevronUp size={12}/>}
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Log */}
-          <AnimatePresence>
-            {showLog && (
-              <motion.div initial={{height:0,opacity:0}} animate={{height:72,opacity:1}} exit={{height:0,opacity:0}}
-                className="overflow-hidden border-b border-white/5">
-                <div className="h-18 overflow-y-auto px-4 py-1.5 space-y-0.5" style={{maxHeight:72}}>
-                  {gs.log.slice(-12).map((line, i) => (
-                    <p key={i} className="text-[8px] text-white/35 font-mono">{line}</p>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Sit-out notice (cards/name/stack are already shown on the table seat) */}
+          {hero && sitOutPending && (
+            <div className="flex items-center px-4 py-1.5 border-b border-white/5">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold uppercase tracking-wide">
+                Sit out à la prochaine main
+              </span>
+            </div>
+          )}
 
           {/* Action buttons — fixed height so the bar never jumps between states */}
           <div className="flex items-center gap-3 px-4 py-3 min-h-[92px]">
@@ -3748,24 +3739,6 @@ export default function GamePage(): JSX.Element {
                 )}
               </div>
             )}
-          </div>
-
-          {/* Opponents summary */}
-          <div className="flex items-center gap-3 px-4 pb-2 overflow-x-auto">
-            {gs.seats.filter(s => !s.isHero && !s.isEliminated).map(s => (
-              <div key={s.idx} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border flex-shrink-0 text-[8px] transition-all
-                ${s.isActive?'border-[#00d4ff]/40 bg-[#00d4ff]/8':'border-white/8 bg-white/3'}`}>
-                <div className={`w-2 h-2 rounded-full ${s.isFolded?'bg-red-500/40':s.isAllIn?'bg-purple-500':'bg-white/20'}`}/>
-                <span className={`font-bold ${s.isActive?'text-[#00d4ff]':'text-white/65'}`}>{s.name}</span>
-                <span className="text-[9px] font-bold font-mono tabular-nums text-emerald-300/90">${s.stack.toLocaleString()}</span>
-                <span className="text-[7px] text-white/25 italic">{botStyle(s)}</span>
-                {s.lastAction && (
-                  <span className={`px-1 rounded font-bold uppercase ${s.lastAction==='FOLD'?'text-red-400/60':s.lastAction.startsWith('RAISE')||s.lastAction.startsWith('BET')?'text-yellow-300':'text-emerald-400'}`}>
-                    {s.lastAction}
-                  </span>
-                )}
-              </div>
-            ))}
           </div>
 
         </div>
