@@ -930,6 +930,19 @@ function HandHistoryModal({ records, onClose, onRevive }: {
   // Clear the critique whenever we move to another step / hand.
   useEffect(() => { setCritique(null) }, [stepIdx, selectedId])
 
+  // Keyboard: ← step back in the hand, → step forward.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!record) return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setStepIdx(i => Math.max(0, i - 1)) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); setStepIdx(i => Math.min(record.actions.length - 1, i + 1)) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [record])
+
   // Range Vision in the replay — hover a player to see their estimated range.
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const [hoverXY, setHoverXY] = useState<{ x: number; y: number } | null>(null)
