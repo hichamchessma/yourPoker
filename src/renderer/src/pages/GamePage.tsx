@@ -1448,6 +1448,32 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament])
 
+  // Fast-forward only: bots act in ~0 real time, so the level clock would barely
+  // move while a realistic number of hands flies by. Charge each skipped decision
+  // its "virtual" think time (~1.5s/player) to the level clock, so blinds rise at
+  // the same hands-per-level rate as live play. (Hero's own thinking is real time
+  // and is already counted by the 1-second ticker above.)
+  function consumeTourTime(secs: number) {
+    if (!tournament) return
+    const t = tourRef.current
+    if (t.busted || gsRef.current.paused) return
+    t.secondsLeft -= secs
+    while (t.secondsLeft <= 0 && t.levelIdx < tourLevels.length - 1) {
+      t.levelIdx += 1
+      t.secondsLeft += tournament.levelMinutes * 60
+      setTourLevelIdx(t.levelIdx)
+    }
+    if (t.secondsLeft < 0) t.secondsLeft = 0
+    if (!t.finalTable) {
+      const lf = t.levelIdx + (1 - t.secondsLeft / Math.max(1, tournament.levelMinutes * 60))
+      const fm = fieldRemaining(tournament.field, lf)
+      if (fm <= tournament.tableSize) t.finalTable = true
+      else t.playersLeft = Math.max(tournament.tableSize, fm)
+    }
+    if (t.finalTable) t.playersLeft = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+    setTourHud({ playersLeft: t.playersLeft, secondsLeft: t.secondsLeft })
+  }
+
   // Persist a CASH session when leaving the table (quit / sidebar nav / unmount).
   // Tournaments persist at bust/win instead, so they're skipped here.
   useEffect(() => {
@@ -2284,6 +2310,9 @@ export default function GamePage(): JSX.Element {
       }
       // Decide from a blinded view — the bot can't see anyone else's cards.
       const { action, amount } = decideBotAction(botSeat, blindStateForBot(cur, nextIdx))
+      // Fast-forward: this decision took ~0 real time → charge its virtual think
+      // time to the level clock so blinds keep rising at a realistic pace.
+      if (fastFwdRef.current) consumeTourTime(1.5)
       let newState = executeAction(nextIdx, action, amount, cur)
       newState = { ...newState, actQueue: nextQueueAfter(newState, nextIdx, cur) }
 
