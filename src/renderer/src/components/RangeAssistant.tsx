@@ -75,9 +75,11 @@ export default function RangeAssistant({
   const effBB = bb > 0 ? effStack / bb : 100
   // Facing an all-in jam (one or more) → call-off range, not the normal flat range.
   const vsJam = isPreflop && numAllIn >= 1
+  const potOddsPre = toCall > 0 ? toCall / (pot + toCall) : 0
+  const closingAction = playersBehind === 0 // BB last to act preflop
   const rangeMap = !isPreflop ? null
     : vsJam ? buildJamCallMap(effBB, numAllIn, icmTighten)
-    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, icmTighten })
+    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, icmTighten, closingAction, potOdds: potOddsPre })
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
   const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
 
@@ -127,6 +129,8 @@ export default function RangeAssistant({
         reasons.push(`Set-mine : tu paies bon marché pour toucher un brelan (~1 fois sur 8) et empiler un tapis profond (~${Math.round(effBB)} BB) — les cotes implicites rendent le call rentable même si l'équité brute paraît basse.`)
       else if (chart === 'call' && heroKey && (heroKey.endsWith('s') && effBB > 30))
         reasons.push('Main assortie jouée IP en profondeur : tu suis pour la jouabilité + les cotes implicites (couleur/quinte), pas seulement la cote directe.')
+      if (chart === 'call' && closingAction && potOddsPre > 0 && potOddsPre < 0.3)
+        reasons.push(`Tu FERMES l’action (grosse blinde) : ${pct(equity)} d’équité pour une cote de seulement ${pct(potOddsPre)} → tu as le prix pour payer, on défend large à ce tarif (K-high, connecteurs, paires…) puisque personne ne peut relancer derrière.`)
       if (icmPressure > 0.3)
         reasons.push(`Pression ICM (~${Math.round(icmPressure * 100)}%) : près de la bulle / d’un saut de prix, busté coûte cher. Resserre tes tapis et tes call-off — survivre vaut plus que d’encaisser un petit edge.`)
       return {
@@ -139,7 +143,7 @@ export default function RangeAssistant({
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiseToBB, reRaiseRatio, icmTighten, icmPressure])
+  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre])
 
   const [answer, setAnswer] = useState<string | null>(null)
 

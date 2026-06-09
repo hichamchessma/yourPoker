@@ -811,7 +811,9 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const map = vsJam
       ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn)
       : buildRangeMap(scenario, hero.position, (scenario === 'rfi' || scenario === 'iso') ? playersBehind : undefined,
-          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, threeBettorIP, effBB: record.bb > 0 ? effStack / record.bb : undefined })
+          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, threeBettorIP,
+            effBB: record.bb > 0 ? effStack / record.bb : undefined,
+            closingAction: playersBehind === 0, potOdds: toCall > 0 ? toCall / (pot + toCall) : 0 })
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'

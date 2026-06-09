@@ -63,6 +63,13 @@ function trimWeakest(set: Set<string>, keepFrac: number): Set<string> {
   const ordered = RANKED.filter(h => set.has(h.key)).map(h => h.key) // strongest first
   return new Set(ordered.slice(0, Math.max(0, Math.round(ordered.length * keepFrac))))
 }
+// The top `pct`% of all hands by playability — used for price-based BB defense.
+function topByPct(pct: number): Set<string> {
+  const target = (Math.max(0, Math.min(100, pct)) / 100) * TOTAL_COMBOS
+  const set = new Set<string>(); let acc = 0
+  for (const h of RANKED) { if (acc >= target) break; set.add(h.key); acc += h.combos }
+  return set
+}
 
 // ── Situation → range size (in % of all hands) ──────────────────────────────
 // RFI open width as a function of how many players still act behind the hero
@@ -100,6 +107,8 @@ export interface RangeOpts {
   reRaiseRatio?: number // vs-3bet: 3-bet size ÷ the open size (3 ≈ standard)
   threeBettorIP?: boolean // vs-3bet: the 3-bettor acts AFTER us postflop (cold 3-bet) → flat tighter
   icmTighten?: number   // tournament ICM: <1 shrinks the gambling ranges near the bubble / pay jumps
+  closingAction?: boolean // hero is LAST to act preflop (BB) → can defend by price
+  potOdds?: number      // toCall / (pot + toCall) — drives the closing-action defense width
 }
 
 // Action map for every hand in the grid, for a given scenario + hero position.
@@ -136,7 +145,16 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     const bluffFrac = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.6 : openBB <= 5.5 ? 0.3 : 0) * icm
     const callKeep = (scenario === 'squeeze' ? 1 : openBB <= 2.8 ? 1 : openBB <= 4 ? 0.85 : openBB <= 5.5 ? 0.7 : 0.5) * icm * depthCall
     const bluffs = new Set(chart.bluff.slice(0, Math.round(chart.bluff.length * bluffFrac)))
-    const call = trimWeakest(chart.call, callKeep)
+    let call = trimWeakest(chart.call, callKeep)
+    // CLOSING THE ACTION (BB, no one behind) with a price → defend BY POT ODDS: the
+    // cheaper the call, the wider you defend (you close so you can't get raised, and
+    // the dead money in a multiway pot gives a huge price). Never tighter than chart.
+    if (opts.closingAction && opts.potOdds !== undefined && opts.potOdds > 0) {
+      const po = opts.potOdds
+      let pw = po <= 0.10 ? 68 : po <= 0.14 ? 56 : po <= 0.18 ? 46 : po <= 0.25 ? 36 : po <= 0.33 ? 27 : 18
+      if (opts.multiway) pw *= 0.82 // reverse implied odds in a multiway pot → a touch tighter
+      call = new Set([...call, ...topByPct(pw)])
+    }
     for (const h of RANKED) {
       const a: RangeAction = chart.value.has(h.key) || bluffs.has(h.key) ? '3bet'
         : call.has(h.key) ? 'call' : 'fold'
