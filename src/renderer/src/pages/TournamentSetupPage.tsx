@@ -96,14 +96,14 @@ export default function TournamentSetupPage() {
                 <p className="text-[9px] text-white/30 mt-1">= {fmt(startChips)} jetons (blindes niv.1 {levels[0].sb}/{levels[0].bb})</p>
               </div>
               <div>
-                <Label>Vitesse (montée des blindes)</Label>
+                <Label>Vitesse — raideur des sauts de blindes</Label>
                 <div className="flex flex-col gap-1.5 mt-1.5">
                   {(['regular', 'turbo', 'hyper'] as Speed[]).map(s => (
-                    <Chip key={s} active={speed === s} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]}</Chip>
+                    <Chip key={s} active={speed === s} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]} · ×{s === 'hyper' ? '1.85' : s === 'turbo' ? '1.6' : '1.4'}/niv.</Chip>
                   ))}
                 </div>
                 <div className="mt-2.5">
-                  <Label>Durée d'un niveau</Label>
+                  <Label>Durée d'un niveau (timer)</Label>
                   <div className="flex gap-1.5 mt-1.5">
                     {LEVEL_MINUTES_OPTIONS.map(m => (
                       <Chip key={m} active={levelMinutes === m} onClick={() => setLevelMinutes(m)}>{m} min</Chip>
@@ -206,7 +206,7 @@ export default function TournamentSetupPage() {
                 </div>
               ))}
             </div>
-            <p className="text-[8.5px] text-white/30 mt-1.5">Les blindes montent toutes les {levelMinutes} min. Stack départ : {startBB} BB.</p>
+            <p className="text-[8.5px] text-white/30 mt-1.5">Chaque palier dure <b className="text-white/50">{levelMinutes} min</b> (timer) ; la <b className="text-white/50">vitesse</b> règle l'ampleur de chaque saut (×{speed === 'hyper' ? '1.85' : speed === 'turbo' ? '1.6' : '1.4'}). Stack départ : {startBB} BB.</p>
           </div>
         </div>
       </div>

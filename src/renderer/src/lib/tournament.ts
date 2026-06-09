@@ -12,12 +12,27 @@ export const SPEED_LABEL: Record<Speed, string> = { regular: 'Régulier', turbo:
 // Level duration is a real CLOCK (minutes), chosen by the player.
 export const LEVEL_MINUTES_OPTIONS = [2, 3, 5, 10]
 
-// Generate a smooth, escalating blind ladder. When `antes` is on, a big-blind
-// ante (= 1 BB, posted by the BB) kicks in at level 3 — the modern format. Big
-// blinds grow ~1.4× per level.
-export function blindStructure(_speed: Speed, antes = true): Level[] {
-  const bbs = [100, 150, 200, 300, 400, 600, 800, 1200, 1600, 2400, 3200, 5000, 7000, 10000, 15000, 20000, 30000, 50000, 70000, 100000, 150000, 200000, 300000, 500000, 800000]
-  return bbs.map((bb, i) => ({ sb: Math.round(bb / 2), bb, ante: antes && i >= 2 ? bb : 0 }))
+// Round a blind up to a "poker-nice" number (50, 75, 100, 125, 150, 200, 250…).
+function niceRound(x: number): number {
+  const mag = Math.pow(10, Math.floor(Math.log10(x)))
+  const f = x / mag
+  const nice = f < 1.25 ? 1 : f < 1.75 ? 1.5 : f < 2.25 ? 2 : f < 2.75 ? 2.5 : f < 3.5 ? 3 : f < 4.5 ? 4 : f < 5.5 ? 5 : f < 7 ? 6 : f < 9 ? 8 : 10
+  return Math.round(nice * mag)
+}
+// Generate the escalating blind ladder. `speed` sets HOW STEEPLY the blinds climb
+// each level (Regular ~1.4×, Turbo ~1.6×, Hyper ~1.85×) — a DIFFERENT axis from the
+// level DURATION (the clock). With `antes` on, a big-blind ante (= 1 BB, posted by
+// the BB) kicks in at level 3.
+export function blindStructure(speed: Speed, antes = true): Level[] {
+  const ramp = speed === 'hyper' ? 1.85 : speed === 'turbo' ? 1.6 : 1.4
+  const out: Level[] = []
+  let bb = 100
+  for (let i = 0; i < 26; i++) {
+    const v = niceRound(bb)
+    out.push({ sb: Math.max(1, Math.round(v / 2)), bb: v, ante: antes && i >= 2 ? v : 0 })
+    bb *= ramp
+  }
+  return out
 }
 
 // Places paid = round(field × pct), clamped to [1, field].
