@@ -25,13 +25,14 @@ export default function TournamentSetupPage() {
   const [startBB, setStartBB] = useState(100)
   const [speed, setSpeed] = useState<Speed>('regular')
   const [levelMinutes, setLevelMinutes] = useState(5)
+  const [antes, setAntes] = useState(true)
   const [buyIn, setBuyIn] = useState(20)
   const [paidPct, setPaidPct] = useState(15)
   const [curve, setCurve] = useState<Curve>('standard')
   const [reentry, setReentry] = useState(false)
   const [botLevel, setBotLevel] = useState(2)
 
-  const levels = useMemo(() => blindStructure(speed), [speed])
+  const levels = useMemo(() => blindStructure(speed, antes), [speed, antes])
   const nbTables = Math.ceil(field / tableSize)
   const prizePool = buyIn * field
   const places = placesPaid(field, paidPct)
@@ -45,7 +46,7 @@ export default function TournamentSetupPage() {
         numPlayers: tableSize, selectedSeat: 0, stackBB: startBB,
         sb: levels[0].sb, bb: levels[0].bb, ante: levels[0].ante, decisionTimer: 25,
         displayName, slots,
-        tournament: { field, tableSize, startBB, speed, levelMinutes, buyIn, paidPct, curve, reentry, botLevel },
+        tournament: { field, tableSize, startBB, speed, levelMinutes, antes, buyIn, paidPct, curve, reentry, botLevel },
       },
     })
   }
@@ -108,6 +109,14 @@ export default function TournamentSetupPage() {
                       <Chip key={m} active={levelMinutes === m} onClick={() => setLevelMinutes(m)}>{m} min</Chip>
                     ))}
                   </div>
+                </div>
+                <div className="mt-2.5">
+                  <Label>Antes (big-blind ante)</Label>
+                  <div className="flex gap-1.5 mt-1.5">
+                    <Chip active={antes} onClick={() => setAntes(true)}>Activées</Chip>
+                    <Chip active={!antes} onClick={() => setAntes(false)}>Désactivées</Chip>
+                  </div>
+                  <p className="text-[8.5px] text-white/30 mt-1">{antes ? `Ante = 1 BB (payée par la grosse blinde) dès le niveau 3.` : 'Aucune ante.'}</p>
                 </div>
               </div>
             </div>

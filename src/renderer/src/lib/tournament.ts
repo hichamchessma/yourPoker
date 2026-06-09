@@ -12,11 +12,12 @@ export const SPEED_LABEL: Record<Speed, string> = { regular: 'Régulier', turbo:
 // Level duration is a real CLOCK (minutes), chosen by the player.
 export const LEVEL_MINUTES_OPTIONS = [2, 3, 5, 10]
 
-// Generate a smooth, escalating blind ladder. Big-blind ante kicks in at level 3
-// (modern format: ante = 1 BB, posted by the big blind). Big blinds grow ~1.4×.
-export function blindStructure(_speed: Speed): Level[] {
+// Generate a smooth, escalating blind ladder. When `antes` is on, a big-blind
+// ante (= 1 BB, posted by the BB) kicks in at level 3 — the modern format. Big
+// blinds grow ~1.4× per level.
+export function blindStructure(_speed: Speed, antes = true): Level[] {
   const bbs = [100, 150, 200, 300, 400, 600, 800, 1200, 1600, 2400, 3200, 5000, 7000, 10000, 15000, 20000, 30000, 50000, 70000, 100000, 150000, 200000, 300000, 500000, 800000]
-  return bbs.map((bb, i) => ({ sb: Math.round(bb / 2), bb, ante: i >= 2 ? bb : 0 }))
+  return bbs.map((bb, i) => ({ sb: Math.round(bb / 2), bb, ante: antes && i >= 2 ? bb : 0 }))
 }
 
 // Places paid = round(field × pct), clamped to [1, field].

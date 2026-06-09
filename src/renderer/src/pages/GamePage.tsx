@@ -47,7 +47,7 @@ interface GameConfig {
 }
 // MTT config coming from TournamentSetupPage.
 interface TournamentCfg {
-  field: number; tableSize: number; startBB: number; speed: TourSpeed; levelMinutes: number
+  field: number; tableSize: number; startBB: number; speed: TourSpeed; levelMinutes: number; antes: boolean
   buyIn: number; paidPct: number; curve: 'standard' | 'topheavy' | 'flat'
   reentry: boolean; botLevel: number
 }
@@ -1293,7 +1293,7 @@ export default function GamePage(): JSX.Element {
 
   // ─── Tournament (MTT) — escalating blinds + field model ────────────────────
   const tournament = cfg.tournament
-  const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed) : []), [tournament])
+  const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed, tournament.antes) : []), [tournament])
   const [tourLevelIdx, setTourLevelIdx] = useState(0)
   const tourRef = useRef({ levelIdx: 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60, playersLeft: tournament?.field ?? 0, finalTable: false, busted: false, place: 0 })
   const [tourHud, setTourHud] = useState({ playersLeft: tournament?.field ?? 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60 })
