@@ -4,7 +4,7 @@ import {
   GRID_RANKS, buildRangeMap, buildJamCallMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type FacePlanRow } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type FacePlanRow, type OutCard } from '../lib/postflopAdvisor'
 import RangeHeatmap from './RangeHeatmap'
 import type { RangeView } from '../lib/rangeEstimator'
 
@@ -21,6 +21,29 @@ const ADVICE_COLOR: Record<AdviceAction, string> = {
   BET: '#c9a227', RAISE: '#c9a227', CALL: '#1f9d5e', CHECK: '#3aa0d8', FOLD: '#c0392b',
 }
 
+// Tiny face-up card used to visualise outs in the coach panel.
+function MiniCard({ rank, suit }: { rank: string; suit: string }) {
+  const red = suit === '♥' || suit === '♦'
+  return (
+    <span className="inline-flex flex-col items-center justify-center rounded-[3px] bg-white leading-none"
+      style={{ width: 15, height: 21, border: '1px solid rgba(0,0,0,0.3)', color: red ? '#d11' : '#111' }}>
+      <span className="font-black" style={{ fontSize: 9 }}>{rank}</span>
+      <span style={{ fontSize: 8, marginTop: -1 }}>{suit}</span>
+    </span>
+  )
+}
+
+// Group outs by the hand they complete, preserving the (strongest-first) order.
+function groupOuts(outs: OutCard[]): { label: string; cards: OutCard[] }[] {
+  const groups: { label: string; cards: OutCard[] }[] = []
+  for (const o of outs) {
+    let g = groups.find(x => x.label === o.label)
+    if (!g) { g = { label: o.label, cards: [] }; groups.push(g) }
+    g.cards.push(o)
+  }
+  return groups
+}
+
 interface UnifiedAdvice {
   actionText: string
   color: string
@@ -32,6 +55,7 @@ interface UnifiedAdvice {
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[]
+  outs?: OutCard[]
 }
 
 export default function RangeAssistant({
@@ -141,7 +165,7 @@ export default function RangeAssistant({
     }
     if (board.length < 3) return null
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb })
-    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan }
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre])
 
@@ -305,6 +329,25 @@ export default function RangeAssistant({
                 </div>
                 {!isPreflop && (
                   <p className="text-[9px] text-white/30 mt-1">Ta main : <span className="text-white/60 font-bold">{advice.madeHand}</span>{advice.draws.length ? ` · ${advice.draws.join(' · ')}` : ''}</p>
+                )}
+                {/* Outs — exact cards that improve the hero's hand (flop/turn only) */}
+                {!isPreflop && advice.outs && advice.outs.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] uppercase tracking-widest text-emerald-300/80 font-bold">Tes outs</span>
+                      <span className="text-[9px] text-white/40">{advice.outs.length} carte{advice.outs.length > 1 ? 's' : ''} qui t’améliorent</span>
+                    </div>
+                    <div className="space-y-1">
+                      {groupOuts(advice.outs).map(g => (
+                        <div key={g.label} className="flex items-start gap-1.5">
+                          <span className="text-[8px] text-white/45 leading-[18px] w-[70px] shrink-0">{g.label} <span className="text-white/30">({g.cards.length})</span></span>
+                          <div className="flex flex-wrap gap-0.5">
+                            {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} />)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
 

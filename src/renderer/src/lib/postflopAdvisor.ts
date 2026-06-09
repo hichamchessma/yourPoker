@@ -18,6 +18,7 @@ export interface FacePlanRow {
   action: string     // "CALL", "FOLD", "RE-RAISE / 4-BET (valeur)"…
   why: string        // short math rationale
 }
+export interface OutCard { card: Card; cat: number; label: string }
 export interface Advice {
   action: AdviceAction
   sizingText: string
@@ -28,6 +29,7 @@ export interface Advice {
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[] // plan vs a bet/raise behind — when CHECK / BET / CALL
+  outs: OutCard[]          // specific cards (flop/turn) that improve the hero's hand
 }
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
@@ -74,6 +76,43 @@ function padTo5(cards: Card[]): Card[] {
 function categoryOf(score: number): number { return Math.floor(score / 15 ** 5) } // 0..8
 export function handCategory(cards: Card[]): string { return HAND_NAMES[categoryOf(best7(cards))] ?? 'Carte haute' }
 
+// Best made-hand category among FEWER than 5 cards (no padding → no phantom pairs).
+// Used to tell whether a card improves the BOARD alone (everyone) vs the HERO only.
+function rawCat(cards: Card[]): number {
+  if (cards.length >= 5) return categoryOf(best7(cards))
+  const cnt: Record<number, number> = {}; cards.forEach(c => (cnt[RV[c.rank]] = (cnt[RV[c.rank]] ?? 0) + 1))
+  const cv = Object.values(cnt).sort((a, b) => b - a)
+  if (cv[0] === 4) return 7
+  if (cv[0] === 3 && (cv[1] ?? 0) >= 2) return 6
+  if (cv[0] === 3) return 3
+  if (cv[0] === 2 && (cv[1] ?? 0) === 2) return 2
+  if (cv[0] === 2) return 1
+  return 0
+}
+
+// The exact cards (still in the deck) that improve the HERO's hand on the next
+// street — i.e. visual "outs". Only flop/turn (a card is still to come), and only
+// improvements that USE a hole card (a board pair/straight that helps everyone is
+// not a hero out). Returns each out tagged with the hand category it completes.
+export function computeOuts(hole: Card[], board: Card[]): OutCard[] {
+  if (board.length < 3 || board.length >= 5) return []
+  if (!hole[0] || !hole[1]) return []
+  const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
+  const curCat = categoryOf(best7([...hole, ...board]))
+  const res: OutCard[] = []
+  for (const c of fullDeck()) {
+    if (known.has(c.rank + c.suit)) continue
+    const heroCat = categoryOf(best7([...hole, ...board, c]))
+    if (heroCat <= curCat) continue                 // must raise the hero's category
+    if (heroCat > rawCat([...board, c]))            // and the gain must be hero-specific
+      res.push({ card: c, cat: heroCat, label: HAND_NAMES[heroCat] ?? 'Carte haute' })
+  }
+  // Strongest improvement first, then by rank then suit — stable, easy to count.
+  const suitOrder: Record<string, number> = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 }
+  res.sort((a, b) => b.cat - a.cat || RV[b.card.rank] - RV[a.card.rank] || suitOrder[a.card.suit] - suitOrder[b.card.suit])
+  return res
+}
+
 // ── Range-aware Monte-Carlo equity ───────────────────────────────────────────
 function fullDeck(): Card[] { return SUITS.flatMap(s => RANKS.map(r => ({ rank: r, suit: s }))) }
 
@@ -107,12 +146,19 @@ function betFrequency(oppHole: Card[], board: Card[], a: number): number {
   const cat = categoryOf(best7([...oppHole, ...board]))
   if (cat >= 3) return 0.95                              // set / straight / flush+ → almost always bets
   if (cat === 2) return 0.90                             // two pair
-  if (cat === 1) {                                       // one pair — top pair bets a lot, weak pair rarely
+  if (cat === 1) {                                       // one pair — bet frequency scales with the PAIR's strength
     const bRanks = board.map(c => RV[c.rank]).sort((x, y) => y - x)
     const hRanks = oppHole.map(c => RV[c.rank])
     const pocket = oppHole[0].rank === oppHole[1].rank
-    const topOrOver = (pocket && hRanks[0] > bRanks[0]) || hRanks.includes(bRanks[0])
-    return topOrOver ? 0.78 : Math.max(0.12, 0.42 * (1 - a * 0.45)) // weaker pairs barrel less
+    // Rank of the pair held: the pocket value, or the highest board card it pairs.
+    let pairRank = 0
+    if (pocket) pairRank = hRanks[0]
+    else for (const b of bRanks) if (hRanks.includes(b)) { pairRank = b; break }
+    const above = bRanks.filter(r => r > pairRank).length // board cards out-ranking the pair
+    if (pocket && pairRank > bRanks[0]) return 0.80        // overpair → value bets a lot
+    if (above === 0) return 0.78                           // top pair
+    if (above === 1) return Math.max(0.30, 0.55 * (1 - a * 0.2))  // 2nd pair / strong middle pair → real value
+    return Math.max(0.12, 0.40 * (1 - a * 0.45))          // weak / bottom pair barrels rarely
   }
   if (hasStrongDraw(oppHole, board)) return 0.58         // semi-bluff
   return Math.max(0.05, 0.18 * (1 - a * 0.6))            // air bluff — shrinks as barrels pile up
@@ -263,9 +309,18 @@ export function getPostflopAdvice(input: {
   // Equity margin required to CALL: negative for clean draws (implied odds let you
   // call slightly below the price), POSITIVE for vulnerable draws facing aggression
   // (reverse implied odds → you need MORE than the raw price to call profitably).
+  // A one-pair that is easily dominated (2nd/weak pair, or top pair on a wet board)
+  // needs a SAFETY CUSHION over the raw price: multiway + facing aggression = reverse
+  // implied odds (you're often already beaten or drawing thin, and you can still be
+  // raised behind when you don't close the action). Heads-up vs a small bet the cushion
+  // stays tiny, so a genuine bluffcatch that beats the price still calls.
+  const dominatedPair = effCat === 1 && (pair === 'second' || pair === 'weak' || (pair === 'top' && wet > 0.4))
+  const onePairMargin = dominatedPair
+    ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0)
+    : 0.01
   const callMargin = drawIsOnlyEquity
     ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
-    : 0.01
+    : onePairMargin
   // Implied-odds buffer below direct pot odds: generous on the flop (two cards to
   // come), almost none on the turn (one card, little room to get paid).
   const impliedBuf = board.length <= 3 ? 0.05 : 0.01
@@ -314,6 +369,7 @@ export function getPostflopAdvice(input: {
       action = 'FOLD'; sizingText = 'couche-toi'
       if (vulnerableDraw) reasons.push(`Tirage vulnérable trop cher : ${pct(eq)} d'équité, mais reverse implied odds (couleur basse / board pairé, face à l'agression) → tu touches parfois pour perdre. Il te faudrait ${pct(potOdds + callMargin)}. Fold.`)
       else if (strongDraw) reasons.push(`Tirage trop cher : ${pct(eq)} d'équité contre ${pct(potOdds)} requis${board.length >= 4 ? ' — et une seule carte à venir (peu de gains implicites)' : ''}. Fold.`)
+      else if (eq >= potOdds) reasons.push(`Tu as tout juste la cote brute (${pct(eq)} vs ${pct(potOdds)}), MAIS ${effCat === 1 ? 'ta paire est dominable' : 'ta main est trop marginale'}${Math.max(1, opponents) >= 2 ? ' en multiway' : ''}${aggression > 0 ? ' face à l’agression' : ''}${!inPosition ? ' et tu ne fermes pas l’action (hors de position)' : ''} : il te faut une marge de sécurité (~${pct(potOdds + callMargin)}) contre les reverse implied odds → fold marginal.`)
       else reasons.push(`Équité (${pct(eq)}) sous la cote (${pct(potOdds)}) et pas de tirage : se coucher est le plus rentable.`)
       confidence = eq < potOdds - 0.08 ? 'haute' : 'moyenne'
     }
@@ -404,5 +460,5 @@ export function getPostflopAdvice(input: {
     })
   }
 
-  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence, facePlan }
+  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board) }
 }
