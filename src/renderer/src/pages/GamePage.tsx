@@ -3459,6 +3459,7 @@ export default function GamePage(): JSX.Element {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
                     } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { setHoverSeat(s => (s === seat.idx ? null : s)) } // opponent: leaving the cards hides the range immediately
                   }}
                   onHover={(entering, e) => {
                     // NAME / STACK zone. For the on-turn player in manual mode this
@@ -3474,6 +3475,7 @@ export default function GamePage(): JSX.Element {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
                     } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { setHoverSeat(s => (s === seat.idx ? null : s)) } // opponent: leaving the name/stack hides the range immediately
                   }}
                 />
               )
@@ -3908,9 +3910,9 @@ export default function GamePage(): JSX.Element {
         )}
       </AnimatePresence>
 
-      {/* ── OPPONENT range popup (read-only). Stays while the cursor is anywhere
-            inside the table; cleared by the table's onMouseLeave (or on switching
-            to another player). Bigger & readable. ── */}
+      {/* ── OPPONENT range popup (read-only). Shows while hovering that player's
+            cards/name and hides as soon as the cursor leaves them (per-seat
+            onMouseLeave) — no longer lingers across the table. Bigger & readable. ── */}
       {hoverSeat !== null && hoverSeat !== hero?.idx && hoverPos && (() => {
         const seat = gs.seats.find(s => s.idx === hoverSeat)
         if (!seat || seat.isFolded || seat.isSittingOut || seat.isEliminated || !rangeRef.current[hoverSeat]) return null
