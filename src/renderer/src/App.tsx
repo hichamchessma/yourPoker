@@ -3,6 +3,7 @@ import AuthPage from './pages/AuthPage'
 import LobbyPage from './pages/LobbyPage'
 import HandTrainerPage from './pages/HandTrainerPage'
 import ProfilePage from './pages/ProfilePage'
+import HistoryPage from './pages/HistoryPage'
 import TrainingSetupPage from './pages/TrainingSetupPage'
 import TournamentSetupPage from './pages/TournamentSetupPage'
 import SetupPositionPage from './pages/SetupPositionPage'
@@ -35,6 +36,7 @@ function App(): JSX.Element {
         <Route path="tournament" element={<TournamentSetupPage />} />
         <Route path="setup" element={<SetupPositionPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="history" element={<HistoryPage />} />
         <Route path="game" element={<GamePage />} />
       </Route>
       <Route path="*" element={<Navigate to={session ? '/lobby' : '/auth'} replace />} />

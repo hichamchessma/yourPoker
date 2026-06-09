@@ -10,6 +10,7 @@ import {
   BookOpen,
   BarChart2,
   User,
+  History,
   Trophy,
   HeadphonesIcon,
   LogOut
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'library', label: 'Bibliothèque', icon: <BookOpen size={20} />, path: '/library' },
   { id: 'stats', label: 'Statistiques', icon: <BarChart2 size={20} />, path: '/stats' },
   { id: 'profile', label: 'Profil', icon: <User size={20} />, path: '/profile' },
+  { id: 'history', label: 'Historique', icon: <History size={20} />, path: '/history' },
   { id: 'ranking', label: 'Classement', icon: <Trophy size={20} />, path: '/ranking' },
   { id: 'support', label: 'Support', icon: <HeadphonesIcon size={20} />, path: '/support' }
 ]

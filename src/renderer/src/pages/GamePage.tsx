@@ -15,6 +15,7 @@ import {
   type Speed as TourSpeed, blindStructure,
   placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
 } from '../lib/tournament'
+import { saveSession } from '../lib/historyStore'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Suit = '♠' | '♥' | '♦' | '♣'
@@ -64,11 +65,11 @@ interface ChipFlight {
   id: number; fromX: number; fromY: number; toX: number; toY: number
   amount: number; kind: 'collect' | 'payout'
 }
-interface HistoryAction {
+export interface HistoryAction {
   phase: Phase; seatIdx: number; name: string; isHero: boolean
   actionType: string; amount: number; potAfter: number
 }
-interface HandHistoryRecord {
+export interface HandHistoryRecord {
   id: number; handNum: number; date: Date
   players: Array<{
     idx: number; name: string; isHero: boolean; position: string
@@ -912,10 +913,10 @@ function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number)
   return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
 }
 
-function HandHistoryModal({ records, onClose, onRevive }: {
+export function HandHistoryModal({ records, onClose, onRevive }: {
   records: HandHistoryRecord[]
   onClose: () => void
-  onRevive: (record: HandHistoryRecord, stepIdx: number) => void
+  onRevive?: (record: HandHistoryRecord, stepIdx: number) => void
 }) {
   const [selectedId, setSelectedId] = useState<number|null>(records.length > 0 ? records[records.length-1].id : null)
   const [stepIdx, setStepIdx] = useState<number>(0)
@@ -1001,12 +1002,14 @@ function HandHistoryModal({ records, onClose, onRevive }: {
           <div className="flex items-center gap-2.5">
             {/* Revive: re-create THIS exact spot as a playable sandbox. Opponents'
                 cards are re-drawn from the range their line implies at this step. */}
-            <button onClick={() => onRevive(record, stepIdx)}
-              title="Recrée cette situation exacte en simulation jouable — les adversaires gardent leur range, leurs cartes sont retirées au hasard dedans"
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-black uppercase tracking-[0.18em] text-[11px] transition-all hover:scale-[1.03]"
-              style={{ background: 'linear-gradient(135deg,#a78bff,#6d4ed6,#3c2a72)', color: '#0a0716', boxShadow: '0 0 22px rgba(140,110,255,0.45)' }}>
-              ⚡ Revive situation
-            </button>
+            {onRevive && (
+              <button onClick={() => onRevive(record, stepIdx)}
+                title="Recrée cette situation exacte en simulation jouable — les adversaires gardent leur range, leurs cartes sont retirées au hasard dedans"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-black uppercase tracking-[0.18em] text-[11px] transition-all hover:scale-[1.03]"
+                style={{ background: 'linear-gradient(135deg,#a78bff,#6d4ed6,#3c2a72)', color: '#0a0716', boxShadow: '0 0 22px rgba(140,110,255,0.45)' }}>
+                ⚡ Revive situation
+              </button>
+            )}
             <button onClick={onClose}
               className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 text-lg">
               ✕
@@ -1311,6 +1314,8 @@ export default function GamePage(): JSX.Element {
   const tourRef = useRef({ levelIdx: 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60, playersLeft: tournament?.field ?? 0, finalTable: false, busted: false, place: 0 })
   const [tourHud, setTourHud] = useState({ playersLeft: tournament?.field ?? 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60 })
   const [tourResult, setTourResult] = useState<{ place: number; prize: number } | null>(null)
+  const handHistoryRef = useRef<HandHistoryRecord[]>([]) // complete list (state lags via setState)
+  const savedSessionRef = useRef(false)                  // guard against double-persisting
   // Engine-safe current blinds (read from the ref so timer-driven hands use the
   // up-to-date level even across stale closures).
   const tourBlinds = () => {
@@ -1434,6 +1439,13 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament])
 
+  // Persist a CASH session when leaving the table (quit / sidebar nav / unmount).
+  // Tournaments persist at bust/win instead, so they're skipped here.
+  useEffect(() => {
+    return () => { if (!tournament) persistCash() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Auto-start a tournament once on mount (the player already clicked "Lancer").
   const tourStartedRef = useRef(false)
   useEffect(() => {
@@ -1549,17 +1561,42 @@ export default function GamePage(): JSX.Element {
       heroProfit,
       winnerNames,
     }
-    setHandHistory(h => [...h, record])
+    handHistoryRef.current = [...handHistoryRef.current, record]
+    setHandHistory(handHistoryRef.current)
     currentHandActionsRef.current = []
     // Tournament: if the hero just busted (freezeout), finish the tournament with
-    // their placement + prize. Re-entry is offered from the result overlay.
+    // their placement + prize, and SAVE the session. Re-entry is offered after.
     if (tournament && !tourRef.current.busted && heroIsBusted(finalGs)) {
       tourRef.current.busted = true
       const place = Math.max(2, tourRef.current.playersLeft || tournament.field)
-      setTourResult({ place, prize: prizeForPlace(place, tourPayouts()) })
+      const prize = prizeForPlace(place, tourPayouts())
+      setTourResult({ place, prize })
+      persistTournament(place, prize)
       return
     }
     scheduleNextHand()
+  }
+
+  // Persist a finished session to the history store (highlights only). Tournament
+  // ends on bust/win; cash ends on leaving the table.
+  function persistTournament(place: number, prize: number) {
+    if (!tournament || savedSessionRef.current) return
+    savedSessionRef.current = true
+    saveSession('tournament',
+      { title: `MTT $${tournament.buyIn} · ${tournament.field} joueurs`,
+        subtitle: `${place === 1 ? '🏆 Vainqueur' : `Éliminé ${place}e`} · ${prize > 0 ? `+$${prize.toLocaleString()}` : 'hors paiement'}`,
+        resultBB: prize - tournament.buyIn },
+      handHistoryRef.current)
+  }
+  function persistCash() {
+    if (tournament || savedSessionRef.current || handHistoryRef.current.length === 0) return
+    savedSessionRef.current = true
+    const netBB = Math.round(handHistoryRef.current.reduce((s, h) => s + (h.heroProfit || 0), 0) * 10) / 10
+    saveSession('cash',
+      { title: isScenario ? 'Scénario sur mesure' : `Cash ${numPlayers}-max ${cfg.sb}/${cfg.bb}`,
+        subtitle: `${netBB > 0 ? '+' : ''}${netBB} BB en ${handHistoryRef.current.length} mains`,
+        resultBB: netBB },
+      handHistoryRef.current)
   }
 
   // ─── Blind / seat setup ──────────────────────────────────────────────────
@@ -2285,7 +2322,9 @@ export default function GamePage(): JSX.Element {
         const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
         if (alive.length === 1 && alive[0].isHero && !t.busted) {
           t.busted = true; t.place = 1
-          setTourResult({ place: 1, prize: prizeForPlace(1, tourPayouts()) })
+          const prize = prizeForPlace(1, tourPayouts())
+          setTourResult({ place: 1, prize })
+          persistTournament(1, prize)
           return
         }
         t.playersLeft = alive.length
