@@ -6,7 +6,8 @@ import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
-import { getPostflopAdvice } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
+import EquityReasoningBlock from '../components/EquityReasoning'
 import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
   type RangeWeights, type ActCat,
@@ -709,7 +710,7 @@ function computeStepState(record: HandHistoryRecord, stepIdx: number): {
 }
 
 // ─── "Coach juge" — constructive critique of a hero action in the replay ──────
-interface MoveCritique { verdict: 'good' | 'ok' | 'mistake'; headline: string; lines: string[] }
+interface MoveCritique { verdict: 'good' | 'ok' | 'mistake'; headline: string; lines: string[]; reasoning?: EquityReasoning | null }
 function boardForPhase(board: (Card | null)[], phase: Phase): Card[] {
   const b = board.filter(Boolean) as Card[]
   if (phase === 'flop') return b.slice(0, 3)
@@ -786,6 +787,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   const lines: string[] = []
   let verdict: MoveCritique['verdict'] = 'ok'
   let headline = ''
+  let reasoning: EquityReasoning | null = null
 
   if (phase === 'preflop') {
     const scenario: Scenario = preflopRaises >= 3 ? 'vs4bet'
@@ -822,6 +824,13 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
+    // Pro reasoning (equity vs price) — only when FACING a raise/jam (a real call
+    // decision), never on an open. Preflop equity is the raw all-in equity vs the field.
+    if (toCall > 0 && (vsJam || scenario === 'vsopen' || scenario === 'squeeze' || scenario === 'vs3bet' || scenario === 'vs4bet')) {
+      const eqPre = monteCarloEquity([hero.holeCards[0], hero.holeCards[1]], [], opponents, 1200)
+      reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board: [], pot, toCall, equity: eqPre,
+        decision: rec === 'fold' ? 'fold' : rec === 'call' ? 'call' : 'aggro' })
+    }
     const recLabel = rec === 'fold' ? 'FOLD'
       : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL')
       : rec === '3bet' ? (scenario === 'squeeze' ? 'SQUEEZE (3-bet)' : '3-BET')
@@ -864,6 +873,8 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
+    if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
+      decision: adv.action === 'FOLD' ? 'fold' : adv.action === 'CALL' ? 'call' : 'aggro' })
     const phaseLbl = PHASE_LABEL[phase] ?? phase
     lines.push(`Situation : ${phaseLbl}, board ${board.map(c => c.rank + c.suit).join(' ')}${lastAggressorName && toCall > 0 ? `, ${lastAggressorName} a misé` : ''}.`)
     lines.push(`Ton équité ≈ ${pct(adv.equity)}${toCall > 0 ? ` — cote requise ${pct(adv.potOdds)}` : ''} ; ta main : ${adv.madeHand}${adv.draws.length ? ' + ' + adv.draws.join(' + ') : ''}.`)
@@ -904,7 +915,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push('Relancer transforme une main de showdown/bluffcatch en cible : tu fais fuir les pires mains et payer les meilleures.') }
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold rentable manqué'; lines.push(`Tu avais la cote (${pct(adv.equity)} ≥ ${pct(adv.potOdds)}) : se coucher jette de l’EV.`) }
   }
-  return { verdict, headline, lines }
+  return { verdict, headline, lines, reasoning }
 }
 
 // Replay the hand up to `stepIdx` through the range estimator → each player's
@@ -1245,6 +1256,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                           </div>
                           <button onClick={() => setCritique(null)} className="text-white/40 hover:text-white text-sm">✕</button>
                         </div>
+                        {critique.reasoning && <EquityReasoningBlock r={critique.reasoning} />}
                         <div className="space-y-1.5">
                           {critique.lines.map((l, i) => (
                             <p key={i} className="text-[12.5px] text-white/80 leading-relaxed flex gap-1.5">

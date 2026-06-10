@@ -4,8 +4,9 @@ import {
   GRID_RANKS, buildRangeMap, buildJamCallMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, type AdviceAction, type FacePlanRow, type OutCard, type VillainTier } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, type AdviceAction, type FacePlanRow, type OutCard, type EquityReasoning, type VillainTier } from '../lib/postflopAdvisor'
 import RangeHeatmap from './RangeHeatmap'
+import EquityReasoningBlock, { MiniCard, groupOuts } from './EquityReasoning'
 import type { RangeView } from '../lib/rangeEstimator'
 
 interface Card { rank: string; suit: string }
@@ -19,29 +20,6 @@ const ACTION_COLOR: Record<RangeAction, { bg: string; fg: string }> = {
 }
 const ADVICE_COLOR: Record<AdviceAction, string> = {
   BET: '#c9a227', RAISE: '#c9a227', CALL: '#1f9d5e', CHECK: '#3aa0d8', FOLD: '#c0392b',
-}
-
-// Tiny face-up card used to visualise outs in the coach panel.
-function MiniCard({ rank, suit, dim }: { rank: string; suit: string; dim?: boolean }) {
-  const red = suit === '♥' || suit === '♦'
-  return (
-    <span className="inline-flex flex-col items-center justify-center rounded-[3px] leading-none"
-      style={{ width: 15, height: 21, border: '1px solid rgba(0,0,0,0.3)', background: dim ? '#9aa3ad' : '#fff', color: red ? (dim ? '#a33' : '#d11') : '#111', opacity: dim ? 0.6 : 1 }}>
-      <span className="font-black" style={{ fontSize: 9 }}>{rank}</span>
-      <span style={{ fontSize: 8, marginTop: -1 }}>{suit}</span>
-    </span>
-  )
-}
-
-// Group outs by the hand they complete, preserving the (strongest-first) order.
-function groupOuts(outs: OutCard[]): { label: string; cards: OutCard[] }[] {
-  const groups: { label: string; cards: OutCard[] }[] = []
-  for (const o of outs) {
-    let g = groups.find(x => x.label === o.label)
-    if (!g) { g = { label: o.label, cards: [] }; groups.push(g) }
-    g.cards.push(o)
-  }
-  return groups
 }
 
 interface UnifiedAdvice {
@@ -171,6 +149,16 @@ export default function RangeAssistant({
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier])
+
+  // "How a pro reasons about the price" — only when there's actually a bet to call
+  // (postflop on any street, or preflop FACING a raise/jam — never on an open).
+  const facingRaisePre = isPreflop && (vsJam || ['vsopen', 'squeeze', 'vs3bet', 'vs4bet'].includes(scenario as string))
+  const reasoning: EquityReasoning | null = advice && toCall > 0 && card1 && card2 && (!isPreflop || facingRaisePre)
+    ? buildEquityReasoning({
+        hole: [card1, card2], board, pot, toCall, equity: advice.equity,
+        decision: advice.actionText === 'FOLD' ? 'fold' : advice.actionText === 'CALL' ? 'call' : 'aggro',
+      })
+    : null
 
   const [answer, setAnswer] = useState<string | null>(null)
 
@@ -333,8 +321,10 @@ export default function RangeAssistant({
                 {!isPreflop && (
                   <p className="text-[9px] text-white/30 mt-1">Ta main : <span className="text-white/60 font-bold">{advice.madeHand}</span>{advice.draws.length ? ` · ${advice.draws.join(' · ')}` : ''}</p>
                 )}
-                {/* Outs — exact cards that improve the hero's hand (flop/turn only) */}
-                {!isPreflop && advice.outs && advice.outs.length > 0 && (
+                {/* Outs — exact cards that improve the hero's hand (flop/turn only).
+                    When FACING a bet the outs appear inside the reasoning block below,
+                    so this standalone version only shows when there's nothing to call. */}
+                {!isPreflop && toCall <= 0 && advice.outs && advice.outs.length > 0 && (
                   <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-2">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[9px] uppercase tracking-widest text-emerald-300/80 font-bold">Tes outs</span>
@@ -361,6 +351,9 @@ export default function RangeAssistant({
                   </div>
                 )}
               </div>
+
+              {/* Pro reasoning — equity vs pot odds, with outs as cards */}
+              {reasoning && <EquityReasoningBlock r={reasoning} />}
 
               {/* Reasons */}
               <div className="space-y-1.5 mb-4">

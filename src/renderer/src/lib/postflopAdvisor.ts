@@ -559,3 +559,45 @@ export function getPostflopAdvice(input: {
     : name
   return { action, sizingText, equity: eq, potOdds, madeHand, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board), betFrac, jam }
 }
+
+// ── "How a pro thinks about it" — the equity-vs-pot-odds monologue ─────────────
+// A structured breakdown of the price decision, shown BEFORE the explanations:
+//   pot → amount to call → pot odds (required equity) → the exact outs (as cards)
+//   → the rule-of-2/4 quick estimate → real equity → verdict (I have the price or
+//   I don't). Pure data; a shared component renders the cards + sentences.
+export type ReasoningVerdict = 'call' | 'fold' | 'implied' | 'raise-value' | 'raise-bluff'
+export interface EquityReasoning {
+  pot: number          // current pot (includes the bet faced)
+  toCall: number       // amount to put in to continue
+  potOdds: number      // required equity to call (0..1)
+  equity: number       // hero's real equity (0..1)
+  cardsToCome: number  // 2 on the flop, 1 on the turn, 0 on the river / preflop
+  outs: OutCard[]      // exact cards that improve the hero (empty river/preflop)
+  outsApprox: number   // rule of ×4 (flop) / ×2 (turn) quick estimate (0..1)
+  hasOdds: boolean     // equity ≥ potOdds (the raw price test)
+  verdict: ReasoningVerdict
+  preflop: boolean
+}
+export function buildEquityReasoning(p: {
+  hole: Card[]; board: Card[]; pot: number; toCall: number; equity: number
+  decision: 'call' | 'fold' | 'aggro'
+}): EquityReasoning | null {
+  if (p.toCall <= 0 || !p.hole[0] || !p.hole[1]) return null
+  const potOdds = p.toCall / (p.pot + p.toCall)
+  const cardsToCome = p.board.length === 3 ? 2 : p.board.length === 4 ? 1 : 0
+  const outs = cardsToCome > 0 ? computeOuts(p.hole, p.board) : []
+  // Dominated (weak) outs count half in the quick estimate — they can complete and
+  // still lose. Rule of ×4 on the flop (two cards to come), ×2 on the turn. The ×4
+  // rule overstates beyond ~8 outs (you can't catch on both streets), so we taper
+  // the surplus to stay close to reality — exactly the correction a pro applies.
+  const weighted = outs.reduce((n, o) => n + (o.weak ? 0.5 : 1), 0)
+  const outsApprox = cardsToCome === 2
+    ? Math.min(0.9, (weighted <= 8 ? weighted * 0.04 : 0.32 + (weighted - 8) * 0.025))
+    : Math.min(0.9, weighted * 0.02)
+  const hasOdds = p.equity >= potOdds
+  const verdict: ReasoningVerdict =
+    p.decision === 'fold' ? 'fold'
+    : p.decision === 'aggro' ? (hasOdds ? 'raise-value' : 'raise-bluff')
+    : hasOdds ? 'call' : 'implied'
+  return { pot: p.pot, toCall: p.toCall, potOdds, equity: p.equity, cardsToCome, outs, outsApprox, hasOdds, verdict, preflop: p.board.length < 3 }
+}
