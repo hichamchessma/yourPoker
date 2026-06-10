@@ -168,24 +168,31 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
 // hand (e.g. bottom pair) correctly low-equity against a bet, so the coach folds it.
 function betFrequency(oppHole: Card[], board: Card[], a: number): number {
   const cat = categoryOf(best7([...oppHole, ...board]))
-  if (cat >= 3) return 0.95                              // set / straight / flush+ → almost always bets
-  if (cat === 2) return 0.90                             // two pair
-  if (cat === 1) {                                       // one pair — bet frequency scales with the PAIR's strength
-    const bRanks = board.map(c => RV[c.rank]).sort((x, y) => y - x)
-    const hRanks = oppHole.map(c => RV[c.rank])
-    const pocket = oppHole[0].rank === oppHole[1].rank
-    // Rank of the pair held: the pocket value, or the highest board card it pairs.
-    let pairRank = 0
-    if (pocket) pairRank = hRanks[0]
-    else for (const b of bRanks) if (hRanks.includes(b)) { pairRank = b; break }
-    const above = bRanks.filter(r => r > pairRank).length // board cards out-ranking the pair
-    if (pocket && pairRank > bRanks[0]) return 0.80        // overpair → value bets a lot
-    if (above === 0) return 0.78                           // top pair
-    if (above === 1) return Math.max(0.30, 0.55 * (1 - a * 0.2))  // 2nd pair / strong middle pair → real value
-    return Math.max(0.12, 0.40 * (1 - a * 0.45))          // weak / bottom pair barrels rarely
+  if (cat >= 3) return 0.95                              // set / straight / flush / boat+ → value
+  const bRanks = board.map(c => RV[c.rank]).sort((x, y) => y - x)
+  const pocket = oppHole[0].rank === oppHole[1].rank
+  // Pairs the hand makes USING a hole card (a pocket pair, or a hole card matching a
+  // board card). A "two pair" that leans on the BOARD's pair has only ONE own pair —
+  // it's really one pair for ranking and it does NOT multi-barrel (e.g. 99 on Q-7-7).
+  // A genuine two pair (two own pairs) stays strong value.
+  const ownPairs = new Set<number>()
+  if (pocket) ownPairs.add(RV[oppHole[0].rank])
+  oppHole.forEach(c => { if (board.some(b => b.rank === c.rank)) ownPairs.add(RV[c.rank]) })
+  if (cat === 2 && ownPairs.size >= 2) return 0.90       // genuine two pair
+  const pairRank = ownPairs.size ? Math.max(...ownPairs) : 0
+  if (pairRank > 0) {                                     // one pair (or a board-leaning "two pair") → by pair strength
+    const above = bRanks.filter(r => r > pairRank).length // board cards out-ranking the own pair
+    // The more barrels (higher a), the more POLARIZED the range: medium/weak pairs give
+    // up (they don't multi-barrel), only strong top pair / overpair keep value-betting
+    // (and even they ease off vs heavy aggression). This is what makes a board-paired
+    // "two pair" (really one pair) correctly low-equity against a triple barrel.
+    if (pocket && pairRank > bRanks[0]) return Math.max(0.25, 0.80 * (1 - a * 0.28)) // overpair
+    if (above === 0) return Math.max(0.22, 0.78 * (1 - a * 0.32))                     // top pair
+    if (above === 1) return Math.max(0.08, 0.52 * (1 - a * 0.7))                      // 2nd pair / middle
+    return Math.max(0.05, 0.36 * (1 - a * 0.85))                                      // weak / bottom pair
   }
   if (hasStrongDraw(oppHole, board)) return 0.58         // semi-bluff
-  return Math.max(0.05, 0.18 * (1 - a * 0.6))            // air bluff — shrinks as barrels pile up
+  return Math.max(0.05, 0.18 * (1 - a * 0.4))            // air bluff (incl. board-pair-only) — polarized barrel
 }
 
 // Pre-flop pot type narrows the villain's range BEFORE the flop. A 3-bet/4-bet pot
