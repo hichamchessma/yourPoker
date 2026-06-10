@@ -866,7 +866,24 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     lines.push(`Ton équité ≈ ${pct(adv.equity)}${toCall > 0 ? ` — cote requise ${pct(adv.potOdds)}` : ''} ; ta main : ${adv.madeHand}${adv.draws.length ? ' + ' + adv.draws.join(' + ') : ''}.`)
     lines.push(`Coup optimal : ${adv.action} (${adv.sizingText}).`)
     adv.reasons.slice(1, 3).forEach(r => lines.push(r))
-    if (heroCat === recCat) { verdict = 'good'; headline = `Bon coup — ${adv.action}`; lines.push('Ta décision correspond au coup recommandé. ✅') }
+    if (heroCat === recCat) {
+      verdict = 'good'; headline = `Bon coup — ${adv.action}`; lines.push('Ta décision correspond au coup recommandé. ✅')
+      // SIZING check on a value BET: the right action category isn't enough — a giant
+      // overbet/jam folds out the worse hands you beat (lost value), while a tiny bet
+      // under-charges draws. Only when you opened the betting (toCall === 0).
+      if (toCall === 0 && adv.action === 'BET' && pot > 0 && (act.actionType === 'BET' || act.actionType === 'ALL-IN' || act.actionType === 'RAISE')) {
+        const betFrac = act.amount / pot
+        const sprNow = effStack / pot
+        const isValue = adv.equity >= 0.6
+        if (isValue && betFrac > 1.15) {
+          verdict = 'ok'; headline = 'Sizing — surbet'
+          lines.push(`⚠️ Sizing : tu mises ${Math.round(betFrac * 100)}% du pot${act.actionType === 'ALL-IN' ? ' (tapis)' : ''} — un SURBET avec une main de valeur. Tu fais fuir les pires mains (2e paire, As faible, tirages) qui paieraient ~⅔ pot → tu perds de la value.${sprNow <= 1.8 ? ` Cela dit, à SPR bas (~${sprNow.toFixed(1)}) tu finis tapis de toute façon : l'erreur reste mineure.` : ' Vise ~⅔–¾ pot pour garder sa range plus large.'}`)
+        } else if (isValue && betFrac < 0.4) {
+          verdict = 'ok'; headline = 'Sizing — trop petit'
+          lines.push(`⚠️ Sizing : ${Math.round(betFrac * 100)}% du pot, c'est trop peu pour une main forte — tu laisses de la value et tu protèges mal contre les tirages. Vise ~⅔ pot.`)
+        }
+      }
+    }
     else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Tu continues trop'; lines.push(`Ton équité (${pct(adv.equity)}) est sous la cote (${pct(adv.potOdds)}) : payer/relancer perd à long terme.`) }
     else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = 'Trop passif'; lines.push('Tu avais une main/équité pour miser ou relancer (value + protection) — checker/suivre laisse de la valeur.') }
     else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold de trop'; lines.push('Tu te couches une main qui devait miser pour la valeur.') }
