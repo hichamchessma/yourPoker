@@ -99,13 +99,21 @@ export function computeOuts(hole: Card[], board: Card[]): OutCard[] {
   if (!hole[0] || !hole[1]) return []
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const curCat = categoryOf(best7([...hole, ...board]))
+  const holeRanks = new Set(hole.map(h => h.rank))
   const res: OutCard[] = []
   for (const c of fullDeck()) {
     if (known.has(c.rank + c.suit)) continue
     const heroCat = categoryOf(best7([...hole, ...board, c]))
     if (heroCat <= curCat) continue                 // must raise the hero's category
-    if (heroCat > rawCat([...board, c]))            // and the gain must be hero-specific
-      res.push({ card: c, cat: heroCat, label: HAND_NAMES[heroCat] ?? 'Carte haute' })
+    if (heroCat <= rawCat([...board, c])) continue  // the gain must be hero-specific
+    // A RANK-based gain (pair/two pair/trips/full/quads) is only a real out if the
+    // card pairs one of the HERO's hole cards. Pairing the BOARD instead (e.g. an A
+    // landing on A-J-T while you hold 99 → "two pair") hands that pair to everyone —
+    // it doesn't improve YOUR relative hand, so it's not an out. Straights/flushes
+    // are sequence/suit gains that inherently use your hole cards → always kept.
+    const isDrawGain = heroCat === 4 || heroCat === 5 || heroCat === 8 // straight / flush / straight flush
+    if (!isDrawGain && !holeRanks.has(c.rank)) continue
+    res.push({ card: c, cat: heroCat, label: HAND_NAMES[heroCat] ?? 'Carte haute' })
   }
   // Strongest improvement first, then by rank then suit — stable, easy to count.
   const suitOrder: Record<string, number> = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 }
