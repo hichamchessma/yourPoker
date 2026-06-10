@@ -888,7 +888,18 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
       }
     }
     else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Tu continues trop'; lines.push(`Ton équité (${pct(adv.equity)}) est sous la cote (${pct(adv.potOdds)}) : payer/relancer perd à long terme.`) }
-    else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = 'Trop passif'; lines.push('Tu avais une main/équité pour miser ou relancer (value + protection) — checker/suivre laisse de la valeur.') }
+    else if (recCat === 'aggr' && heroCat === 'passive') {
+      // CHECKING a LOCKED monster (full house+) multiway is a valid slow-play/trap, not
+      // a leak: the hand needs no protection (board paired) and betting folds out the
+      // air that would otherwise bluff/jam into you. Don't condemn it.
+      const monster = /Full|Carré|Quinte flush/.test(adv.madeHand)
+      if (act.actionType === 'CHECK' && monster && opponents >= 2) {
+        verdict = 'good'; headline = 'Slow-play OK'
+        lines.push(`Checker un monstre verrouillé (${adv.madeHand}) en multiway est un trap valide : ta main n'a rien à protéger (board pairé), et miser ferait fuir l'air qui peut bluffer/jam derrière. Le coach « value-bet » par défaut, mais ici le check (piège) est au moins aussi rentable. ✅`)
+      } else {
+        verdict = 'ok'; headline = 'Trop passif'; lines.push('Tu avais une main/équité pour miser ou relancer (value + protection) — checker/suivre laisse de la valeur.')
+      }
+    }
     else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold de trop'; lines.push('Tu te couches une main qui devait miser pour la valeur.') }
     else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push('Relancer transforme une main de showdown/bluffcatch en cible : tu fais fuir les pires mains et payer les meilleures.') }
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold rentable manqué'; lines.push(`Tu avais la cote (${pct(adv.equity)} ≥ ${pct(adv.potOdds)}) : se coucher jette de l’EV.`) }
