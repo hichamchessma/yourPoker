@@ -799,7 +799,9 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const playersBehind = record.players.filter(p =>
       p.idx !== hero.idx && !folded.has(p.idx) && (p.holeCards[0] !== null || p.holeCards[1] !== null) &&
       preflopActIndex(p.idx, record.players) > heroOrder).length
-    const numAllIn = [...allInSeats].filter(idx => idx !== hero.idx && !folded.has(idx)).length
+    // Only a TOP-of-action all-in (bet ≥ currentBet) is a real jam to call off; a
+    // short all-in that's been raised over is just dead money (decide vs the raiser).
+    const numAllIn = [...allInSeats].filter(idx => idx !== hero.idx && !folded.has(idx) && (bet[idx] ?? 0) >= currentBet).length
     const vsJam = numAllIn >= 1
     const vsOpenerPos = scenario === 'vsopen' ? record.players.find(p => p.idx === lastPreflopRaiserIdx)?.position : undefined
     const reRaiseRatio = scenario === 'vs3bet' && preflopRaiseAmts.length >= 2 && preflopRaiseAmts[0] > 0 ? preflopRaiseAmts[1] / preflopRaiseAmts[0] : undefined
@@ -2999,8 +3001,12 @@ export default function GamePage(): JSX.Element {
   // open, tighter vs a tight UTG open. Same source as the critique to stay coherent.
   const heroVsOpenerPos = heroScenario === 'vsopen' ? gs.seats[lastPreRaiserSeat]?.position : undefined
   // Number of opponents currently all-in preflop → "facing a jam" call-off coach.
+  // Only count an all-in that is at the TOP of the action (its bet ≥ the current
+  // bet). A short all-in that's been raised OVER by a bigger live raise (e.g. a SB
+  // all-in for 0.4bb behind an 800 raise) is just dead money — the real decision is
+  // vs the raiser (vsopen/3bet), not a jam call-off, so it must not trigger vsJam.
   const heroNumAllIn = gs.phase === 'preflop'
-    ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn).length
+    ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn && s.bet >= gs.currentBet).length
     : 0
   // Tournament ICM pressure (0..1): peaks on the bubble, lingers ITM from pay
   // jumps. Tightens the coach's gambling ranges (push/fold, call-offs, flats).
