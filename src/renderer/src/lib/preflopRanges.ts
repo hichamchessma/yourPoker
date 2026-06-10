@@ -205,10 +205,13 @@ const JAM_PRIORITY = [
   '87s','A8o','Q8s','K9o','97s','J8s','76s','T7s','65s','A7o','Q9o','86s','54s','K6s','75s',
 ]
 function combosOfKey(k: string): number { return k.length === 2 ? 6 : (k[2] === 's' ? 4 : 12) }
-export function buildJamCallMap(effBB: number, numAllIn: number, icmTighten = 1): Map<string, RangeAction> {
+export function buildJamCallMap(effBB: number, numAllIn: number, icmTighten = 1, raiserBehind = false): Map<string, RangeAction> {
   let pct = effBB <= 10 ? 42 : effBB <= 18 ? 22 : effBB <= 30 ? 13 : effBB <= 50 ? 8 : effBB <= 80 ? 5 : 3.2
   pct *= Math.pow(0.52, Math.max(0, numAllIn - 1))   // each extra jam ~halves the call-off
   pct *= icmTighten                                  // ICM: calling-off tighter near the bubble / pay jumps
+  // A live raiser/squeezer is still to act behind you (you don't close the action):
+  // their range is stronger and they can re-jam over your call → tighten hard.
+  if (raiserBehind) pct *= 0.55
   pct = Math.max(1.2, Math.min(95, pct))             // never below the very top (AA/KK/QQ)
   const target = (pct / 100) * TOTAL_COMBOS
   const call = new Set<string>()

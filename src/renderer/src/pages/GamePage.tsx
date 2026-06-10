@@ -810,8 +810,11 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const nC = record.players.length
     const postIdx = (s: number) => (((s - dealerIdxC) % nC + nC) % nC - 1 + nC) % nC
     const threeBettorIP = scenario === 'vs3bet' && lastPreflopRaiserIdx >= 0 ? postIdx(lastPreflopRaiserIdx) > postIdx(hero.idx) : undefined
+    // A live raiser/squeezer still to act behind the jam (raised above the BB, hasn't
+    // matched the jam, not folded/all-in) → tighten the call-off (can't close, can be re-jammed).
+    const raiserBehindJam = vsJam && record.players.some(p => p.idx !== hero.idx && !folded.has(p.idx) && !allInSeats.has(p.idx) && (bet[p.idx] ?? 0) > record.bb && (bet[p.idx] ?? 0) < currentBet)
     const map = vsJam
-      ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn)
+      ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn, 1, raiserBehindJam)
       : buildRangeMap(scenario, hero.position, (scenario === 'rfi' || scenario === 'iso') ? playersBehind : undefined,
           { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, threeBettorIP,
             effBB: record.bb > 0 ? effStack / record.bb : undefined,
@@ -3051,6 +3054,11 @@ export default function GamePage(): JSX.Element {
   const heroNumAllIn = gs.phase === 'preflop'
     ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn && s.bet >= gs.currentBet).length
     : 0
+  // Facing a jam but a live RAISER/squeezer is still to act behind (raised above the
+  // BB, hasn't matched the jam, not folded/all-in) → you don't close the action; their
+  // range is stronger and they can re-jam → the call-off must tighten hard.
+  const heroRaiserBehindJam = gs.phase === 'preflop' && heroNumAllIn >= 1 &&
+    gs.seats.some(s => !s.isHero && !s.isFolded && !s.isAllIn && s.bet > bbAmt && s.bet < gs.currentBet)
   // Tournament ICM pressure (0..1): peaks on the bubble, lingers ITM from pay
   // jumps. Tightens the coach's gambling ranges (push/fold, call-offs, flats).
   const icmPressure = tournament ? (() => {
@@ -3158,7 +3166,7 @@ export default function GamePage(): JSX.Element {
       const vsJam = heroNumAllIn >= 1
       const potOddsPre = toCall > 0 ? toCall / (cur.pot + toCall) : 0
       const map = vsJam
-        ? buildJamCallMap(effBB, heroNumAllIn, icmTighten)
+        ? buildJamCallMap(effBB, heroNumAllIn, icmTighten, heroRaiserBehindJam)
         : buildRangeMap(heroScenario as Scenario, h.position, heroPlayersBehind,
             { effBB, raiseToBB: heroRaiseToBB, multiway: heroMultiway, vsOpenerPos: heroVsOpenerPos, reRaiseRatio: heroReRaiseRatio, threeBettorIP: heroThreeBettorIP, icmTighten, closingAction: heroPlayersBehind === 0, potOdds: potOddsPre })
       const chart = map.get(heroKey) ?? 'fold'
@@ -4093,6 +4101,7 @@ export default function GamePage(): JSX.Element {
                 reRaiseRatio={heroReRaiseRatio}
                 threeBettorIP={heroThreeBettorIP}
                 numAllIn={heroNumAllIn}
+                raiserBehindJam={heroRaiserBehindJam}
                 icmTighten={icmTighten}
                 icmPressure={icmPressure}
                 actionRecap={gs.log.slice(-10)}
