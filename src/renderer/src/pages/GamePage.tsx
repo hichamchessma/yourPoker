@@ -938,7 +938,8 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
   // Clear the critique whenever we move to another step / hand.
   useEffect(() => { setCritique(null) }, [stepIdx, selectedId])
 
-  // Keyboard: ← step back in the hand, → step forward.
+  // Keyboard: ← step back, → step forward, Space = judge the current move,
+  // Esc = close the replay. (stepIdx is in deps so the handler isn't stale.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!record) return
@@ -946,10 +947,17 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
       if (e.key === 'ArrowLeft') { e.preventDefault(); setStepIdx(i => Math.max(0, i - 1)) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); setStepIdx(i => Math.min(record.actions.length - 1, i + 1)) }
+      else if (e.key === 'Escape') { e.preventDefault(); onClose() }
+      else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault() // never scroll the page
+        const a = record.actions[stepIdx]
+        if (a && a.seatIdx >= 0 && a.isHero && a.actionType !== 'SB' && a.actionType !== 'BB')
+          setCritique(c => (c ? null : critiqueHeroMove(record, stepIdx)))
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [record])
+  }, [record, stepIdx, onClose])
 
   // Range Vision in the replay — hover a player to see their estimated range.
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -1005,6 +1013,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
             <span className="text-sm font-bold text-white/70 uppercase tracking-widest">Historique des mains</span>
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
             <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
+            <span className="text-[10px] text-white/30 hidden lg:inline">· ←/→ naviguer · Espace juger · Échap fermer</span>
           </div>
           <div className="flex items-center gap-2.5">
             {/* Revive: re-create THIS exact spot as a playable sandbox. Opponents'
