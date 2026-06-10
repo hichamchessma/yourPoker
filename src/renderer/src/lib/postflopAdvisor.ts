@@ -18,7 +18,7 @@ export interface FacePlanRow {
   action: string     // "CALL", "FOLD", "RE-RAISE / 4-BET (valeur)"…
   why: string        // short math rationale
 }
-export interface OutCard { card: Card; cat: number; label: string }
+export interface OutCard { card: Card; cat: number; label: string; weak?: boolean }
 export interface Advice {
   action: AdviceAction
   sizingText: string
@@ -100,6 +100,19 @@ export function computeOuts(hole: Card[], board: Card[]): OutCard[] {
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const curCat = categoryOf(best7([...hole, ...board]))
   const holeRanks = new Set(hole.map(h => h.rank))
+  // Dominated flush draw? On a 4-flush where the hero does NOT hold the highest
+  // off-board card of the suit, completing it can still lose to a higher flush
+  // (e.g. you hold 9♣ on A♣J♣T♣ — a K♣/Q♣ beats you). Flag those flush outs "weak".
+  let weakFlushSuit: string | null = null
+  for (const s of SUITS) {
+    const suited = [...hole, ...board].filter(c => c.suit === s)
+    if (suited.length !== 4 || !hole.some(h => h.suit === s)) continue // a live draw hero is part of
+    const onBoard = new Set(board.filter(c => c.suit === s).map(c => RV[c.rank]))
+    const heroRanks = hole.filter(c => c.suit === s).map(c => RV[c.rank])
+    let nutOff = -1
+    for (let r = 14; r >= 2; r--) if (!onBoard.has(r)) { nutOff = r; break } // best card of the suit not on board
+    if (!heroRanks.includes(nutOff)) weakFlushSuit = s
+  }
   const res: OutCard[] = []
   for (const c of fullDeck()) {
     if (known.has(c.rank + c.suit)) continue
@@ -113,7 +126,8 @@ export function computeOuts(hole: Card[], board: Card[]): OutCard[] {
     // are sequence/suit gains that inherently use your hole cards → always kept.
     const isDrawGain = heroCat === 4 || heroCat === 5 || heroCat === 8 // straight / flush / straight flush
     if (!isDrawGain && !holeRanks.has(c.rank)) continue
-    res.push({ card: c, cat: heroCat, label: HAND_NAMES[heroCat] ?? 'Carte haute' })
+    const weak = heroCat === 5 && c.suit === weakFlushSuit
+    res.push({ card: c, cat: heroCat, label: HAND_NAMES[heroCat] ?? 'Carte haute', weak })
   }
   // Strongest improvement first, then by rank then suit — stable, easy to count.
   const suitOrder: Record<string, number> = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 }

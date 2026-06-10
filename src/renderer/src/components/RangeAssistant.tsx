@@ -22,11 +22,11 @@ const ADVICE_COLOR: Record<AdviceAction, string> = {
 }
 
 // Tiny face-up card used to visualise outs in the coach panel.
-function MiniCard({ rank, suit }: { rank: string; suit: string }) {
+function MiniCard({ rank, suit, dim }: { rank: string; suit: string; dim?: boolean }) {
   const red = suit === '♥' || suit === '♦'
   return (
-    <span className="inline-flex flex-col items-center justify-center rounded-[3px] bg-white leading-none"
-      style={{ width: 15, height: 21, border: '1px solid rgba(0,0,0,0.3)', color: red ? '#d11' : '#111' }}>
+    <span className="inline-flex flex-col items-center justify-center rounded-[3px] leading-none"
+      style={{ width: 15, height: 21, border: '1px solid rgba(0,0,0,0.3)', background: dim ? '#9aa3ad' : '#fff', color: red ? (dim ? '#a33' : '#d11') : '#111', opacity: dim ? 0.6 : 1 }}>
       <span className="font-black" style={{ fontSize: 9 }}>{rank}</span>
       <span style={{ fontSize: 8, marginTop: -1 }}>{suit}</span>
     </span>
@@ -338,15 +338,23 @@ export default function RangeAssistant({
                       <span className="text-[9px] text-white/40">{advice.outs.length} carte{advice.outs.length > 1 ? 's' : ''} qui t’améliorent</span>
                     </div>
                     <div className="space-y-1">
-                      {groupOuts(advice.outs).map(g => (
-                        <div key={g.label} className="flex items-start gap-1.5">
-                          <span className="text-[8px] text-white/45 leading-[18px] w-[70px] shrink-0">{g.label} <span className="text-white/30">({g.cards.length})</span></span>
-                          <div className="flex flex-wrap gap-0.5">
-                            {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} />)}
+                      {groupOuts(advice.outs).map(g => {
+                        const weak = g.cards.every(c => c.weak)
+                        return (
+                          <div key={g.label} className="flex items-start gap-1.5">
+                            <span className="text-[8px] leading-[18px] w-[70px] shrink-0" style={{ color: weak ? 'rgba(245,158,11,0.85)' : 'rgba(255,255,255,0.45)' }}>
+                              {g.label}{weak ? ' ⚠︎' : ''} <span className="text-white/30">({g.cards.length})</span>
+                            </span>
+                            <div className="flex flex-wrap gap-0.5">
+                              {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} dim={o.weak} />)}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
+                    {advice.outs.some(o => o.weak) && (
+                      <p className="text-[8px] text-amber-400/70 mt-1.5 leading-snug">⚠︎ couleur dominée : tu peux toucher et perdre quand même face à une couleur plus haute (déjà comptée dans ton équité).</p>
+                    )}
                   </div>
                 )}
               </div>
