@@ -537,5 +537,13 @@ export function getPostflopAdvice(input: {
     })
   }
 
-  return { action, sizingText, equity: eq, potOdds, madeHand: boardLeanTwoPair ? 'Paire (top — board pairé)' : name, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board) }
+  // Honest hand label: a "pair" that is ONLY the board's pair (your hole cards add
+  // nothing) is really just your high card + the shared board pair — never call it
+  // "Paire" as if it were yours. A two-pair leaning on a board pair is shown as top pair.
+  const RANK_FR: Record<number, string> = { 14: 'As', 13: 'Roi', 12: 'Dame', 11: 'Valet', 10: '10', 9: '9', 8: '8', 7: '7', 6: '6', 5: '5', 4: '4', 3: '3', 2: '2' }
+  const heroHi = RANK_FR[Math.max(RV[hole[0].rank], RV[hole[1].rank])] ?? 'haute'
+  const madeHand = boardOnlyPair ? `Carte haute : ${heroHi} (+ paire du board, partagée)`
+    : boardLeanTwoPair ? 'Paire (top — board pairé)'
+    : name
+  return { action, sizingText, equity: eq, potOdds, madeHand, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board) }
 }
