@@ -1366,6 +1366,7 @@ export default function GamePage(): JSX.Element {
   const [heroBetAmt, setHeroBetAmt] = useState(bbAmt * 2)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const pausedByHistoryRef = useRef(false) // we auto-paused for the history modal → auto-resume on close
   // ── "Revive situation" — replay a historical spot as a playable sandbox.
   const [simMode, setSimMode] = useState(false)
   const simModeRef = useRef(false)
@@ -2579,7 +2580,7 @@ export default function GamePage(): JSX.Element {
       }
     }
     simSeedRef.current = { record, stepIdx }
-    simModeRef.current = true; setSimMode(true); setSimResult(null); setHistoryOpen(false)
+    simModeRef.current = true; setSimMode(true); setSimResult(null); setHistoryOpen(false); pausedByHistoryRef.current = false
 
     const step = computeStepState(record, stepIdx)
     const ranges = reconstructRanges(record, stepIdx)
@@ -2711,6 +2712,8 @@ export default function GamePage(): JSX.Element {
       const restored = resumePaused ? { ...saved.gs, paused: true } : saved.gs
       setGs(restored); gsRef.current = restored
       savedRealRef.current = null
+      // Re-entering history over the restored (paused) tournament hand → closing it resumes.
+      if (tournament && resumePaused) pausedByHistoryRef.current = true
     }
     setHistoryOpen(true)
   }
@@ -2852,9 +2855,9 @@ export default function GamePage(): JSX.Element {
     rebuyHero(tournament.startBB * tourLevels[0].bb)
   }
 
-  function togglePause() {
+  function setPaused(paused: boolean) {
     const cur = gsRef.current
-    const paused = !cur.paused
+    if (cur.paused === paused) return
     // Update the ref synchronously so the (un)paused state is visible to any
     // timer we schedule right now — relying on gsRef after setGs would read the
     // stale (still-paused) value and silently skip resuming.
@@ -2874,6 +2877,22 @@ export default function GamePage(): JSX.Element {
         scheduleAutoNext(ns, 300)
       }
     }
+  }
+  function togglePause() { setPaused(!gsRef.current.paused) }
+
+  // Tournament: opening the hand history pauses the game (and the blind clock, which
+  // freezes while gs.paused); closing it resumes — but only if WE auto-paused, so a
+  // manual pause before opening history is left paused on close.
+  function openHistory() {
+    if (tournament && !gsRef.current.paused && gsRef.current.phase !== 'idle') {
+      pausedByHistoryRef.current = true
+      setPaused(true)
+    }
+    setHistoryOpen(true)
+  }
+  function closeHistory() {
+    setHistoryOpen(false)
+    if (pausedByHistoryRef.current) { pausedByHistoryRef.current = false; setPaused(false) }
   }
 
   // ─── Hero actions ────────────────────────────────────────────────────────
@@ -3288,7 +3307,7 @@ export default function GamePage(): JSX.Element {
             <RefreshCw size={11}/> Restart
           </button>
         ) : handHistory.length > 0 && (
-          <button onClick={() => setHistoryOpen(true)}
+          <button onClick={openHistory}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/10 transition-all text-[9px] font-bold uppercase tracking-widest">
             Historique ({handHistory.length})
           </button>
@@ -3899,7 +3918,7 @@ export default function GamePage(): JSX.Element {
       {/* ── HAND HISTORY MODAL ── */}
       <AnimatePresence>
         {historyOpen && handHistory.length > 0 && (
-          <HandHistoryModal records={handHistory} onClose={() => setHistoryOpen(false)} onRevive={reviveSituation}/>
+          <HandHistoryModal records={handHistory} onClose={closeHistory} onRevive={reviveSituation}/>
         )}
       </AnimatePresence>
 
