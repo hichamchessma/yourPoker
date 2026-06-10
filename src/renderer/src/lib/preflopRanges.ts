@@ -127,7 +127,19 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // tighter still — two ranges can call and your weak aces are dominated. (An open
     // steal — rfi/iso — keeps the full wide push range.)
     const ctx = scenario === 'vsopen' ? 0.8 : scenario === 'squeeze' ? (opts.multiway ? 0.55 : 0.7) : 1
-    const shove = trimWeakest(pushFoldRange(opts.effBB!, playersBehind, position), icm * ctx) // tighter near the bubble + over a raiser
+    let shove = trimWeakest(pushFoldRange(opts.effBB!, playersBehind, position), icm * ctx) // tighter near the bubble + over a raiser
+    // Micro-stack open-jam: pushBucket is flat below 8bb, but at 1–5bb you have NO fold
+    // equity left and are committed, so the jam widens toward ANY TWO. Widen the open
+    // (rfi/iso) shove to a stack-based width (ICM can't save a 1bb stack by folding).
+    const eff = opts.effBB!
+    if (eff <= 5 && (scenario === 'rfi' || scenario === 'iso')) {
+      const widePct = eff <= 1.5 ? 100 : eff <= 2.5 ? 88 : eff <= 3.5 ? 72 : 56
+      const target = (widePct / 100) * TOTAL_COMBOS
+      let acc = 0; const wide = new Set(shove)
+      wide.forEach(k => { acc += combosOfKey(k) })
+      for (const h of RANKED) { if (acc >= target) break; if (!wide.has(h.key)) { wide.add(h.key); acc += h.combos } }
+      shove = wide
+    }
     for (const h of RANKED) map.set(h.key, shove.has(h.key) ? 'raise' : 'fold')
     return map
   }
