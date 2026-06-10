@@ -3081,8 +3081,14 @@ export default function GamePage(): JSX.Element {
   // Pre-flop pot type → premium-heavy villain range (3-bet/4-bet) for the equity model.
   const heroVillainTier = preflopRaiseActions >= 3 ? '4bet' as const : preflopRaiseActions === 2 ? '3bet' as const : undefined
   const preAggrFloor = preflopRaiseActions >= 3 ? 0.6 : preflopRaiseActions === 2 ? 0.4 : 0
-  const heroAggression = Math.min(0.85, Math.max(preAggrFloor, villainAggro.length * 0.28))
   const heroBarrels = new Set(villainAggro.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
+  // Size-aware aggression — MUST mirror the replay critique exactly, otherwise the live
+  // coach (and the "Suivre le coach" auto-play) can CALL a spot the "Juge mon coup"
+  // verdict then calls a FOLD. A big bet polarizes the range far more than a bet count.
+  const heroToCallNow = hero ? Math.max(0, gs.currentBet - hero.bet) : 0
+  const heroSizeFrac = heroToCallNow > 0 && (gs.pot - heroToCallNow) > 0 ? heroToCallNow / (gs.pot - heroToCallNow) : 0
+  const heroSizeBoost = heroSizeFrac >= 1 ? 0.55 : heroSizeFrac >= 0.66 ? 0.45 : heroSizeFrac >= 0.45 ? 0.36 : heroSizeFrac >= 0.25 ? 0.22 : 0.08
+  const heroAggression = Math.min(0.85, Math.max(preAggrFloor, villainAggro.length * 0.28, heroSizeBoost + (heroBarrels - 1) * 0.18))
   // Range width is driven by how many *active* players (still in the hand, dealt
   // in, not folded / sitting out / busted) remain to act after the hero — NOT by
   // the static table size. So a fold-around to the SB becomes a true blind-vs-
