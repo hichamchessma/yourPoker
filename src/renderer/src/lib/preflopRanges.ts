@@ -122,7 +122,12 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
   const icm = opts.icmTighten ?? 1
   const pb = opts.effBB !== undefined ? pushBucket(opts.effBB) : null
   if (pb && (scenario === 'rfi' || scenario === 'iso' || scenario === 'vsopen' || scenario === 'squeeze')) {
-    const shove = trimWeakest(pushFoldRange(opts.effBB!, playersBehind, position), icm) // ICM: shove tighter near the bubble
+    // Jamming OVER a raiser is much tighter than an open-jam steal: you get called by
+    // a real raising range, not the blinds. A SQUEEZE jam over a raise + caller(s) is
+    // tighter still — two ranges can call and your weak aces are dominated. (An open
+    // steal — rfi/iso — keeps the full wide push range.)
+    const ctx = scenario === 'vsopen' ? 0.8 : scenario === 'squeeze' ? (opts.multiway ? 0.55 : 0.7) : 1
+    const shove = trimWeakest(pushFoldRange(opts.effBB!, playersBehind, position), icm * ctx) // tighter near the bubble + over a raiser
     for (const h of RANKED) map.set(h.key, shove.has(h.key) ? 'raise' : 'fold')
     return map
   }
