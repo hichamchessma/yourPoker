@@ -1384,6 +1384,7 @@ export default function GamePage(): JSX.Element {
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
   const pausedByHistoryRef = useRef(false) // we auto-paused for the history modal → auto-resume on close
+  const coachMoveRef = useRef<() => void>(() => {}) // latest "follow the coach" executor (fresh closure each render)
   // ── "Revive situation" — replay a historical spot as a playable sandbox.
   const [simMode, setSimMode] = useState(false)
   const simModeRef = useRef(false)
@@ -3136,6 +3137,58 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.handNum, gs.currentBet])
 
+  // ── "Follow the coach" auto-play: execute EXACTLY the coach's recommended move
+  // for the hero's current decision (precise fold/check/call/bet/raise/all-in size).
+  // Uses the same engine + inputs as the live coach panel, so the action matches.
+  function executeCoachMove() {
+    const cur = gsRef.current
+    const h = cur.seats.find(s => s.isHero)
+    if (!h || !h.isActive || manualModeRef.current || cur.paused) return
+    const c1 = h.holeCards[0], c2 = h.holeCards[1]
+    if (!c1 || !c2) return
+    const toCall = Math.max(0, cur.currentBet - h.bet)
+    const allInTo = h.bet + h.stack
+    const minTo = Math.min(allInTo, cur.currentBet + cur.minRaise)
+    const canCheck = toCall === 0
+    const rb = (x: number) => Math.max(bbAmt, Math.round(x / bbAmt) * bbAmt)
+    const effBB = (heroEffStack > 0 ? heroEffStack : h.stack) / bbAmt
+
+    if (cur.phase === 'preflop') {
+      const heroKey = handKeyFromCards(c1, c2)
+      const vsJam = heroNumAllIn >= 1
+      const potOddsPre = toCall > 0 ? toCall / (cur.pot + toCall) : 0
+      const map = vsJam
+        ? buildJamCallMap(effBB, heroNumAllIn, icmTighten)
+        : buildRangeMap(heroScenario as Scenario, h.position, heroPlayersBehind,
+            { effBB, raiseToBB: heroRaiseToBB, multiway: heroMultiway, vsOpenerPos: heroVsOpenerPos, reRaiseRatio: heroReRaiseRatio, threeBettorIP: heroThreeBettorIP, icmTighten, closingAction: heroPlayersBehind === 0, potOdds: potOddsPre })
+      const chart = map.get(heroKey) ?? 'fold'
+      if (chart === 'fold') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
+      if (chart === 'call') return void heroAction(canCheck ? 'CHECK' : 'CALL', toCall)
+      if (effBB <= 13 || vsJam) return void heroAction('ALL-IN', allInTo) // short stack → jam
+      let to: number
+      if (chart === '3bet') to = Math.round(cur.currentBet * 3)
+      else if (chart === '4bet') to = Math.round(cur.currentBet * 2.3)
+      else { // open / iso-raise
+        const limpers = cur.seats.filter(s => !s.isFolded && !s.isHero && s.bet >= bbAmt && s.bet < cur.currentBet).length
+        to = Math.round((heroScenario === 'iso' ? 3.5 : 2.5) * bbAmt) + limpers * bbAmt
+      }
+      return void heroAction('RAISE', Math.min(allInTo, Math.max(minTo, rb(to))))
+    }
+
+    // ── Postflop: same advice engine as the panel ──
+    const board = cur.community.filter(Boolean) as Card[]
+    const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
+      heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier })
+    if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
+    if (adv.action === 'CHECK') return void heroAction('CHECK')
+    if (adv.action === 'CALL') return void heroAction('CALL', toCall)
+    if (adv.jam) return void heroAction('ALL-IN', allInTo)
+    if (adv.action === 'BET') return void heroAction('BET', Math.min(allInTo, Math.max(bbAmt, rb(cur.pot * (adv.betFrac || 0.6)))))
+    if (adv.action === 'RAISE') return void heroAction('RAISE', Math.min(allInTo, Math.max(minTo, cur.currentBet + rb((cur.pot + toCall) * (adv.betFrac || 0.66)))))
+  }
+  coachMoveRef.current = executeCoachMove
+
   // ── Keyboard shortcuts — only on the hero's turn, ignored while typing ──
   //   f = fold · c = check/call · &(1) = ⅓ pot · é(2) = ⅔ pot · p = pot · a = all-in
   //   (& and é are the AZERTY 1/2 keys; the bare 1/2 digits work too as a fallback)
@@ -3148,7 +3201,8 @@ export default function GamePage(): JSX.Element {
       const k = e.key.toLowerCase()
       const sizeTo = (frac: number) => clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * frac / bbAmt) * bbAmt)
       const aggro = (amt: number) => { if (canRaise) heroAction(isOpenBet ? 'BET' : 'RAISE', amt) }
-      if (k === 'f') { e.preventDefault(); heroAction('FOLD') }
+      if (k === 's') { e.preventDefault(); coachMoveRef.current() } // suivre le conseil du coach
+      else if (k === 'f') { e.preventDefault(); heroAction('FOLD') }
       else if (k === 'c') { e.preventDefault(); if (canCheck) heroAction('CHECK'); else heroAction('CALL', callAmt) }
       else if (k === '&' || k === '1') { e.preventDefault(); aggro(sizeTo(1 / 3)) }
       else if (k === 'é' || k === '2') { e.preventDefault(); aggro(sizeTo(2 / 3)) }
@@ -3540,6 +3594,21 @@ export default function GamePage(): JSX.Element {
                 />
               )
             })}
+
+            {/* "Follow the coach" — tournament auto-pilot: one click plays EXACTLY
+                the coach's recommended move (precise size). Shortcut: S. */}
+            {tournament && isHeroTurn && !manualMode && !heroBusted && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => coachMoveRef.current()}
+                title="Joue exactement le conseil du coach (touche S)"
+                className="app-drag-none absolute z-30 flex items-center gap-2 px-3.5 py-2 rounded-xl border font-black text-[10px] uppercase tracking-widest"
+                style={{ right: '2.5%', bottom: '3%', borderColor: 'rgba(167,139,255,0.6)', background: 'linear-gradient(135deg, rgba(124,92,240,0.32), rgba(78,56,168,0.32))', color: '#dcd0ff', boxShadow: '0 0 24px rgba(124,92,240,0.4)', backdropFilter: 'blur(4px)' }}>
+                ✨ Suivre le coach
+                <kbd className="px-1 rounded bg-black/35 text-[8px] font-mono opacity-80">S</kbd>
+              </motion.button>
+            )}
 
             {/* Manual authoring: a stylish arrow marks whose turn it is. Hovering the
                 seat (like for the range) reveals the action panel — no click needed. */}

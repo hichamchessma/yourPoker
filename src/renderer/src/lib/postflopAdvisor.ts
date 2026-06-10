@@ -30,6 +30,8 @@ export interface Advice {
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[] // plan vs a bet/raise behind — when CHECK / BET / CALL
   outs: OutCard[]          // specific cards (flop/turn) that improve the hero's hand
+  betFrac?: number         // recommended bet/raise size as a fraction of the pot (for auto-play)
+  jam?: boolean            // recommended size is all-in
 }
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
@@ -417,14 +419,16 @@ export function getPostflopAdvice(input: {
   let action: AdviceAction
   let sizingText = ''
   let confidence: Advice['confidence'] = 'moyenne'
+  let betFrac = 0 // recommended bet/raise size as a pot fraction (for auto-play)
+  let jam = false // recommended size is all-in
 
   if (toCall > 0) {
     // ── Facing a bet/raise. Golden rule: NEVER fold when equity beats the pot
     // odds — only raise (strong value) or call/fold around the price. ──
     if (isStrongValue && eq >= 0.55) {
       // Strong made hand with the edge → value raise.
-      if (spr <= 1.5) { action = 'RAISE'; sizingText = `relance ALL-IN (SPR bas)` }
-      else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})` }
+      if (spr <= 1.5) { action = 'RAISE'; sizingText = `relance ALL-IN (SPR bas)`; jam = true }
+      else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})`; betFrac = wet > 0.4 ? 0.85 : 0.66 }
       reasons.push('Main forte : tu domines une bonne partie de sa range → relance pour la valeur.')
       confidence = eq >= 0.7 ? 'haute' : 'moyenne'
     } else if (eq >= potOdds + callMargin) {
@@ -453,11 +457,11 @@ export function getPostflopAdvice(input: {
   } else {
     // ── No bet to call (checked to you / you open the action) ──
     if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6)) {
-      action = 'BET'; sizingText = `mise pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, $${valueBetSize})`
+      action = 'BET'; sizingText = `mise pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, $${valueBetSize})`; betFrac = wet > 0.4 ? 0.75 : 0.6
       reasons.push('Main forte : mise pour la valeur et fais payer les tirages.')
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
     } else if (strongDraw) {
-      action = 'BET'; sizingText = `semi-bluff (~½ pot, $${round(pot * 0.5)})`
+      action = 'BET'; sizingText = `semi-bluff (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
       reasons.push('Tirage fort : un semi-bluff gagne le pot tout de suite ou en touchant.')
       confidence = 'basse'
     } else if (isOnePair) {
@@ -481,7 +485,7 @@ export function getPostflopAdvice(input: {
       const repValue = flushPossible || straighty
       if (lateStreet && noSDV && villainGaveUp && repValue && inPosition) {
         action = 'BET'
-        const jam = spr <= 1.2
+        jam = spr <= 1.2; betFrac = 0.9
         sizingText = jam ? 'bluff ALL-IN (SPR bas)' : `bluff polarisé (~pot, $${round(pot * 0.9)})`
         reasons.push(`Tu n’as aucune showdown value (${pct(eq)}) → checker abandonne presque toujours le pot.`)
         reasons.push(`L’adversaire a misé puis checké (range plafonné) et le board ${wet >= 0.5 ? 'à couleur/quinte complétée' : 'connecté'} favorise TON range de caller en position : tu rep le nuts → grosse fold equity. C’est un bluff, pas de la sur-agressivité.`)
@@ -545,5 +549,5 @@ export function getPostflopAdvice(input: {
   const madeHand = boardOnlyPair ? `Carte haute : ${heroHi} (+ paire du board, partagée)`
     : boardLeanTwoPair ? 'Paire (top — board pairé)'
     : name
-  return { action, sizingText, equity: eq, potOdds, madeHand, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board) }
+  return { action, sizingText, equity: eq, potOdds, madeHand, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board), betFrac, jam }
 }
