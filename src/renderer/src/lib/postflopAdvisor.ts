@@ -186,10 +186,42 @@ function betFrequency(oppHole: Card[], board: Card[], a: number): number {
   return Math.max(0.05, 0.18 * (1 - a * 0.6))            // air bluff — shrinks as barrels pile up
 }
 
+// Pre-flop pot type narrows the villain's range BEFORE the flop. A 3-bet/4-bet pot
+// means a premium-heavy range, so marginal made hands (top pair) are far weaker than
+// vs a single-raised/random range. Returns an importance weight for the opponent's
+// starting hand given the pot type. (Soft weights, not a hard filter, keep the MC
+// stable while still crushing top-pair equity in a 4-bet pot.)
+export type VillainTier = 'raised' | '3bet' | '4bet'
+function preflopWeight(a: Card, b: Card, tier: VillainTier): number {
+  const hi = Math.max(RV[a.rank], RV[b.rank]), lo = Math.min(RV[a.rank], RV[b.rank])
+  const pair = a.rank === b.rank, suited = a.suit === b.suit
+  if (tier === '4bet') {                          // ≈ QQ+, AK (+ a few suited-ace bluffs)
+    if (pair && lo >= 12) return 1                // QQ+
+    if (hi === 14 && lo === 13) return 1          // AK
+    if (pair && lo === 11) return 0.35            // JJ (mixed)
+    if (hi === 14 && lo === 12) return 0.3        // AQ (mixed)
+    if (hi === 14 && (lo === 5 || lo === 4) && suited) return 0.25 // A5s/A4s bluff
+    return 0.02
+  }
+  if (tier === '3bet') {                          // ≈ 99+, AJ+, KQ, suited broadways
+    if (pair && lo >= 9) return 1                 // 99+
+    if (hi === 14 && lo >= 12) return 1           // AQ+, AK
+    if (hi === 14 && lo === 11) return 0.85       // AJ
+    if (hi === 13 && lo === 12) return 0.8        // KQ
+    if (pair && lo >= 6) return 0.5               // 66-88
+    if (hi === 14 && lo === 10 && suited) return 0.6 // ATs
+    if (suited && hi >= 12 && lo >= 10) return 0.5   // KJs/QJs/KTs/QTs
+    if (hi === 14 && suited) return 0.3           // Axs bluffs
+    return 0.05
+  }
+  return 1
+}
+
 // Equity where each opponent hand is importance-weighted by how likely a player
 // would actually be betting/continuing it (see betFrequency), scaled by `aggression`
-// (0 = random range … ~0.85 = multi-barreled, very polarized to value).
-export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800): number {
+// (0 = random range … ~0.85 = multi-barreled, very polarized to value), and by the
+// pre-flop pot type (`tier`: a 3-bet/4-bet pot is premium-heavy).
+export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800, tier?: VillainTier): number {
   if (opponents < 1) return 1
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const deck = fullDeck().filter(c => !known.has(c.rank + c.suit))
@@ -197,12 +229,16 @@ export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggr
   const a = Math.max(0, Math.min(0.9, aggression))
 
   const keepProb = (oppHole: Card[]): number => {
-    if (a <= 0 || board.length < 3) return 1
-    // Blend a uniform range with the bet-frequency-shaped (polarized-to-value) range.
-    // The blend ramps to 100% by the time we've seen ~2 barrels, so a barreled range
-    // is fully shaped (weak hands carry little weight) rather than half-uniform air.
-    const blend = Math.min(1, a / 0.45)
-    return (1 - blend) * 1 + blend * betFrequency(oppHole, board, a)
+    let w = 1
+    if (a > 0 && board.length >= 3) {
+      // Blend a uniform range with the bet-frequency-shaped (polarized-to-value) range.
+      // The blend ramps to 100% by the time we've seen ~2 barrels, so a barreled range
+      // is fully shaped (weak hands carry little weight) rather than half-uniform air.
+      const blend = Math.min(1, a / 0.45)
+      w *= (1 - blend) * 1 + blend * betFrequency(oppHole, board, a)
+    }
+    if (tier === '3bet' || tier === '4bet') w *= preflopWeight(oppHole[0], oppHole[1], tier)
+    return w
   }
 
   let winW = 0, totW = 0
@@ -286,14 +322,14 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
   const aggression = Math.max(0, Math.min(0.9, input.aggression ?? 0))
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
 
-  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression)
+  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, 1800, input.villainTier)
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
   const { cat, pair, name } = analyseMade(hole, board)
   const draws = detectDraws(hole, board)
@@ -317,7 +353,24 @@ export function getPostflopAdvice(input: {
   // is NOT a real made hand — treat it as air + draw, not a bluffcatcher.
   const heroHasRealPair = hole[0].rank === hole[1].rank || hole.some(h => board.some(b => b.rank === h.rank))
   const boardOnlyPair = cat === 1 && !heroHasRealPair
-  const effCat = boardOnlyPair ? 0 : cat
+  // Distinct ranks the hero pairs USING a hole card (a pocket pair, or a hole card
+  // matching a board card). A "two pair" that leans on a BOARD pair (e.g. KQ on
+  // Q-5-5: your QQ + the board's 55) has only ONE such rank — the 55 is shared by
+  // everyone, so it adds no relative strength. It's really TOP/one pair, so we demote
+  // it and play it as a bluff-catch / pot-control hand, not a strong value two-pair.
+  const holePairRanks = new Set<number>()
+  if (hole[0].rank === hole[1].rank) holePairRanks.add(RV[hole[0].rank])
+  hole.forEach(h => { if (board.some(b => b.rank === h.rank)) holePairRanks.add(RV[h.rank]) })
+  const boardLeanTwoPair = cat === 2 && holePairRanks.size <= 1
+  const effCat = boardOnlyPair ? 0 : boardLeanTwoPair ? 1 : cat
+  // Effective pair class for the demoted hand (analyseMade only classifies cat 1).
+  let effPair: PairKind = pair
+  if (boardLeanTwoPair) {
+    const pr = [...holePairRanks][0] ?? 0
+    const bSorted = board.map(c => RV[c.rank]).sort((a, b) => b - a)
+    const pocket = hole[0].rank === hole[1].rank
+    effPair = (pocket && pr > bSorted[0]) ? 'overpair' : pr >= bSorted[0] ? 'top' : pr >= (bSorted[1] ?? 0) ? 'second' : 'weak'
+  }
   const boardPaired = (() => { const r: Record<number, number> = {}; board.forEach(c => (r[RV[c.rank]] = (r[RV[c.rank]] ?? 0) + 1)); return Object.values(r).some(n => n >= 2) })()
   // Low / dominated flush draw: hero's highest card in the 4-flush suit is small →
   // reverse implied odds (you can complete it and still lose to a higher flush).
@@ -336,7 +389,7 @@ export function getPostflopAdvice(input: {
   // implied odds (you're often already beaten or drawing thin, and you can still be
   // raised behind when you don't close the action). Heads-up vs a small bet the cushion
   // stays tiny, so a genuine bluffcatch that beats the price still calls.
-  const dominatedPair = effCat === 1 && (pair === 'second' || pair === 'weak' || (pair === 'top' && wet > 0.4))
+  const dominatedPair = effCat === 1 && (effPair === 'second' || effPair === 'weak' || (effPair === 'top' && wet > 0.4))
   const onePairMargin = dominatedPair
     ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0)
     : 0.01
@@ -349,12 +402,14 @@ export function getPostflopAdvice(input: {
 
   reasons.push((playsBoard || boardOnlyPair)
     ? `Ta main : ${boardOnlyPair ? 'tu joues la paire du board' : `tu joues le board (${name})`} — pas de main à toi${draws.length ? ', seulement ' + draws.join(' + ') : ''}.`
-    : `Ta main : ${name}${pair !== 'none' ? ` (${pair === 'overpair' ? 'overpaire' : pair === 'top' ? 'top paire' : pair === 'second' ? '2e paire' : 'paire faible'})` : ''}${draws.length ? ' + ' + draws.join(' + ') : ''}.`)
+    : boardLeanTwoPair
+    ? `Ta main : top paire (${effPair === 'overpair' ? 'overpaire' : effPair === 'top' ? 'top paire' : effPair === 'second' ? '2e paire' : 'paire faible'}) — ta « double paire » s'appuie sur la paire du board (partagée par tous), joue-la comme UNE paire.`
+    : `Ta main : ${name}${effPair !== 'none' ? ` (${effPair === 'overpair' ? 'overpaire' : effPair === 'top' ? 'top paire' : effPair === 'second' ? '2e paire' : 'paire faible'})` : ''}${draws.length ? ' + ' + draws.join(' + ') : ''}.`)
   reasons.push(inPosition ? 'Tu es en position (tu parles après).' : 'Tu es hors de position : sois plus prudent.')
   if (effCat === 0 && !playsBoard && !drawIsOnlyEquity && toCall > 0) reasons.push('Ta « carte haute » n’est pas rien : ton équité vient de tes surcartes (tu peux toucher la paire), de tirages de secours, et tu bats ses mains ratées/bluffs au showdown.')
   if (pot > 0 && spr < 4) reasons.push(`SPR ≈ ${spr.toFixed(1)} (tapis/pot) : ${spr <= 1.5 ? 'engagé — avec une main forte, joue all-in.' : 'assez bas, prêt à investir gros avec une main forte.'}`)
 
-  const isStrongValue = !playsBoard && (effCat >= 2 || pair === 'overpair') // two pair+, sets, overpair
+  const isStrongValue = !playsBoard && (effCat >= 2 || effPair === 'overpair') // two pair+, sets, overpair
   const isOnePair = !playsBoard && effCat === 1
   const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
   const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
@@ -397,7 +452,7 @@ export function getPostflopAdvice(input: {
     }
   } else {
     // ── No bet to call (checked to you / you open the action) ──
-    if (isStrongValue || (isOnePair && pair === 'top' && eq >= 0.6)) {
+    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6)) {
       action = 'BET'; sizingText = `mise pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, $${valueBetSize})`
       reasons.push('Main forte : mise pour la valeur et fais payer les tirages.')
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
@@ -482,5 +537,5 @@ export function getPostflopAdvice(input: {
     })
   }
 
-  return { action, sizingText, equity: eq, potOdds, madeHand: name, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board) }
+  return { action, sizingText, equity: eq, potOdds, madeHand: boardLeanTwoPair ? 'Paire (top — board pairé)' : name, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board) }
 }

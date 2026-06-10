@@ -851,8 +851,14 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // pot already includes the bet hero faces, so pot-before-bet = pot - toCall.
     const sizeFrac = toCall > 0 && (pot - toCall) > 0 ? toCall / (pot - toCall) : 0
     const sizeBoost = sizeFrac >= 1 ? 0.55 : sizeFrac >= 0.66 ? 0.45 : sizeFrac >= 0.45 ? 0.36 : sizeFrac >= 0.25 ? 0.22 : 0.08
-    const aggression = Math.min(0.85, Math.max(villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb })
+    // Pre-flop pot type already narrows villain to a strong range BEFORE any flop bet:
+    // a 3-bet/4-bet pot means premiums (QQ+/AK heavy), so marginal made hands are far
+    // weaker than vs a single-raised/limped pot. This is a floor on the equity model's
+    // aggression so it doesn't treat the opponent as a random range in a 4-bet pot.
+    const preAggr = preflopRaises >= 3 ? 0.6 : preflopRaises === 2 ? 0.4 : 0
+    const aggression = Math.min(0.85, Math.max(preAggr, villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
+    const villainTier = preflopRaises >= 3 ? '4bet' as const : preflopRaises === 2 ? '3bet' as const : undefined
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     const phaseLbl = PHASE_LABEL[phase] ?? phase
@@ -3027,7 +3033,10 @@ export default function GamePage(): JSX.Element {
   // Villain aggression → range-aware equity. Count opponents' bets/raises this
   // hand; barrels = how many post-flop streets they've fired.
   const villainAggro = handActions.filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
-  const heroAggression = Math.min(0.85, villainAggro.length * 0.28)
+  // Pre-flop pot type → premium-heavy villain range (3-bet/4-bet) for the equity model.
+  const heroVillainTier = preflopRaiseActions >= 3 ? '4bet' as const : preflopRaiseActions === 2 ? '3bet' as const : undefined
+  const preAggrFloor = preflopRaiseActions >= 3 ? 0.6 : preflopRaiseActions === 2 ? 0.4 : 0
+  const heroAggression = Math.min(0.85, Math.max(preAggrFloor, villainAggro.length * 0.28))
   const heroBarrels = new Set(villainAggro.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
   // Range width is driven by how many *active* players (still in the hand, dealt
   // in, not folded / sitting out / busted) remain to act after the hero — NOT by
@@ -3971,6 +3980,7 @@ export default function GamePage(): JSX.Element {
                 inPosition={heroInPosition}
                 aggression={heroAggression}
                 barrels={heroBarrels}
+                villainTier={heroVillainTier}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}
