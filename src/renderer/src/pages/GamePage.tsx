@@ -960,7 +960,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
               </div>
 
               {/* Table area */}
-              <div className="relative flex-1 min-h-0" style={{minHeight:480}}>
+              <div className="relative flex-1 min-h-0" style={{minHeight:360}}>
                 {/* Table SVG bg */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div style={{width:'100%',maxWidth:900,opacity:0.78}}>
@@ -1113,13 +1113,17 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                           </div>
                           <button onClick={() => setCritique(null)} className="text-white/40 hover:text-white text-sm">✕</button>
                         </div>
-                        {critique.reasoning && <EquityReasoningBlock r={critique.reasoning} />}
-                        <div className="space-y-1.5">
-                          {critique.lines.map((l, i) => (
-                            <p key={i} className="text-[12.5px] text-white/80 leading-relaxed flex gap-1.5">
-                              <span className="text-[#c9a227] mt-0.5">▸</span>{l}
-                            </p>
-                          ))}
+                        {/* Scrollable so the full reasoning (équité block + outs + lines) is always
+                            reachable even when it's taller than the room left under the table. */}
+                        <div className="overflow-y-auto pr-1" style={{ maxHeight: '34vh' }}>
+                          {critique.reasoning && <EquityReasoningBlock r={critique.reasoning} />}
+                          <div className="space-y-1.5">
+                            {critique.lines.map((l, i) => (
+                              <p key={i} className="text-[12.5px] text-white/80 leading-relaxed flex gap-1.5">
+                                <span className="text-[#c9a227] mt-0.5">▸</span>{l}
+                              </p>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}
