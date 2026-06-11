@@ -143,6 +143,26 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     for (const h of RANKED) map.set(h.key, shove.has(h.key) ? 'raise' : 'fold')
     return map
   }
+  // ── RE-SHOVE (3-bet jam) zone — 14..25bb FACING AN OPEN/SQUEEZE. At these depths a
+  // small 3-bet over-commits (you can't fold to a 4-bet jam) and flatting OOP plays a
+  // low-SPR pot badly, so the standard MTT play is JAM-or-FOLD: the opener's dead money
+  // + fold equity make a 3-bet shove +EV. Width tightens with depth & ICM, and widens
+  // vs a late/wide opener (weaker calling range, more fold equity). 'raise' = ALL-IN.
+  if (opts.effBB !== undefined && opts.effBB > 13 && opts.effBB <= 27 && (scenario === 'vsopen' || scenario === 'squeeze')) {
+    const e = opts.effBB
+    let pct = e <= 16 ? 20 : e <= 19 ? 16 : e <= 22 ? 12 : e <= 25 ? 9 : 7.5
+    if (scenario === 'squeeze') pct *= opts.multiway ? 0.6 : 0.78        // 2+ ranges behind / in → tighter
+    const openerW = opts.vsOpenerPos ? openPctFor(opts.vsOpenerPos) : 25 // vs a wide late open → re-shove wider
+    pct *= Math.max(0.75, Math.min(1.4, openerW / 25))
+    pct *= icm                                                          // ICM: tighter near the bubble / pay jumps
+    pct = Math.max(3, pct)
+    const target = (pct / 100) * TOTAL_COMBOS
+    const jam = new Set<string>(); let acc = 0
+    for (const k of JAM_PRIORITY) { if (acc >= target) break; jam.add(k); acc += combosOfKey(k) }
+    if (acc < target) for (const h of RANKED) { if (acc >= target) break; if (!jam.has(h.key)) { jam.add(h.key); acc += h.combos } }
+    for (const h of RANKED) map.set(h.key, jam.has(h.key) ? 'raise' : 'fold') // 'raise' = re-shove ALL-IN
+    return map
+  }
   if (scenario === 'rfi') {
     // Reference RFI chart lookup (real ranges), not a heuristic top-% cut.
     const raise = rfiRange(playersBehind, position)

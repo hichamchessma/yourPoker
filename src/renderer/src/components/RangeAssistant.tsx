@@ -88,6 +88,11 @@ export default function RangeAssistant({
     : vsJam ? buildJamCallMap(effBB, numAllIn, icmTighten, raiserBehindJam)
     : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, icmTighten, closingAction, potOdds: potOddsPre })
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
+  // Re-shove (3-bet jam) zone: 14-25bb facing an open/squeeze, the chart marks jam
+  // hands as 'raise' (not '3bet') → a 'raise' here means an ALL-IN re-shove, not an open.
+  const isReshove = (scenario === 'vsopen' || scenario === 'squeeze') && effBB > 13 && rangeMap
+    ? [...rangeMap.values()].includes('raise')
+    : false
   const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
 
   const boardSig = board.map(c => c.rank + c.suit).join('')
@@ -102,10 +107,12 @@ export default function RangeAssistant({
       const equity = monteCarloEquity([card1, card2], [], opponents, 1000)
       const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
       const shortStack = effBB <= 13
+      const reshove = isReshove && chart === 'raise'
       const sizingText = chart === 'fold' ? 'couche-toi'
         : chart === 'call' ? (vsJam ? 'paie le tapis (all-in)' : 'suis la mise')
         : chart === '3bet' ? (shortStack ? 'TAPIS (all-in)' : 'relance (3-bet ≈ 3×)')
         : chart === '4bet' ? 'sur-relance (4-bet)'
+        : reshove ? 'TAPIS — 3-bet (re-shove)'
         : shortStack ? 'TAPIS (all-in)' : 'ouvre / relance (≈ 2.5–3 BB)'
       const situationLabel = vsJam
         ? `face à ${numAllIn} tapis (all-in)`
@@ -119,8 +126,9 @@ export default function RangeAssistant({
         `Équité brute estimée : ${pct(equity)} face à ${opponents} adversaire${opponents > 1 ? 's' : ''}.`,
         inPosition ? 'Tu es en position : tu peux jouer un peu plus large.' : 'Tu es hors de position : resserre légèrement.',
       ]
-      if (effBB <= 13) reasons.push(`Tapis court (~${Math.round(effBB)} BB) → PUSH/FOLD : tu mets tapis ou tu jettes, plus de jeu post-flop.`)
-      else if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet/fold (peu de calls).`)
+      if (reshove) reasons.push(`Tapis ~${Math.round(effBB)} BB face à une ouverture → RE-SHOVE (3-bet TAPIS), pas un 3-bet petit : à cette profondeur un petit 3-bet te COMMET (tu ne peux plus fold à un 4-bet tapis) et flatter OOP joue un pot à bas SPR. Tu shoves pour la fold equity + l'argent mort de l'ouvreur.`)
+      else if (effBB <= 13) reasons.push(`Tapis court (~${Math.round(effBB)} BB) → PUSH/FOLD : tu mets tapis ou tu jettes, plus de jeu post-flop.`)
+      else if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet TAPIS (re-shove) / fold, peu de flats.`)
       else if (effBB > 80) reasons.push(`Tapis profond (~${Math.round(effBB)} BB) : les mains assorties/connectées gagnent en valeur.`)
       if (scenario === 'vsopen' && raiseToBB > 4) reasons.push(`Grosse ouverture (~${raiseToBB.toFixed(1)} BB) : pas de fold equity → on coupe les bluffs de 3-bet, value only.`)
       else if (scenario === 'vsopen' && raiseToBB <= 2.6) reasons.push(`Petite ouverture (~${raiseToBB.toFixed(1)} BB) : range de 3-bet polarisée pleine + flats larges.`)
@@ -141,7 +149,7 @@ export default function RangeAssistant({
       if (icmPressure > 0.3)
         reasons.push(`Pression ICM (~${Math.round(icmPressure * 100)}%) : près de la bulle / d’un saut de prix, busté coûte cher. Resserre tes tapis et tes call-off — survivre vaut plus que d’encaisser un petit edge.`)
       return {
-        actionText: ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
+        actionText: reshove ? 'TAPIS (RE-SHOVE)' : ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
         equity, potOdds, madeHand: heroKey ?? '—', draws: [], reasons,
         confidence: chart === 'fold' && equity < 0.35 ? 'haute' : (chart === 'raise' || chart === '3bet') && equity > 0.55 ? 'haute' : 'moyenne',
       }
@@ -286,13 +294,14 @@ export default function RangeAssistant({
               </div>
               <div className="flex items-center justify-center gap-4 my-3 flex-wrap">
                 {(vsJam ? (['call', 'fold'] as RangeAction[])
+                  : isReshove ? (['raise', 'fold'] as RangeAction[])
                   : scenario === 'rfi' || scenario === 'iso' ? (['raise', 'fold'] as RangeAction[])
                   : scenario === 'vsopen' || scenario === 'squeeze' ? (['3bet', 'call', 'fold'] as RangeAction[])
                   : (['4bet', 'call', 'fold'] as RangeAction[])
                 ).map(a => (
                   <div key={a} className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm" style={{ background: ACTION_COLOR[a].bg }} />
-                    <span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{ACTION_LABEL[a]}</span>
+                    <span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{isReshove && a === 'raise' ? 'TAPIS (RE-SHOVE)' : ACTION_LABEL[a]}</span>
                   </div>
                 ))}
               </div>

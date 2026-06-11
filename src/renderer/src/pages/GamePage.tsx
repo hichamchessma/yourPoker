@@ -637,10 +637,14 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // RANGE call (domination / realizability), not a pot-odds one, so the "I have/don't
     // have the price" framing would contradict a correct range fold (e.g. ATo folds a
     // 3-bet despite ~45% raw equity vs the field). The reasoning block is postflop-only.
+    // A 'raise' cell in a vs-open/squeeze map is a RE-SHOVE (3-bet jam) — the 14-25bb
+    // jam-or-fold zone marks jam hands 'raise' (the normal path would use '3bet').
+    const isReshoveCrit = rec === 'raise' && (scenario === 'vsopen' || scenario === 'squeeze')
     const recLabel = rec === 'fold' ? 'FOLD'
       : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL')
       : rec === '3bet' ? (scenario === 'squeeze' ? 'SQUEEZE (3-bet)' : '3-BET')
       : rec === '4bet' ? (scenario === 'vs4bet' ? '5-BET / TAPIS' : '4-BET')
+      : isReshoveCrit ? '3-BET TAPIS (re-shove)'
       : scenario === 'iso' ? 'ISO-RAISE' : 'OPEN/RAISE'
     const ctx = vsJam ? `en ${hero.position}, face à ${numAllIn} tapis (all-in)`
       : scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert`
@@ -3065,6 +3069,9 @@ export default function GamePage(): JSX.Element {
       if (chart === 'fold') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
       if (chart === 'call') return void heroAction(canCheck ? 'CHECK' : 'CALL', toCall)
       if (effBB <= 13 || vsJam) return void heroAction('ALL-IN', allInTo) // short stack → jam
+      // Re-shove (3-bet jam): facing an open/squeeze the chart returns 'raise' (not '3bet')
+      // only in the 14-25bb jam-or-fold zone → shove all-in.
+      if (chart === 'raise' && (heroScenario === 'vsopen' || heroScenario === 'squeeze')) return void heroAction('ALL-IN', allInTo)
       let to: number
       if (chart === '3bet') to = Math.round(cur.currentBet * 3)
       else if (chart === '4bet') to = Math.round(cur.currentBet * 2.3)
