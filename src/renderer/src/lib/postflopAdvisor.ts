@@ -484,9 +484,21 @@ export function getPostflopAdvice(input: {
     // just leaves money on the table. This is the classic "second pair good kicker bets
     // the river after it checks through" spot.
     const thinValueVsCapped = !!input.cappedRange && isOnePair && !isStrongValue && effPair !== 'top' && eq >= 0.70
-    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped) {
+    // PROTECTION / equity-denial bet: a VULNERABLE made pair (2nd/weak) that is still
+    // the LIKELY BEST hand vs a capped range — above its fair share of the pot (1/(n+1))
+    // — but can be outdrawn (under-pairs → sets, overcards → pairs). With cards still to
+    // come, bet to DENY a free outdraw and take it down NOW (not for value). This is the
+    // classic "bet to end the hand & protect", not "bet to get paid".
+    const fairShare = 1 / (Math.max(1, opponents) + 1)
+    const protectionBet = !!input.cappedRange && isOnePair && !isStrongValue && !thinValueVsCapped
+      && (effPair === 'second' || effPair === 'weak') && board.length < 5
+      && eq >= Math.max(0.42, fairShare + 0.06) && eq < 0.70
+    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet) {
       action = 'BET'
-      if (thinValueVsCapped && eq < 0.8) {
+      if (protectionBet) {
+        sizingText = `bet de protection (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
+        reasons.push('Bet de PROTECTION / déni d’équité : face à une range plafonnée tu es la main la plus probable DEVANT, mais elle est VULNÉRABLE (sous-paires → brelan, surcartes → paire). Tu mises pour FINIR le coup et empêcher un outdraw gratuit — pas pour te faire payer.')
+      } else if (thinValueVsCapped && eq < 0.8) {
         sizingText = `value fine (~⅓ pot, $${round(pot * 0.4)})`; betFrac = 0.4
         reasons.push('Range adverse PLAFONNÉE (checks répétés) : ta paire bat la plupart de ses mains → value FINE. Mise PETIT (~⅓ pot) pour te faire payer par les pires paires — un gros bet les ferait coucher.')
       } else {
