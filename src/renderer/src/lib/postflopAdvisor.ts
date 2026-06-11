@@ -339,7 +339,7 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
   const rawAggr0 = Math.max(0, Math.min(0.9, input.aggression ?? 0))
@@ -358,7 +358,7 @@ export function getPostflopAdvice(input: {
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
 
-  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, 1800, input.villainTier, input.aggressors)
+  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, input.iters ?? 1800, input.villainTier, input.aggressors)
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
   const { cat, pair, name } = analyseMade(hole, board)
   const draws = detectDraws(hole, board)

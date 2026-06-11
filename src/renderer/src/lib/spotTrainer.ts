@@ -10,7 +10,7 @@
 // guarantee the spot is textbook, never borderline noise.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { diagnoseSpot, rangeEquity, type Card, type HandBucket, type SpotDiagnosis } from './postflopAdvisor'
+import { diagnoseSpot, rangeEquity, getPostflopAdvice, type Card, type HandBucket, type SpotDiagnosis, type Advice, type AdviceAction } from './postflopAdvisor'
 
 export type SpotContext = 'cash' | 'mtt'
 
@@ -250,4 +250,106 @@ export function buildQuestions(spot: TrainerSpot): SpotQuestion[] {
   }
 
   return [texture, rangehit, equity, bucket]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Le bon coup" — DECISION trainer. A spot is shown WITH the opponent's action (a
+// bet of a given size, or checked to you), and the player picks the right MOVE
+// (fold/call/raise, or check/bet). The correct answer + reasoning come from
+// getPostflopAdvice → it matches the in-game coach. Trains the fast read:
+// sizing tell → range → the two golden questions → decision.
+// ─────────────────────────────────────────────────────────────────────────────
+export interface DecisionSpot extends TrainerSpot {
+  facingBet: boolean
+  toCall: number
+  betFrac: number          // villain's bet as a fraction of the pot (0 if checked to you)
+  inPos: boolean
+  advice: Advice
+  options: AdviceAction[]
+  correct: AdviceAction
+}
+function dealBoardN(n: number): { hole: [Card, Card]; board: Card[] } {
+  const deck: Card[] = []
+  for (const r of RANKS) for (const s of SUITS) deck.push({ rank: r, suit: s })
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[deck[i], deck[j]] = [deck[j], deck[i]] }
+  return { hole: [deck[0], deck[1]], board: deck.slice(2, 2 + n) }
+}
+const DECISION_TARGETS: AdviceAction[] = ['FOLD', 'CALL', 'RAISE', 'BET', 'CHECK']
+// Cheap pre-filter (no Monte-Carlo): which hand buckets can plausibly lead to each
+// target. We diagnose the hand first (fast) and only run the expensive getPostflopAdvice
+// on plausible candidates → ~10x fewer MC calls, fast enough to prefetch.
+const WANT_BUCKET: Record<AdviceAction, HandBucket[]> = {
+  RAISE: ['value'], BET: ['value', 'air'], FOLD: ['air', 'bluffcatch', 'draw'],
+  CALL: ['bluffcatch', 'draw'], CHECK: ['bluffcatch', 'air'],
+}
+export function generateDecisionSpot(context: SpotContext, target?: AdviceAction): DecisionSpot {
+  const bb = context === 'mtt' ? 200 : 100
+  const tgt = target ?? pick(DECISION_TARGETS)
+  const facingBet = tgt === 'FOLD' || tgt === 'CALL' || tgt === 'RAISE'
+  let relax = false
+  for (let attempt = 0; attempt < 1400; attempt++) {
+    if (attempt === 900) relax = true
+    const nBoard = pick([3, 4, 4, 5]) // flop / turn / river
+    const { hole, board } = dealBoardN(nBoard)
+    const sc: Record<string, number> = {}; board.forEach(c => (sc[c.suit] = (sc[c.suit] ?? 0) + 1))
+    if (Math.max(...Object.values(sc)) >= 4) continue // skip a 4-flush board (degenerate)
+    const diag = diagnoseSpot(hole, board) // cheap — pre-filter before the costly MC advice
+    if (!relax && !WANT_BUCKET[tgt].includes(diag.bucket)) continue
+    const opponents = Math.random() < 0.78 ? 1 : 2
+    const heroIsPFR = Math.random() < 0.5
+    const inPos = Math.random() < 0.5
+    const basePot = Math.round((5 + Math.random() * 8) * bb)
+    let toCall = 0, betFrac = 0, pot = basePot, aggression = 0.06, barrels = 0
+    if (facingBet) {
+      betFrac = pick([0.33, 0.5, 0.66, 1])
+      barrels = Math.floor(Math.random() * Math.min(3, nBoard - 2))
+      toCall = Math.round(basePot * betFrac)
+      pot = basePot + toCall
+      const sb = betFrac >= 1 ? 0.55 : betFrac >= 0.66 ? 0.45 : betFrac >= 0.45 ? 0.36 : 0.22
+      aggression = Math.min(0.85, Math.max(sb + barrels * 0.16, barrels * 0.28))
+    }
+    const effStack = Math.round(pot * (0.8 + Math.random() * 3.5))
+    const adv = getPostflopAdvice({ hole, board, pot, toCall, heroStack: 120 * bb, effStack, opponents, inPosition: inPos, aggression, barrels, bb, iters: 500 })
+    if (!relax && adv.confidence === 'basse') continue
+    if (!relax && adv.action !== tgt) continue
+    const options: AdviceAction[] = facingBet ? ['FOLD', 'CALL', 'RAISE'] : ['CHECK', 'BET']
+    if (!options.includes(adv.action)) continue
+    const { seats, heroPos, story } = buildSeats(context, { c1: hole[0], c2: hole[1] }, heroIsPFR, opponents, bb)
+    seats.forEach(s => { s.committed = 0 })
+    if (facingBet) { const v = seats.find(s => !s.isHero); if (v) v.committed = toCall }
+    return {
+      context, hero: { c1: hole[0], c2: hole[1], key: handKey(hole[0], hole[1]) },
+      board, seats, pot, bb, heroPos, heroIsPFR, opponents, story,
+      diag, equity: adv.equity, favor: boardFavor(board, heroIsPFR), texture: textureOf(diag),
+      facingBet, toCall, betFrac, inPos, advice: adv, options, correct: adv.action,
+    }
+  }
+  return generateDecisionSpot(context, undefined)
+}
+
+export const DECISION_LABEL: Record<AdviceAction, string> = {
+  FOLD: 'FOLD', CALL: 'CALL', RAISE: 'RAISE', CHECK: 'CHECK', BET: 'BET',
+}
+export interface DecisionReveal { correctLabel: string; lesson: string; twoQuestions: string; sizingTell?: string; reasons: string[]; equity: number; bucket: HandBucket }
+export function decisionReveal(spot: DecisionSpot): DecisionReveal {
+  const a = spot.advice, b = spot.diag.bucket, pct = (x: number) => `${Math.round(x * 100)}%`
+  let correctLabel = DECISION_LABEL[a.action], lesson = '', twoQuestions = ''
+  if (a.action === 'FOLD') { lesson = `Pas assez d'équité (${pct(a.equity)}) ou main dominée → fold.`; twoQuestions = 'Tu ne bats ni sa value ni assez ses bluffs pour payer → tu abandonnes.' }
+  else if (a.action === 'CALL') {
+    correctLabel = b === 'bluffcatch' ? 'CALL (bluff-catch)' : b === 'draw' ? 'CALL (tirage)' : 'CALL'
+    lesson = b === 'bluffcatch' ? `Bluff-catch : tu bats ses bluffs, tu perds vs sa value, et tu n'améliores pas → tu PAIES, tu ne relances pas.` : b === 'draw' ? `Tirage : la cote + les cotes implicites rendent le call rentable.` : `Ton équité (${pct(a.equity)}) bat la cote → call.`
+    twoQuestions = b === 'bluffcatch' ? '« Des pires paient ? » Non → tu ne mises/relances pas. Mais tu bats ses bluffs → tu paies.' : 'Tu continues par la cote.'
+  } else if (a.action === 'RAISE') { correctLabel = 'RAISE (value)'; lesson = `Tu domines sa range de call → relance pour te faire payer par PIRE.`; twoQuestions = '« Des pires paient ? » OUI → tu relances pour la valeur.' }
+  else if (a.action === 'BET') {
+    const isBluff = a.equity < 0.35
+    correctLabel = isBluff ? 'BET (bluff)' : 'BET (value)'
+    lesson = isBluff ? `Pas de showdown value, mais le board/la passivité te permettent de représenter le nuts → bluff (des meilleures foldent).` : `Main forte : des pires mains paient → tu mises pour la valeur${b === 'value' ? '/protection' : ''}.`
+    twoQuestions = isBluff ? '« Des meilleures foldent ? » OUI → bluff rentable.' : '« Des pires paient ? » OUI → value bet.'
+  } else { lesson = `Ni value claire (des pires ne paient pas) ni bluff rentable → check (contrôle / showdown).`; twoQuestions = '« Des pires paient ? » Non. « Des meilleures foldent ? » Non. → check.' }
+  let sizingTell: string | undefined
+  if (spot.facingBet) sizingTell = spot.betFrac <= 0.4
+    ? `Tell de sizing : il mise PETIT (~${Math.round(spot.betFrac * 100)}% pot) → sa range penche faible (capée) → tu peux continuer/attaquer plus large.`
+    : spot.betFrac >= 1 ? `Tell de sizing : grosse mise (~pot+) → range polarisée (très forte OU bluff) → prudence, c'est rarement du medium.`
+    : `Tell de sizing : mise moyenne (~${Math.round(spot.betFrac * 100)}% pot) → range équilibrée.`
+  return { correctLabel, lesson, twoQuestions, sizingTell, reasons: a.reasons.slice(1, 3), equity: a.equity, bucket: b }
 }
