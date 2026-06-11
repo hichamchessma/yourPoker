@@ -728,6 +728,39 @@ function preflopActIndex(seatIdx: number, players: HandHistoryRecord['players'])
   const firstOffset = (bbOffset + 1) % n
   return ((((seatIdx - dealerIdx) % n + n) % n) - firstOffset + n) % n
 }
+
+// A preflop ALL-IN only escalates the pot type (counts as a raise / 3-bet level)
+// if it actually EXCEEDS the prevailing bet. A short stack that jams for LESS than
+// the current bet is dead money / effectively a call — NOT a 3-bet — and must not
+// be treated as a raise (→ wrong "3-bet pot" premium range) nor as villain
+// aggression (→ wrongly deflated equity). Without this, a min-jam under a raise
+// made the coach read a single-raised pot as a 3-bet pot and fold top pair to a
+// river bluff. Shared by the live coach AND the replay critique so they stay equal.
+interface PfAction { seatIdx: number; phase: Phase; actionType: string; amount: number }
+function realPreflopRaises(actions: PfAction[], bb: number): { count: number; lastRaiserSeat: number; amts: number[]; deadAllIn: Set<number> } {
+  let currentBet = bb, count = 0, lastRaiserSeat = -1
+  const amts: number[] = []
+  const deadAllIn = new Set<number>()
+  for (const a of actions) {
+    if (a.phase !== 'preflop' || a.seatIdx < 0) continue
+    if (a.actionType === 'RAISE' || (a.actionType === 'ALL-IN' && a.amount > currentBet)) {
+      count++; lastRaiserSeat = a.seatIdx; amts.push(a.amount)
+      if (a.amount > currentBet) currentBet = a.amount
+    } else if (a.actionType === 'ALL-IN') {
+      deadAllIn.add(a.seatIdx)                 // jam UNDER the current bet → dead money, not a raise
+    } else if (a.amount > currentBet) {
+      currentBet = a.amount
+    }
+  }
+  return { count, lastRaiserSeat, amts, deadAllIn }
+}
+// A villain action that should count toward "aggression" — excludes a dead short
+// all-in (a sub-bet preflop jam isn't a barrel).
+function isAggroAction(a: PfAction & { isHero?: boolean }, deadAllIn: Set<number>): boolean {
+  if (a.seatIdx < 0 || a.isHero) return false
+  if (a.actionType !== 'BET' && a.actionType !== 'RAISE' && a.actionType !== 'ALL-IN') return false
+  return !(a.phase === 'preflop' && a.actionType === 'ALL-IN' && deadAllIn.has(a.seatIdx))
+}
 function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCritique | null {
   const act = record.actions[actionIdx]
   if (!act || act.seatIdx < 0 || !act.isHero) return null
@@ -740,12 +773,9 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   const bet: Record<number, number> = {}, committed: Record<number, number> = {}
   const folded = new Set<number>()
   record.players.forEach(p => { bet[p.idx] = 0; committed[p.idx] = 0 })
-  let preflopRaises = 0
   let preflopCallers = 0
   let lastAggressorName = ''
-  let lastPreflopRaiserIdx = -1
   const allInSeats = new Set<number>()
-  const preflopRaiseAmts: number[] = []
   for (let i = 0; i < actionIdx; i++) {
     const a = record.actions[i]
     if (a.seatIdx === -1) {
@@ -764,10 +794,15 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
       currentBet = a.amount
       if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') lastAggressorName = a.name
     }
-    if (a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')) { preflopRaises++; lastPreflopRaiserIdx = a.seatIdx; preflopRaiseAmts.push(a.amount) }
     if (a.phase === 'preflop' && a.actionType === 'ALL-IN') allInSeats.add(a.seatIdx)
     pot = a.potAfter
   }
+  // Genuine preflop raises only (a short jam UNDER the current bet is dead money,
+  // not a 3-bet) — shared with the live coach so the verdicts stay identical.
+  const pfInfo = realPreflopRaises(record.actions.slice(0, actionIdx), record.bb)
+  const preflopRaises = pfInfo.count
+  const lastPreflopRaiserIdx = pfInfo.lastRaiserSeat
+  const preflopRaiseAmts = pfInfo.amts
 
   phase = act.phase
   const board = boardForPhase(record.board, phase)
@@ -856,7 +891,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push(`${key} est plutôt un call ici ; relancer te fait jouer un gros pot dominé une partie du temps.`) }
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = 'Fold un peu serré'; lines.push(`${key} pouvait suivre (cote/jouabilité), mais le fold reste défendable.`) }
   } else {
-    const villainBets = record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
+    const villainBets = record.actions.slice(0, actionIdx).filter(a => isAggroAction(a, pfInfo.deadAllIn))
     const barrels = new Set(villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
     // Size-aware aggression: a BIG bet polarizes the range to value far more than a
     // small one — counting bets alone under-rates a single large turn/river barrel.
@@ -3056,7 +3091,10 @@ export default function GamePage(): JSX.Element {
   // Situation detection from the RECORDED actions of this hand (robust: a raiser
   // who later folded/re-acted is still counted correctly).
   const handActions = currentHandActionsRef.current
-  const preflopRaiseActions = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+  // Genuine preflop raises only — a short jam UNDER the current bet is dead money,
+  // not a 3-bet (mirrors the replay critique exactly).
+  const pfLive = realPreflopRaises(handActions, bbAmt)
+  const preflopRaiseActions = pfLive.count
   const preflopCallers = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && a.actionType === 'CALL').length
   const heroScenario: Scenario | 'postflop' =
     gs.phase !== 'preflop' ? 'postflop'
@@ -3064,8 +3102,9 @@ export default function GamePage(): JSX.Element {
     : preflopRaiseActions === 2 ? 'vs3bet'
     : preflopRaiseActions === 1 ? (preflopCallers > 0 ? 'squeeze' : 'vsopen')
     : preflopCallers > 0 ? 'iso' : 'rfi'
-  // The last pre-flop raiser (opener for vs-open, 3-bettor for vs-3bet).
-  const lastPreRaiserSeat = [...handActions].reverse().find(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))?.seatIdx ?? -1
+  // The last GENUINE pre-flop raiser (opener for vs-open, 3-bettor for vs-3bet) —
+  // a dead short jam is not the raiser we're facing.
+  const lastPreRaiserSeat = pfLive.lastRaiserSeat
   // Position of the opener we're facing (vs-open) → defend wider vs a late/wide
   // open, tighter vs a tight UTG open. Same source as the critique to stay coherent.
   const heroVsOpenerPos = heroScenario === 'vsopen' ? gs.seats[lastPreRaiserSeat]?.position : undefined
@@ -3094,13 +3133,10 @@ export default function GamePage(): JSX.Element {
   })() : 0
   const icmTighten = 1 - icmPressure * 0.45
   // vs-3bet: size of the 3-bet relative to the open (3 ≈ standard) → continue width.
-  const heroReRaiseRatio = (() => {
-    const amts = handActions.filter(a => a.seatIdx >= 0 && a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).map(a => a.amount)
-    return amts.length >= 2 && amts[0] > 0 ? amts[1] / amts[0] : undefined
-  })()
-  // Villain aggression → range-aware equity. Count opponents' bets/raises this
-  // hand; barrels = how many post-flop streets they've fired.
-  const villainAggro = handActions.filter(a => a.seatIdx >= 0 && !a.isHero && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
+  const heroReRaiseRatio = pfLive.amts.length >= 2 && pfLive.amts[0] > 0 ? pfLive.amts[1] / pfLive.amts[0] : undefined
+  // Villain aggression → range-aware equity. Count opponents' bets/raises this hand
+  // (a dead short jam under the bet is NOT a barrel); barrels = post-flop streets fired.
+  const villainAggro = handActions.filter(a => isAggroAction(a, pfLive.deadAllIn))
   // Pre-flop pot type → premium-heavy villain range (3-bet/4-bet) for the equity model.
   const heroVillainTier = preflopRaiseActions >= 3 ? '4bet' as const : preflopRaiseActions === 2 ? '3bet' as const : undefined
   const preAggrFloor = preflopRaiseActions >= 3 ? 0.6 : preflopRaiseActions === 2 ? 0.4 : 0
