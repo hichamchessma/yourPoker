@@ -797,13 +797,32 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
   const [selectedId, setSelectedId] = useState<number|null>(records.length > 0 ? records[records.length-1].id : null)
   const [stepIdx, setStepIdx] = useState<number>(0)
   const [critique, setCritique] = useState<MoveCritique | null>(null)
+  // Auto-replay: on open, the last hand plays from the start (0.5s/step); at the end
+  // it waits 5s then loops. ANY manual navigation flips this off (see stopAuto).
+  const [autoPlay, setAutoPlay] = useState(true)
+  const autoPlayRef = useRef(autoPlay)
+  useEffect(() => { autoPlayRef.current = autoPlay }, [autoPlay])
+  const stopAuto = () => setAutoPlay(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   const record = records.find(r => r.id === selectedId) ?? null
 
+  // On (re)selecting a hand: auto-replay starts at the very first step; otherwise jump
+  // straight to the final result (the previous behaviour).
   useEffect(() => {
-    if (record) setStepIdx(record.actions.length - 1)
-  }, [selectedId, record])
+    if (record) setStepIdx(autoPlayRef.current ? 0 : record.actions.length - 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+
+  // Auto-replay driver: advance one step every 0.5s; once at the end, pause 5s then
+  // loop back to the start. Cancelled the instant autoPlay turns off.
+  useEffect(() => {
+    if (!autoPlay || !record) return
+    const last = record.actions.length - 1
+    const t = setTimeout(() => setStepIdx(i => (i >= last ? 0 : i + 1)), stepIdx >= last ? 5000 : 500)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay, stepIdx, selectedId])
   // Clear the critique whenever we move to another step / hand.
   useEffect(() => { setCritique(null) }, [stepIdx, selectedId])
 
@@ -814,11 +833,12 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
       if (!record) return
       const el = document.activeElement
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
-      if (e.key === 'ArrowLeft') { e.preventDefault(); setStepIdx(i => Math.max(0, i - 1)) }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); setStepIdx(i => Math.min(record.actions.length - 1, i + 1)) }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); stopAuto(); setStepIdx(i => Math.max(0, i - 1)) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); stopAuto(); setStepIdx(i => Math.min(record.actions.length - 1, i + 1)) }
       else if (e.key === 'Escape') { e.preventDefault(); onClose() }
       else if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault() // never scroll the page
+        stopAuto()
         const a = record.actions[stepIdx]
         if (a && a.seatIdx >= 0 && a.isHero && a.actionType !== 'SB' && a.actionType !== 'BB')
           setCritique(c => (c ? null : critiqueHeroMove(record, stepIdx)))
@@ -882,7 +902,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
             <span className="text-sm font-bold text-white/70 uppercase tracking-widest">Historique des mains</span>
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
             <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
-            <span className="text-[10px] text-white/30 hidden lg:inline">· ←/→ naviguer · Espace juger · Échap fermer</span>
+            <span className="text-[10px] text-white/30 hidden lg:inline">· ↻ replay auto (0,5s/coup, boucle) · ←/→ naviguer · Espace juger · Échap fermer</span>
           </div>
           <div className="flex items-center gap-2.5">
             {/* Revive: re-create THIS exact spot as a playable sandbox. Opponents'
@@ -909,7 +929,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
             {[...records].reverse().map(r => {
               const profit = r.heroProfit
               return (
-                <button key={r.id} onClick={() => setSelectedId(r.id)}
+                <button key={r.id} onClick={() => { stopAuto(); setSelectedId(r.id) }}
                   className={`w-full text-left px-4 py-3 border-b border-white/5 transition-all
                     ${r.id===selectedId?'bg-[#c9a227]/10 border-l-2 border-l-[#c9a227]':'hover:bg-white/5'}`}>
                   <div className="text-[13px] font-bold text-white/80">Main #{r.handNum}</div>
@@ -1028,14 +1048,24 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
 
               {/* Step controls */}
               <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => setStepIdx(0)}
+                {/* Auto-replay toggle: relance le coup depuis le début / stoppe */}
+                <button onClick={() => { if (autoPlay) setAutoPlay(false); else { setStepIdx(0); setAutoPlay(true) } }}
+                  title={autoPlay ? 'Stopper le replay auto' : 'Rejouer le coup depuis le début'}
+                  className="px-3 py-1.5 rounded border text-sm font-bold transition-all"
+                  style={autoPlay
+                    ? { background: 'rgba(201,162,39,0.18)', borderColor: 'rgba(201,162,39,0.6)', color: '#f0d98a' }
+                    : { background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>
+                  {autoPlay ? '⏸ Replay' : '↻ Replay'}
+                </button>
+                <button onClick={() => { stopAuto(); setStepIdx(0) }}
                   className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={stepIdx===0}>|◀</button>
-                <button onClick={() => setStepIdx(s => Math.max(0, s-1))}
+                <button onClick={() => { stopAuto(); setStepIdx(s => Math.max(0, s-1)) }}
                   className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={stepIdx===0}>◀</button>
                 <div className="flex-1 h-2 bg-white/8 rounded-full overflow-hidden cursor-pointer"
                   onClick={e => {
+                    stopAuto()
                     const rect = e.currentTarget.getBoundingClientRect()
                     const ratio = (e.clientX - rect.left) / rect.width
                     setStepIdx(Math.round(ratio * (record.actions.length - 1)))
@@ -1043,10 +1073,10 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                   <div className="h-full bg-[#c9a227] rounded-full transition-all"
                     style={{width:`${record.actions.length>1?(stepIdx/(record.actions.length-1))*100:100}%`}}/>
                 </div>
-                <button onClick={() => setStepIdx(s => Math.min(record.actions.length-1, s+1))}
+                <button onClick={() => { stopAuto(); setStepIdx(s => Math.min(record.actions.length-1, s+1)) }}
                   className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={isEnd}>▶</button>
-                <button onClick={() => setStepIdx(record.actions.length-1)}
+                <button onClick={() => { stopAuto(); setStepIdx(record.actions.length-1) }}
                   className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
                   disabled={isEnd}>▶|</button>
                 <span className="text-xs text-white/40 font-mono">{stepIdx+1}/{record.actions.length}</span>
@@ -1059,7 +1089,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                 return (
                   <div className="flex-shrink-0">
                     {!critique ? (
-                      <button onClick={() => setCritique(critiqueHeroMove(record, stepIdx))}
+                      <button onClick={() => { stopAuto(); setCritique(critiqueHeroMove(record, stepIdx)) }}
                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#c9a227] font-bold text-xs uppercase tracking-widest hover:bg-[#c9a227]/20 transition-all">
                         👁 Juge mon coup ({a.actionType}{a.amount > 0 ? ` $${a.amount}` : ''})
                       </button>
