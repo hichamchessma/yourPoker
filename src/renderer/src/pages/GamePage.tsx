@@ -6,6 +6,7 @@ import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonToken, TableSVG, Room, type RoomVariant } from '../components/tableVisuals'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
+import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
 import EquityReasoningBlock from '../components/EquityReasoning'
@@ -1310,6 +1311,15 @@ export default function GamePage(): JSX.Element {
   const visionRef = useRef(true)
   const rangeRef = useRef<Record<number, RangeWeights>>({})
   const rangeMetaRef = useRef<Record<number, { move: string; effect: string }>>({})
+  // Per-seat HISTORY of range snapshots (one per action) so the hover popup can
+  // replay the "film" of how that player's range narrowed across the hand.
+  const rangeHistoryRef = useRef<Record<number, RangeStep[]>>({})
+  // Opponent range popup kept open while the cursor is over it (so the scrubber is
+  // usable); a short grace timer lets the cursor travel from the cards to the popup.
+  const [oppPanelHover, setOppPanelHover] = useState(false)
+  const oppPanelHoverRef = useRef(false)
+  const oppCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rangeFilmRef = useRef(false) // mirrors rangeFilmOpen for timer reads
 
   const gsRef = useRef<GState>(gs)
   // Bumped on every flow transition (revive / exit-sim / stop / next-hand) so a
@@ -1353,7 +1363,7 @@ export default function GamePage(): JSX.Element {
       const t = tourRef.current
       // Frozen while paused, busted, OR while you're studying (coach card open over
       // your cards) — like calling a clock-pause to think; blinds won't go up.
-      if (gsRef.current.paused || t.busted || coachOpenRef.current) return
+      if (gsRef.current.paused || t.busted || coachOpenRef.current || rangeFilmRef.current) return
       if (t.secondsLeft > 0) t.secondsLeft -= 1
       if (t.secondsLeft <= 0 && t.levelIdx < tourLevels.length - 1) {
         t.levelIdx += 1; t.secondsLeft = tournament.levelMinutes * 60; setTourLevelIdx(t.levelIdx)
@@ -1767,7 +1777,7 @@ export default function GamePage(): JSX.Element {
   }
 
   // Narrow a player's estimated range by the action they just took (Vision mode).
-  function trackRange(seatIdx: number, action: string, currentGs: GState) {
+  function trackRange(seatIdx: number, action: string, currentGs: GState, amount?: number) {
     if (!visionRef.current) return
     const seat = currentGs.seats[seatIdx]
     if (!seat) return
@@ -1780,6 +1790,14 @@ export default function GamePage(): JSX.Element {
     const numCallers = phaseActs.filter(a => a.actionType === 'CALL').length
     const raisesSoFar = phaseActs.filter(a => a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN').length
     if (!rangeRef.current[seatIdx]) rangeRef.current[seatIdx] = initRange(board)
+    // Seed the film with the starting range (all hands) as step 0 — keyed on the
+    // HISTORY, not rangeRef (which may be pre-seeded with initRange at hand start).
+    if (!rangeHistoryRef.current[seatIdx]) {
+      rangeHistoryRef.current[seatIdx] = [{
+        view: rangeView(rangeRef.current[seatIdx]), move: 'DÉPART',
+        effect: 'toutes les mains, pondérées par combos', caption: 'Range de départ (toutes mains)',
+      }]
+    }
     rangeRef.current[seatIdx] = applyAction(rangeRef.current[seatIdx], cat, {
       preflop, board, toCall, potOdds,
       posBonus: POS_BONUS[seat.position] ?? 0.75,
@@ -1788,7 +1806,18 @@ export default function GamePage(): JSX.Element {
       mood: moodRef.current[seatIdx] ?? 0,
       priorRaises: raisesSoFar,  // # of raises this player faced (0/1/2/≥3) → open/3-bet/4-bet logic
     })
-    rangeMetaRef.current[seatIdx] = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })
+    const meta = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })
+    rangeMetaRef.current[seatIdx] = meta
+    // Append this action's snapshot to the film (for the animated hover popup).
+    const phaseLabel = preflop ? 'Préflop' : board.length === 3 ? 'Flop' : board.length === 4 ? 'Turn' : 'River'
+    const actLabel = action === 'FOLD' ? 'se couche' : action === 'CHECK' ? 'check'
+      : action === 'CALL' ? `call${amount ? ' $' + Math.round(amount) : ''}`
+      : action === 'ALL-IN' ? `tapis$${amount ? ' ' + Math.round(amount) : ''}`
+      : `${action === 'BET' ? 'mise' : 'relance'}${amount ? ' $' + Math.round(amount) : ''}`
+    ;(rangeHistoryRef.current[seatIdx] ??= []).push({
+      view: rangeView(rangeRef.current[seatIdx]), move: meta.move, effect: meta.effect,
+      caption: `${phaseLabel} · ${actLabel}`,
+    })
   }
 
   // ─── Action execution ────────────────────────────────────────────────────
@@ -1871,7 +1900,7 @@ export default function GamePage(): JSX.Element {
     if (!seat.isFolded && seat.stack <= 0) seat.isAllIn = true
 
     // Range Vision: narrow this player's estimated range (uses pre-action context).
-    trackRange(seatIdx, action, currentGs)
+    trackRange(seatIdx, action, currentGs, actualAmount)
 
     // Record the action
     const phase = currentGs.phase
@@ -2327,7 +2356,7 @@ export default function GamePage(): JSX.Element {
     seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack })
     currentHandActionsRef.current = []
     // Fresh estimated ranges for everyone (full range, narrowed by their actions).
-    rangeRef.current = {}; rangeMetaRef.current = {}
+    rangeRef.current = {}; rangeMetaRef.current = {}; rangeHistoryRef.current = {}
     seats.forEach(s => { if (!s.isSittingOut) rangeRef.current[s.idx] = initRange() })
 
     // Current blinds — escalate each level in a tournament, fixed in cash.
@@ -2423,7 +2452,7 @@ export default function GamePage(): JSX.Element {
     seats = seats.map((s, i) => ({ ...s, isSB: i === sbIdx, isBB: i === bbIdx }))
 
     currentHandActionsRef.current = []
-    rangeRef.current = {}; rangeMetaRef.current = {}; moodRef.current = {}
+    rangeRef.current = {}; rangeMetaRef.current = {}; moodRef.current = {}; rangeHistoryRef.current = {}
     handStartStacksRef.current = {}
     seats.forEach(s => { rangeRef.current[s.idx] = initRange(community.filter(Boolean) as Card[]) })
 
@@ -2542,7 +2571,7 @@ export default function GamePage(): JSX.Element {
     // Continue the SAME hand's bookkeeping → live coach (aggression/barrels/
     // priorRaises) stays coherent with what built the spot.
     currentHandActionsRef.current = record.actions.slice(0, stepIdx + 1).map(a => ({ ...a }))
-    rangeRef.current = ranges; rangeMetaRef.current = {}; moodRef.current = {}
+    rangeRef.current = ranges; rangeMetaRef.current = {}; moodRef.current = {}; rangeHistoryRef.current = {}
     handStartStacksRef.current = {}
     record.players.forEach(p => { handStartStacksRef.current[p.idx] = p.startStack })
 
@@ -2608,7 +2637,7 @@ export default function GamePage(): JSX.Element {
     if (saved) {
       currentHandActionsRef.current = saved.actions
       handStartStacksRef.current = saved.handStartStacks
-      rangeRef.current = saved.ranges
+      rangeRef.current = saved.ranges; rangeHistoryRef.current = {}
       rangeMetaRef.current = saved.rangeMeta
       moodRef.current = saved.mood
       // Restore the real hand HALTED — the player resumes it with "Reprendre"
@@ -2861,7 +2890,7 @@ export default function GamePage(): JSX.Element {
     dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
     setManualPanel(null); setManualBet('')
     currentHandActionsRef.current = snap.actions
-    rangeRef.current = snap.ranges
+    rangeRef.current = snap.ranges; rangeHistoryRef.current = {}
     rangeMetaRef.current = snap.rangeMeta
     setGs(snap.gs); gsRef.current = snap.gs
   }
@@ -2907,6 +2936,11 @@ export default function GamePage(): JSX.Element {
   // Coach hover-card is open when hovering the hero's own profile (or the panel).
   const coachOpen = !!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)
   coachOpenRef.current = coachOpen
+  // The opponent range "film" is open while hovering an in-hand opponent (or its
+  // popup). Like the coach card, it FREEZES the clock — the point is to LEARN how
+  // the range evolved, not to be rushed.
+  const rangeFilmOpen = (hoverSeat !== null && hoverSeat !== hero?.idx) || oppPanelHover
+  rangeFilmRef.current = rangeFilmOpen
   // Hero's represented (perceived) range — shown postflop in the coach panel.
   const heroRepView = (coachOpen && hero && gs.community.filter(Boolean).length >= 3 && rangeRef.current[hero.idx])
     ? rangeView(rangeRef.current[hero.idx]) : null
@@ -3205,7 +3239,7 @@ export default function GamePage(): JSX.Element {
   useEffect(() => {
     // The clock freezes while the coach hover-card is open (resumes on leave).
     // In manual authoring mode there is no clock at all — you take your time.
-    if (!isHeroTurn || gs.paused || coachOpen || manualMode) return
+    if (!isHeroTurn || gs.paused || coachOpen || manualMode || rangeFilmOpen) return
     const t = setTimeout(() => {
       const cur = gsRef.current
       const h = cur.seats.find(s => s.isHero)
@@ -3221,7 +3255,7 @@ export default function GamePage(): JSX.Element {
     }, decisionTimer * 1000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHeroTurn, gs.paused, coachOpen, gs.handNum, gs.currentBet, manualMode])
+  }, [isHeroTurn, gs.paused, coachOpen, gs.handNum, gs.currentBet, manualMode, rangeFilmOpen])
 
   // Apply a queued pre-action ("check box") the instant it's the hero's turn.
   useEffect(() => {
@@ -3501,7 +3535,7 @@ export default function GamePage(): JSX.Element {
                   isShowdown={isShowdown}
                   turnSeconds={decisionTimer}
                   turnNonce={`${gs.handNum}:${gs.currentBet}`}
-                  turnPaused={gs.paused || coachOpen || manualMode}
+                  turnPaused={gs.paused || coachOpen || manualMode || rangeFilmOpen}
                   hideTimer={manualMode}
                   onRebuy={!tournament && seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
                   onHoverCards={(entering, e) => {
@@ -3511,8 +3545,8 @@ export default function GamePage(): JSX.Element {
                     if (seat.isHero) {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { setHoverSeat(s => (s === seat.idx ? null : s)) } // opponent: leaving the cards hides the range immediately
+                    } else if (entering && e) { if (oppCloseTimer.current) clearTimeout(oppCloseTimer.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { oppCloseTimer.current = setTimeout(() => { if (!oppPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 300) } // grace: let the cursor reach the film popup
                   }}
                   onHover={(entering, e) => {
                     // NAME / STACK zone. For the on-turn player in manual mode this
@@ -3527,8 +3561,8 @@ export default function GamePage(): JSX.Element {
                     if (seat.isHero) {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { setHoverSeat(s => (s === seat.idx ? null : s)) } // opponent: leaving the name/stack hides the range immediately
+                    } else if (entering && e) { if (oppCloseTimer.current) clearTimeout(oppCloseTimer.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { oppCloseTimer.current = setTimeout(() => { if (!oppPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 300) } // grace: let the cursor reach the film popup
                   }}
                 />
               )
@@ -3978,23 +4012,29 @@ export default function GamePage(): JSX.Element {
         )}
       </AnimatePresence>
 
-      {/* ── OPPONENT range popup (read-only). Shows while hovering that player's
-            cards/name and hides as soon as the cursor leaves them (per-seat
-            onMouseLeave) — no longer lingers across the table. Bigger & readable. ── */}
+      {/* ── OPPONENT range "film" popup. Hovering an in-hand opponent freezes the
+            clock and replays how their range narrowed across the hand, action by
+            action (cells fade to grey, surviving value hands light up). Interactive
+            (pointer-events-auto) so the scrubber works; a grace timer on the seat
+            lets the cursor reach it. ── */}
       {hoverSeat !== null && hoverSeat !== hero?.idx && hoverPos && (() => {
         const seat = gs.seats.find(s => s.idx === hoverSeat)
         if (!seat || seat.isFolded || seat.isSittingOut || seat.isEliminated || !rangeRef.current[hoverSeat]) return null
-        const view = rangeView(rangeRef.current[hoverSeat])
-        const meta = rangeMetaRef.current[hoverSeat] ?? { move: '—', effect: 'aucune action encore' }
-        const W = 482, H = 560
+        // Prefer the recorded film; fall back to a single static frame (revive/restore).
+        const history: RangeStep[] = rangeHistoryRef.current[hoverSeat]?.length
+          ? rangeHistoryRef.current[hoverSeat]
+          : [{ view: rangeView(rangeRef.current[hoverSeat]), ...(rangeMetaRef.current[hoverSeat] ?? { move: '—', effect: 'aucune action encore' }), caption: 'Range actuelle' }]
+        const W = 482, H = 660
         let x = hoverPos.x + 22, y = hoverPos.y - H / 2
         if (x + W > window.innerWidth - 8) x = hoverPos.x - W - 22
         if (x < 8) x = 8
         if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
         if (y < 8) y = 8
         return (
-          <div className="fixed z-[80] pointer-events-none" style={{ left: x, top: y }}>
-            <RangeHeatmap view={view} move={meta.move} effect={meta.effect} name={seat.name} width={462}/>
+          <div className="fixed z-[80] pointer-events-auto" style={{ left: x, top: y }}
+            onMouseEnter={() => { if (oppCloseTimer.current) clearTimeout(oppCloseTimer.current); oppPanelHoverRef.current = true; setOppPanelHover(true) }}
+            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); setHoverSeat(s => (s === hoverSeat ? null : s)) }}>
+            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462} />
           </div>
         )
       })()}

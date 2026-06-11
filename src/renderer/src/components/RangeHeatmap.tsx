@@ -50,7 +50,14 @@ export default function RangeHeatmap({
                 style={{
                   aspectRatio: '1', fontSize: f(7), fontWeight: 700, background: c.bg, color: c.fg,
                   outline: isHero ? '2px solid #00e5ff' : 'none', outlineOffset: isHero ? '-1px' : 0,
-                  boxShadow: isHero ? '0 0 8px rgba(0,229,255,0.85)' : 'none', zIndex: isHero ? 2 : 1,
+                  // Cyan ring for the hero; otherwise a soft gold glow that grows as the
+                  // hand becomes more represented — so when the range narrows between
+                  // steps, the surviving value hands visibly "light up".
+                  boxShadow: isHero ? '0 0 8px rgba(0,229,255,0.85)'
+                    : intensity > 0.6 ? `0 0 ${f(5)}px rgba(201,162,39,${((intensity - 0.6) * 0.9).toFixed(2)})` : 'none',
+                  zIndex: isHero ? 2 : 1,
+                  // Smoothly fade/brighten between range snapshots (the "film" effect).
+                  transition: 'background-color 450ms ease, color 450ms ease, box-shadow 450ms ease',
                 }}>
                 {key.replace('s', '').replace('o', '')}
                 {key.endsWith('s') && <span style={{ fontSize: f(6.5), fontWeight: 800, marginLeft: 1, color: intensity > 0.45 ? c.fg : '#37d6ef' }}>s</span>}
