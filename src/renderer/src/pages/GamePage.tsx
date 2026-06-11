@@ -738,16 +738,23 @@ function preflopActIndex(seatIdx: number, players: HandHistoryRecord['players'])
 // river bluff. Shared by the live coach AND the replay critique so they stay equal.
 interface PfAction { seatIdx: number; phase: Phase; actionType: string; amount: number }
 function realPreflopRaises(actions: PfAction[], bb: number): { count: number; lastRaiserSeat: number; amts: number[]; deadAllIn: Set<number> } {
-  let currentBet = bb, count = 0, lastRaiserSeat = -1
+  let currentBet = bb, lastInc = bb, count = 0, lastRaiserSeat = -1
   const amts: number[] = []
   const deadAllIn = new Set<number>()
   for (const a of actions) {
     if (a.phase !== 'preflop' || a.seatIdx < 0) continue
-    if (a.actionType === 'RAISE' || (a.actionType === 'ALL-IN' && a.amount > currentBet)) {
+    const inc = a.amount - currentBet
+    // A genuine raise reopens the action: a RAISE (engine-enforced full raise), or an
+    // ALL-IN that raises by at least the previous increment (a legal full re-raise).
+    // A short all-in that only bumps the price a little — a jam UNDER the bet OR an
+    // INCOMPLETE raise (~≤2× the bet) — is a short-stack shove, NOT a deep 3-bet: it
+    // must not flip the pot to a premium "3-bet" range nor count as aggression.
+    if (a.actionType === 'RAISE' || (a.actionType === 'ALL-IN' && inc >= lastInc)) {
       count++; lastRaiserSeat = a.seatIdx; amts.push(a.amount)
-      if (a.amount > currentBet) currentBet = a.amount
+      lastInc = inc; currentBet = a.amount
     } else if (a.actionType === 'ALL-IN') {
-      deadAllIn.add(a.seatIdx)                 // jam UNDER the current bet → dead money, not a raise
+      deadAllIn.add(a.seatIdx)                 // sub-bet or incomplete jam → dead money, not a 3-bet
+      if (a.amount > currentBet) currentBet = a.amount   // it still raises the price to call
     } else if (a.amount > currentBet) {
       currentBet = a.amount
     }
