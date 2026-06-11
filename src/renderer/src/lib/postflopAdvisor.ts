@@ -601,3 +601,51 @@ export function buildEquityReasoning(p: {
     : hasOdds ? 'call' : 'implied'
   return { pot: p.pot, toCall: p.toCall, potOdds, equity: p.equity, cardsToCome, outs, outsApprox, hasOdds, verdict, preflop: p.board.length < 3 }
 }
+
+// ── Hand bucket on the current board — the "which of the 4 boxes am I in?" call ─
+// VALUE (beat the calling range) · BLUFFCATCH (beat bluffs, lose to value, no
+// improve) · DRAW (behind now, can improve) · AIR (no showdown value, no draw).
+// Same made-hand / demotion logic as getPostflopAdvice so the trainer's "correct
+// answer" always matches what the live coach would conclude.
+export type HandBucket = 'value' | 'bluffcatch' | 'draw' | 'air'
+export interface SpotDiagnosis {
+  bucket: HandBucket
+  madeName: string
+  draws: string[]
+  wetness: number    // 0..1 board wetness
+  paired: boolean    // board has a pair
+  effCat: number     // demoted made-hand category (0 high card … 8)
+  effPair: PairKind  // demoted pair class
+  strongDraw: boolean
+}
+export function diagnoseSpot(hole: Card[], board: Card[]): SpotDiagnosis {
+  const { cat, pair, name } = analyseMade(hole, board)
+  const draws = detectDraws(hole, board)
+  const strongDraw = draws.some(d => d.includes('couleur') || d.includes('ouvert'))
+  const wetness = boardWetness(board)
+  const paired = (() => { const r: Record<number, number> = {}; board.forEach(c => (r[RV[c.rank]] = (r[RV[c.rank]] ?? 0) + 1)); return Object.values(r).some(n => n >= 2) })()
+  const playsBoard = board.length === 5 && best7([...hole, ...board]) <= best7(board)
+  // Same demotions as getPostflopAdvice: a board-only pair is air, a board-leaning
+  // two pair is really one pair, with the effective pair class recomputed.
+  const heroHasRealPair = hole[0].rank === hole[1].rank || hole.some(h => board.some(b => b.rank === h.rank))
+  const boardOnlyPair = cat === 1 && !heroHasRealPair
+  const holePairRanks = new Set<number>()
+  if (hole[0].rank === hole[1].rank) holePairRanks.add(RV[hole[0].rank])
+  hole.forEach(h => { if (board.some(b => b.rank === h.rank)) holePairRanks.add(RV[h.rank]) })
+  const boardLeanTwoPair = cat === 2 && holePairRanks.size <= 1
+  const effCat = boardOnlyPair ? 0 : boardLeanTwoPair ? 1 : cat
+  let effPair: PairKind = pair
+  if (boardLeanTwoPair) {
+    const pr = [...holePairRanks][0] ?? 0
+    const bSorted = board.map(c => RV[c.rank]).sort((a, b) => b - a)
+    const pocket = hole[0].rank === hole[1].rank
+    effPair = (pocket && pr > bSorted[0]) ? 'overpair' : pr >= bSorted[0] ? 'top' : pr >= (bSorted[1] ?? 0) ? 'second' : 'weak'
+  }
+  let bucket: HandBucket
+  if (playsBoard) bucket = strongDraw ? 'draw' : 'air'
+  else if (effCat >= 2 || effPair === 'overpair' || (effCat === 1 && effPair === 'top')) bucket = 'value'
+  else if (effCat === 1) bucket = 'bluffcatch'                 // 2nd / weak / under pair
+  else if (strongDraw) bucket = 'draw'
+  else bucket = 'air'
+  return { bucket, madeName: name, draws, wetness, paired, effCat, effPair, strongDraw }
+}

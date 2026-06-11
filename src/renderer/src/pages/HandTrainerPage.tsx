@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Target, Sliders, Play, Check, RotateCcw, ChevronLeft, Trophy } from 'lucide-react'
+import { Target, Sliders, Play, Check, RotateCcw, ChevronLeft, Trophy, ScanEye } from 'lucide-react'
 import WindowControls from '../components/layout/WindowControls'
 import { GRID_RANKS, cellKey, handKeyFromCards, buildRangeMap } from '../lib/preflopRanges'
+import SpotReadTrainer from '../components/SpotReadTrainer'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TScenario = 'open' | 'vsopen'
@@ -44,7 +45,7 @@ interface Card { rank: string; suit: string }
 interface Question { scenario: TScenario; position: string; openerPos: string; c1: Card; c2: Card; key: string; correct: TAction }
 
 export default function HandTrainerPage() {
-  const [screen, setScreen] = useState<'landing' | 'setup' | 'editor' | 'quiz' | 'result'>('landing')
+  const [screen, setScreen] = useState<'landing' | 'setup' | 'editor' | 'quiz' | 'result' | 'spotread'>('landing')
   const [mode, setMode] = useState<'standard' | 'custom'>('standard')
   const [numHands, setNumHands] = useState(20)
   const [scenFilter, setScenFilter] = useState<'open' | 'vsopen' | 'mixed'>('mixed')
@@ -118,7 +119,7 @@ export default function HandTrainerPage() {
           <Target className="text-[#00d4ff]" size={22} />
           <div>
             <h1 className="text-lg font-black text-[#00d4ff] uppercase tracking-[0.2em]">Hand Trainer</h1>
-            <p className="text-[10px] text-white/35 uppercase tracking-widest">Entraîne tes ranges préflop — décision instantanée</p>
+            <p className="text-[10px] text-white/35 uppercase tracking-widest">Ranges préflop &amp; lecture de spot postflop</p>
           </div>
         </div>
         <div className="app-drag-none"><WindowControls /></div>
@@ -129,17 +130,25 @@ export default function HandTrainerPage() {
           {/* ── LANDING ── */}
           {screen === 'landing' && (
             <motion.div key="landing" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="w-full max-w-3xl mt-10">
+              className="w-full max-w-5xl mt-10">
               <p className="text-center text-white/50 mb-6 text-sm">Comment veux-tu t'entraîner ?</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <OptionCard icon={<Target size={28} />} title="Ranges standard"
                   desc="Entraîne-toi sur les ranges de référence déjà intégrées dans l'app."
                   onClick={() => { setMode('standard'); setScreen('setup') }} accent="#00d4ff" />
                 <OptionCard icon={<Sliders size={28} />} title="Personnaliser mes ranges"
                   desc="Édite tes propres ranges par position (vert/rouge/jaune/gris), puis entraîne-toi dessus."
                   onClick={openEditor} accent="#c9a227" />
+                <OptionCard icon={<ScanEye size={28} />} title="Lecture de spot"
+                  desc="Postflop : diagnostique chaque main comme un pro — texture, range, équité, et ton seau (Aire / Value / Bluff-catch / Tirage)."
+                  onClick={() => setScreen('spotread')} accent="#2dd4bf" />
               </div>
             </motion.div>
+          )}
+
+          {/* ── SPOT READING (postflop concept trainer) ── */}
+          {screen === 'spotread' && (
+            <SpotReadTrainer key="spotread" onBack={() => setScreen('landing')} />
           )}
 
           {/* ── SETUP ── */}
