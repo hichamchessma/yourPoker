@@ -419,9 +419,14 @@ export function getPostflopAdvice(input: {
   // implied odds (you're often already beaten or drawing thin, and you can still be
   // raised behind when you don't close the action). Heads-up vs a small bet the cushion
   // stays tiny, so a genuine bluffcatch that beats the price still calls.
-  const dominatedPair = effCat === 1 && (effPair === 'second' || effPair === 'weak' || (effPair === 'top' && wet > 0.4))
+  // A one pair is "dominated" (needs a safety cushion to call) when it's a 2nd/weak
+  // pair, OR a top pair on a wet board, OR a top pair facing MULTI-BARREL aggression:
+  // sustained barreling is value-heavy and a weak-kicker top pair is often dominated by
+  // the better top pairs (AJ vs AK/AQ) that crush it. So fold it EARLIER, don't call
+  // down and only give up on the river (that's the exploitable line).
+  const dominatedPair = effCat === 1 && (effPair === 'second' || effPair === 'weak' || (effPair === 'top' && (wet > 0.4 || barrels >= 2)))
   const onePairMargin = dominatedPair
-    ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0)
+    ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0) + (barrels >= 2 ? 0.05 : 0)
     : 0.01
   const callMargin = drawIsOnlyEquity
     ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
