@@ -448,6 +448,17 @@ export function getPostflopAdvice(input: {
   if (beatenMultiway) reasons.push(`⚠️ Multiway, et plusieurs adversaires ont PAYÉ plusieurs rues : caller autant en multiway = de la FORCE (top paire+/deux paires/sets), pas de l'air. Ta paire (${pct(eq)}) est souvent DERRIÈRE au moins un d'eux → contrôle le pot, ne survalorise pas / ne stack pas off une seule paire.`)
   const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
   const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
+  // DANGER board for a RAISE: a STRAIGHT or FLUSH is possible that the hero does NOT
+  // hold. Then a "strong" made hand (two pair / set) facing aggression is really a
+  // BLUFF-CATCHER — raising only gets called by the straights/flushes/better that crush
+  // it (it folds out the bluffs you beat). So DON'T value-raise it: call instead.
+  const suitCntB: Record<string, number> = {}; board.forEach(c => (suitCntB[c.suit] = (suitCntB[c.suit] ?? 0) + 1))
+  const flushPossibleB = Math.max(0, ...Object.values(suitCntB)) >= 3
+  const bvalsB = [...new Set(board.map(c => RV[c.rank]))]
+  let straightPossibleB = false
+  for (let lo = 2; lo <= 10 && !straightPossibleB; lo++) if (bvalsB.filter(v => v >= lo && v < lo + 5).length >= 3) straightPossibleB = true
+  // hero "has it" if they make a straight+ (effCat>=4) — then they CAN raise for value.
+  const raiseGetsOnlyValue = (flushPossibleB || straightPossibleB) && effCat >= 2 && effCat < 4 && toCall > 0 && aggression >= 0.5
 
   let action: AdviceAction
   let sizingText = ''
@@ -458,7 +469,7 @@ export function getPostflopAdvice(input: {
   if (toCall > 0) {
     // ── Facing a bet/raise. Golden rule: NEVER fold when equity beats the pot
     // odds — only raise (strong value) or call/fold around the price. ──
-    if (isStrongValue && eq >= 0.55) {
+    if (isStrongValue && eq >= 0.55 && !raiseGetsOnlyValue) {
       // Strong made hand with the edge → value raise.
       if (spr <= 1.5) { action = 'RAISE'; sizingText = `relance ALL-IN (SPR bas)`; jam = true }
       else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})`; betFrac = wet > 0.4 ? 0.85 : 0.66 }
@@ -468,7 +479,8 @@ export function getPostflopAdvice(input: {
       // Profitable continue, given the required margin (implied odds lower it for clean
       // draws, reverse implied odds raise it for vulnerable ones). Frame by hand type.
       action = 'CALL'
-      if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push('Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
+      if (raiseGetsOnlyValue) { sizingText = `paie $${toCall} (bluff-catch)`; reasons.push(`⚠️ Board à ${straightPossibleB ? 'quinte' : 'couleur'} possible que tu n'as PAS : ta ${name.toLowerCase()} est un BLUFF-CATCHER ici. Relancer ferait fuir ses bluffs (que tu bats) et ne serait payé QUE par ses ${straightPossibleB ? 'quintes' : 'couleurs'}/mains qui te battent → tu PAIES (tu bats ses bluffs), tu ne relances pas.`); confidence = 'moyenne' }
+      else if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push('Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
       else if (drawIsOnlyEquity) {
         sizingText = `paie $${toCall} (tirage)`
         reasons.push(callMargin < 0
