@@ -218,7 +218,10 @@ export function buildQuestions(spot: TrainerSpot): SpotQuestion[] {
       const side = top >= 12 ? `Un board ${top === 14 ? 'As' : top === 13 ? 'Roi' : 'Dame'}-haut colle à la range du RELANCEUR (gros As/Rois, broadways, grosses paires).`
         : top <= 9 ? 'Un board bas (9-haut ou moins) colle à la range du SUIVEUR (connecteurs, petites paires, suités) — le relanceur a surtout des cartes hautes ratées.'
           : 'Un board T/J-haut sans As ni Roi est contesté : les deux ranges le touchent à peu près autant → neutre.'
-      return `${who}. ${side}`
+      const concl = spot.favor === 'hero' ? '→ l’avantage va à TA range : tu peux miser/attaquer plus souvent.'
+        : spot.favor === 'villain' ? '→ l’avantage va à SA range : prudence, défends sans surjouer.'
+        : '→ avantage partagé : personne ne domine, joue serré.'
+      return `${who}. ${side} ${concl}`
     })(),
   }
 

@@ -24,6 +24,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
   const kindRef = useRef<Record<QKind, { c: number; t: number }>>({ texture: { c: 0, t: 0 }, rangehit: { c: 0, t: 0 }, equity: { c: 0, t: 0 }, bucket: { c: 0, t: 0 } })
   const bagRef = useRef<HandBucket[]>([])
   const nextSpotRef = useRef<TrainerSpot | null>(null)
+  const explainRef = useRef<HTMLDivElement>(null)
 
   function nextTarget(): HandBucket {
     if (bagRef.current.length === 0) bagRef.current = (['value', 'bluffcatch', 'draw', 'air'] as HandBucket[]).sort(() => Math.random() - 0.5)
@@ -50,6 +51,8 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
     const ok = !!q.options.find(o => o.id === id)?.correct
     scoreRef.current.total++; if (ok) scoreRef.current.correct++
     const ks = kindRef.current[q.kind]; ks.t++; if (ok) ks.c++
+    // Scroll the explanation into view — with the bigger table it sits below the fold.
+    setTimeout(() => explainRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 60)
   }
 
   function next() {
@@ -181,12 +184,19 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
           </div>
 
           {reveal && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="overflow-hidden">
-              <div className="mt-3 p-3 rounded-xl border" style={{ borderColor: ACCENT + '33', background: ACCENT + '0f' }}>
-                <p className="text-[11.5px] text-white/80 leading-relaxed">
-                  <span className="font-bold" style={{ color: picked === correctOpt?.id ? '#4ade80' : '#fbbf24' }}>{picked === correctOpt?.id ? '✅ Bien vu. ' : '💡 '}</span>
-                  {q.explain}
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+              <div ref={explainRef} className="mt-3 p-3.5 rounded-xl border"
+                style={{ borderColor: (picked === correctOpt?.id ? '#16a34a' : '#fbbf24') + '55', background: (picked === correctOpt?.id ? '#16a34a' : '#fbbf24') + '12' }}>
+                <p className="text-[10px] uppercase tracking-widest font-black mb-1.5" style={{ color: picked === correctOpt?.id ? '#4ade80' : '#fbbf24' }}>
+                  {picked === correctOpt?.id ? '✅ Bien vu — pourquoi' : '💡 Pourquoi (la bonne réponse)'}
                 </p>
+                {picked !== correctOpt?.id && (
+                  <p className="text-[12px] mb-1.5">
+                    <span className="text-white/50">Bonne réponse : </span>
+                    <span className="font-black" style={{ color: '#86efac' }}>{correctOpt?.label.replace(/ [✓✗]/g, '')}</span>
+                  </p>
+                )}
+                <p className="text-[12.5px] text-white/85 leading-relaxed">{q.explain}</p>
               </div>
               <button onClick={next} className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl font-black uppercase tracking-[0.18em] text-[12px]"
                 style={{ background: `linear-gradient(135deg,${ACCENT},#0d9488)`, color: '#042a25' }}>
