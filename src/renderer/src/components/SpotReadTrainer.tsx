@@ -134,7 +134,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
   const reveal = picked !== null
   const correctOpt = q.options.find(o => o.correct)
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-2xl mt-4">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl mt-4">
       {/* header */}
       <div className="flex items-center justify-between mb-3">
         <button onClick={onBack} className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white/70 uppercase tracking-widest"><ChevronLeft size={13} /> Quitter</button>
