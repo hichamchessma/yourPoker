@@ -3067,6 +3067,24 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.paused, gs.currentBet, gs.pot, callAmt, canCheck, canRaise, isOpenBet, heroMaxTo, bbAmt, manualMode])
 
+  // ── "H" — toggle the hand history, any time (cash OR tournament), as long as
+  // there are saved hands. Not while typing or in the simulation sandbox. ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key.toLowerCase() !== 'h') return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      if (simMode) return // the sim sandbox replaces the history button
+      e.preventDefault()
+      if (historyOpen) closeHistory()
+      else if (handHistory.length > 0) openHistory()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyOpen, handHistory.length, simMode])
+
   // Manual-mode shortcuts — active while the bet panel is open, for ANY on-turn
   // player: f = fold · c = check/call · a = all-in · Enter = send typed amount ·
   // Esc = close the panel. Work even with the number input focused (letters don't
@@ -3231,9 +3249,10 @@ export default function GamePage(): JSX.Element {
             <RefreshCw size={11}/> Restart
           </button>
         ) : handHistory.length > 0 && (
-          <button onClick={openHistory}
+          <button onClick={openHistory} title="Historique des mains (H)"
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/10 transition-all text-[9px] font-bold uppercase tracking-widest">
             Historique ({handHistory.length})
+            <kbd className="px-1 rounded bg-black/35 text-[8px] font-mono opacity-70">H</kbd>
           </button>
         )}
 
