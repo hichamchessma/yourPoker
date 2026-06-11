@@ -669,6 +669,14 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // value range; cold-callers stay capped, so a multiway pot doesn't crush a strong
     // hand (mirrors the live coach).
     const aggressors = new Set(postBets.map(a => a.seatIdx)).size
+    // CAPPED / "delayed" bet: an earlier postflop street was checked through, now hero
+    // faces a bet → range capped (strong hands fire earlier) → soften value (mirrors live).
+    const postOrder: Phase[] = ['flop', 'turn', 'river']
+    const curIdx = postOrder.indexOf(phase)
+    const cappedRange = toCall > 0 && curIdx > 0 && postOrder.slice(0, curIdx).some(st => {
+      const acts = record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && a.phase === st)
+      return acts.length > 0 && !acts.some(a => a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')
+    })
     // Size-aware aggression: a BIG bet polarizes the range to value far more than a
     // small one — counting bets alone under-rates a single large turn/river barrel.
     // pot already includes the bet hero faces, so pot-before-bet = pot - toCall.
@@ -681,7 +689,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const preAggr = preflopRaises >= 3 ? 0.6 : preflopRaises === 2 ? 0.4 : 0
     const aggression = Math.min(0.85, Math.max(preAggr, villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
     const villainTier = preflopRaises >= 3 ? '4bet' as const : preflopRaises === 2 ? '3bet' as const : undefined
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors })
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
@@ -2928,6 +2936,15 @@ export default function GamePage(): JSX.Element {
   const heroSizeFrac = heroToCallNow > 0 && (gs.pot - heroToCallNow) > 0 ? heroToCallNow / (gs.pot - heroToCallNow) : 0
   const heroSizeBoost = heroSizeFrac >= 1 ? 0.55 : heroSizeFrac >= 0.66 ? 0.45 : heroSizeFrac >= 0.45 ? 0.36 : heroSizeFrac >= 0.25 ? 0.22 : 0.08
   const heroAggression = Math.min(0.85, Math.max(preAggrFloor, villainAggro.length * 0.28, heroSizeBoost + (heroBarrels - 1) * 0.18))
+  // CAPPED / "delayed" bet: an earlier postflop street was CHECKED THROUGH (no bet)
+  // and now the hero faces a bet → the strongest hands usually fired earlier, so this
+  // betting range is capped (more bluff-heavy). Softens the value-polarization so a
+  // bluff-catcher correctly calls (e.g. QQ vs a turn bet after a checked-back ace flop).
+  const heroCappedRange = heroToCallNow > 0 && (['flop', 'turn', 'river'] as Phase[]).indexOf(gs.phase) > 0 &&
+    (['flop', 'turn', 'river'] as Phase[]).slice(0, (['flop', 'turn', 'river'] as Phase[]).indexOf(gs.phase)).some(st => {
+      const acts = handActions.filter(a => a.seatIdx >= 0 && a.phase === st)
+      return acts.length > 0 && !acts.some(a => a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')
+    })
   // Range width is driven by how many *active* players (still in the hand, dealt
   // in, not folded / sitting out / busted) remain to act after the hero — NOT by
   // the static table size. So a fold-around to the SB becomes a true blind-vs-
@@ -3032,7 +3049,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange })
     if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
     if (adv.action === 'CHECK') return void heroAction('CHECK')
     if (adv.action === 'CALL') return void heroAction('CALL', toCall)
@@ -3959,6 +3976,7 @@ export default function GamePage(): JSX.Element {
                 barrels={heroBarrels}
                 villainTier={heroVillainTier}
                 aggressors={heroAggressors}
+                cappedRange={heroCappedRange}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}

@@ -339,10 +339,16 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
-  const aggression = Math.max(0, Math.min(0.9, input.aggression ?? 0))
+  const rawAggr = Math.max(0, Math.min(0.9, input.aggression ?? 0))
+  // A "delayed" bet — the villain CHECKED an earlier postflop street, then bet — is a
+  // CAPPED range: the strongest hands (e.g. a flopped top pair / set) usually bet
+  // earlier, so a checked-then-bet line is rarely the nuts and carries far more
+  // bluffs / medium hands. Soften the value-polarization so the hero's bluff-catchers
+  // correctly call more (it also eases the reverse-implied-odds cushion).
+  const aggression = input.cappedRange ? rawAggr * 0.5 : rawAggr
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
 
@@ -362,6 +368,7 @@ export function getPostflopAdvice(input: {
   const reasons: string[] = []
   reasons.push(`Ton équité réelle ≈ ${pct(eq)}${villainGaveUp ? ' — l’adversaire a misé puis checké : son range est plafonné/faible' : aggression > 0 ? ` face à une range ${barrels >= 2 ? 'forte (plusieurs mises)' : 'resserrée'}` : ` face à ${opponents} adversaire${opponents > 1 ? 's' : ''}`}.`)
   if (toCall > 0) reasons.push(`Cote du pot : il te faut ${pct(potOdds)} d'équité pour payer ${toCall}.`)
+  if (input.cappedRange && toCall > 0) reasons.push('Range PLAFONNÉE : l’adversaire a checké une rue plus tôt — il aurait misé ses mains fortes avant. Son bet retardé est donc rarement le nuts (plus de bluffs / mains moyennes) → tu peux bluff-catcher plus large.')
   // "Playing the board" is strictly a RIVER concept (5 community cards) where your
   // hole cards add nothing. Pre-river you always hold at least high-card / a draw,
   // so we never mislabel it (and we avoid padding the board with fake cards).

@@ -40,7 +40,7 @@ export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
   raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0,
-  raiserBehindJam = false, aggressors,
+  raiserBehindJam = false, aggressors, cappedRange,
   icmTighten = 1, icmPressure = 0, actionRecap, onClose, villainTier,
   embedded = false, representedView = null, representedMeta = null,
 }: {
@@ -67,6 +67,7 @@ export default function RangeAssistant({
   numAllIn?: number
   raiserBehindJam?: boolean
   aggressors?: number
+  cappedRange?: boolean
   icmTighten?: number
   icmPressure?: number
   villainTier?: VillainTier
@@ -146,10 +147,10 @@ export default function RangeAssistant({
       }
     }
     if (board.length < 3) return null
-    const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors })
+    const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange })
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier, aggressors])
+  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier, aggressors, cappedRange])
 
   // "How a pro reasons about the price" — POSTFLOP only. Pre-flop the decision is a
   // RANGE call (domination / realizability), not a pot-odds one: a hand can clear the
