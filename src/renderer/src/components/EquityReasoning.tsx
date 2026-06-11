@@ -106,11 +106,20 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
           <span className="text-[#3aa0d8] mr-1">▸</span>
           Mon équité réelle ≈ <b style={{ color: '#34d399' }}>{eqTxt}</b>
           {hasOuts
-            ? ' (simulation : je rejoue le coup des milliers de fois — ça inclut mes outs ci-dessus + ce que je bats déjà).'
+            ? ' (simulation : je rejoue le coup des milliers de fois et je compte la part où je gagne).'
             : r.preflop
               ? ` — estimée par simulation : je rejoue ce coup des milliers de fois en distribuant au hasard les mains adverses + le board, et je compte la part où je gagne (${eqTxt} ici). Pas d'outs à montrer avant le flop.`
               : ' — estimée par simulation : je rejoue les abattages des milliers de fois et je compte la part où je gagne.'}
         </p>
+
+        {/* Why real equity > raw outs: the outs only count the times I IMPROVE; I also
+            win plenty of the time WITHOUT improving (my high card / pair already beats
+            his missed draws & air at showdown). Make that jump explicit. */}
+        {hasOuts && r.equity - r.outsApprox > 0.06 && (
+          <p className="text-[11px] leading-relaxed rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(52,211,153,0.08)', color: 'rgba(255,255,255,0.78)' }}>
+            <span className="font-bold" style={{ color: '#34d399' }}>Pourquoi {eqTxt} et pas {pct(r.outsApprox)} ?</span> Les {pct(r.outsApprox)} ne comptent QUE les fois où je touche un out. Mais je gagne AUSSI sans m'améliorer : à l'abattage, ce que j'ai déjà (carte haute / paire) bat ses bluffs, tirages ratés et mains plus faibles. En gros : <b style={{ color: '#34d399' }}>{pct(r.outsApprox)}</b> (j'améliore) + <b style={{ color: '#34d399' }}>~{pct(r.equity - r.outsApprox)}</b> (déjà devant au showdown) ≈ <b style={{ color: '#34d399' }}>{eqTxt}</b>.
+          </p>
+        )}
 
         {/* Verdict */}
         <p className="text-[12px] leading-relaxed font-semibold mt-0.5" style={{ color: verdictColor }}>
