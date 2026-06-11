@@ -339,10 +339,16 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
-  const rawAggr = Math.max(0, Math.min(0.9, input.aggression ?? 0))
+  const rawAggr0 = Math.max(0, Math.min(0.9, input.aggression ?? 0))
+  // CALL PRESSURE: opponents who passively CALL several streets (especially multiway)
+  // DON'T have air — a called-down range is value-heavy. The aggression model only
+  // counts BETS, so without this a 1-pair hand (even an overpair) looks way ahead when
+  // 2 players just called 3 barrels, and the coach keeps value-betting into a hand that
+  // crushes it. Treat sustained calling like aggression for the equity (narrows range).
+  const rawAggr = Math.max(rawAggr0, input.callPressure ?? 0)
   // A "delayed" bet — the villain CHECKED an earlier postflop street, then bet — is a
   // CAPPED range: the strongest hands (e.g. a flopped top pair / set) usually bet
   // earlier, so a checked-then-bet line is rarely the nuts and carries far more
@@ -433,8 +439,13 @@ export function getPostflopAdvice(input: {
   if (effCat === 0 && !playsBoard && !drawIsOnlyEquity && toCall > 0) reasons.push('Ta « carte haute » n’est pas rien : ton équité vient de tes surcartes (tu peux toucher la paire), de tirages de secours, et tu bats ses mains ratées/bluffs au showdown.')
   if (pot > 0 && spr < 4) reasons.push(`SPR ≈ ${spr.toFixed(1)} (tapis/pot) : ${spr <= 1.5 ? 'engagé — avec une main forte, joue all-in.' : 'assez bas, prêt à investir gros avec une main forte.'}`)
 
-  const isStrongValue = !playsBoard && (effCat >= 2 || effPair === 'overpair') // two pair+, sets, overpair
+  // Multiway, called-down: a LONE overpair/one pair is often beaten when several
+  // players have called multiple streets (their range is value-heavy two-pair+/sets).
+  // Don't treat it as "strong value" → pot-control instead of barrelling/stacking off.
+  const beatenMultiway = (input.callPressure ?? 0) >= 0.45 && Math.max(1, opponents) >= 2 && effCat <= 1 && eq < 0.52
+  const isStrongValue = !playsBoard && (effCat >= 2 || effPair === 'overpair') && !beatenMultiway // two pair+, sets, overpair
   const isOnePair = !playsBoard && effCat === 1
+  if (beatenMultiway) reasons.push(`⚠️ Multiway, et plusieurs adversaires ont PAYÉ plusieurs rues : caller autant en multiway = de la FORCE (top paire+/deux paires/sets), pas de l'air. Ta paire (${pct(eq)}) est souvent DERRIÈRE au moins un d'eux → contrôle le pot, ne survalorise pas / ne stack pas off une seule paire.`)
   const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
   const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
 

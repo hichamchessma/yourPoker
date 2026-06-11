@@ -693,7 +693,11 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const preAggr = preflopRaises >= 3 ? 0.6 : preflopRaises === 2 ? 0.4 : 0
     const aggression = Math.min(0.85, Math.max(preAggr, villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
     const villainTier = preflopRaises >= 3 ? '4bet' as const : preflopRaises === 2 ? '3bet' as const : undefined
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange })
+    // Call pressure: opponents who called multiple postflop streets (esp. multiway)
+    // have a strong range → de-value a lone overpair/one pair (mirrors the live coach).
+    const calledStreets = new Set(record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && !a.isHero && a.actionType === 'CALL' && (a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')).map(a => a.phase)).size
+    const callPressure = Math.min(0.85, calledStreets * 0.25 + (live.length > 2 ? 0.15 : 0))
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
@@ -3014,6 +3018,11 @@ export default function GamePage(): JSX.Element {
     return Math.min(heroTotal, maxVill)
   })()
   const heroMultiway = heroActiveCount > 2
+  // CALL PRESSURE: opponents who CALL several postflop streets (esp. multiway) have a
+  // strong, value-heavy range → de-value the hero's lone overpair/one-pair (don't keep
+  // barrelling / stack off). Distinct postflop streets an opponent called + multiway.
+  const heroCalledStreets = new Set(handActions.filter(a => a.seatIdx >= 0 && !a.isHero && a.actionType === 'CALL' && (a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')).map(a => a.phase)).size
+  const heroCallPressure = Math.min(0.85, heroCalledStreets * 0.25 + (heroMultiway ? 0.15 : 0))
   const heroRaiseToBB = bbAmt > 0 ? gs.currentBet / bbAmt : 2.5
   const canCheck = isHeroTurn && gs.currentBet === (hero?.bet ?? 0)
   const callAmt = isHeroTurn ? Math.min((gs.currentBet - (hero?.bet ?? 0)), hero?.stack ?? 0) : 0
@@ -3086,7 +3095,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure })
     if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
     if (adv.action === 'CHECK') return void heroAction('CHECK')
     if (adv.action === 'CALL') return void heroAction('CALL', toCall)
@@ -4014,6 +4023,7 @@ export default function GamePage(): JSX.Element {
                 villainTier={heroVillainTier}
                 aggressors={heroAggressors}
                 cappedRange={heroCappedRange}
+                callPressure={heroCallPressure}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}
