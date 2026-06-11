@@ -78,8 +78,9 @@ const RFI = {
   MP: ['55+', 'A2s+', 'KTs+', 'QTs+', 'J9s+', 'T9s', '98s', '87s', '76s', 'ATo+', 'KJo+'],
   // hijack / lojack ~22%
   HJ: ['44+', 'A2s+', 'K9s+', 'Q9s+', 'J9s+', 'T8s+', '97s+', '86s+', '76s', '65s', 'ATo+', 'KJo+', 'QJo'],
-  // cutoff ~28%
-  CO: ['22+', 'A2s+', 'K7s+', 'Q8s+', 'J8s+', 'T7s+', '96s+', '86s+', '75s+', '65s', '54s', 'A8o+', 'KTo+', 'QTo+', 'JTo'],
+  // cutoff ~29% (offsuit aces down to A7o — an ace blocker + top-pair potential is a
+  // better steal than the weak suited connectors already open here, e.g. 54s/75s)
+  CO: ['22+', 'A2s+', 'K7s+', 'Q8s+', 'J8s+', 'T7s+', '96s+', '86s+', '75s+', '65s', '54s', 'A7o+', 'KTo+', 'QTo+', 'JTo'],
   // button ~48%
   BTN: ['22+', 'A2s+', 'K2s+', 'Q4s+', 'J6s+', 'T6s+', '95s+', '85s+', '74s+', '64s+', '53s+', '43s', 'A2o+', 'K8o+', 'Q9o+', 'J9o+', 'T8o+', '98o', '87o', '76o'],
   // small blind (raise-only steal, OOP) ~42%
