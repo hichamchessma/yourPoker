@@ -673,7 +673,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // faces a bet → range capped (strong hands fire earlier) → soften value (mirrors live).
     const postOrder: Phase[] = ['flop', 'turn', 'river']
     const curIdx = postOrder.indexOf(phase)
-    const cappedRange = toCall > 0 && curIdx > 0 && postOrder.slice(0, curIdx).some(st => {
+    const cappedRange = curIdx > 0 && postOrder.slice(0, curIdx).some(st => {
       const acts = record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && a.phase === st)
       return acts.length > 0 && !acts.some(a => a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')
     })
@@ -2940,7 +2940,7 @@ export default function GamePage(): JSX.Element {
   // and now the hero faces a bet → the strongest hands usually fired earlier, so this
   // betting range is capped (more bluff-heavy). Softens the value-polarization so a
   // bluff-catcher correctly calls (e.g. QQ vs a turn bet after a checked-back ace flop).
-  const heroCappedRange = heroToCallNow > 0 && (['flop', 'turn', 'river'] as Phase[]).indexOf(gs.phase) > 0 &&
+  const heroCappedRange = (['flop', 'turn', 'river'] as Phase[]).indexOf(gs.phase) > 0 &&
     (['flop', 'turn', 'river'] as Phase[]).slice(0, (['flop', 'turn', 'river'] as Phase[]).indexOf(gs.phase)).some(st => {
       const acts = handActions.filter(a => a.seatIdx >= 0 && a.phase === st)
       return acts.length > 0 && !acts.some(a => a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')

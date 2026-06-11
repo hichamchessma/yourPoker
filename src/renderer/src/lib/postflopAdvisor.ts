@@ -478,9 +478,21 @@ export function getPostflopAdvice(input: {
     }
   } else {
     // ── No bet to call (checked to you / you open the action) ──
-    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6)) {
-      action = 'BET'; sizingText = `mise pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, $${valueBetSize})`; betFrac = wet > 0.4 ? 0.75 : 0.6
-      reasons.push('Main forte : mise pour la valeur et fais payer les tirages.')
+    // THIN VALUE vs a CAPPED range: when the pot has gone passive (villain checked an
+    // earlier street → capped/weak range), a medium one-pair that's clearly ahead
+    // (≈70%+ equity) should bet SMALL for value — worse pairs call, and checking back
+    // just leaves money on the table. This is the classic "second pair good kicker bets
+    // the river after it checks through" spot.
+    const thinValueVsCapped = !!input.cappedRange && isOnePair && !isStrongValue && effPair !== 'top' && eq >= 0.70
+    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped) {
+      action = 'BET'
+      if (thinValueVsCapped && eq < 0.8) {
+        sizingText = `value fine (~⅓ pot, $${round(pot * 0.4)})`; betFrac = 0.4
+        reasons.push('Range adverse PLAFONNÉE (checks répétés) : ta paire bat la plupart de ses mains → value FINE. Mise PETIT (~⅓ pot) pour te faire payer par les pires paires — un gros bet les ferait coucher.')
+      } else {
+        sizingText = `mise pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, $${valueBetSize})`; betFrac = wet > 0.4 ? 0.75 : 0.6
+        reasons.push('Main forte : mise pour la valeur et fais payer les tirages.')
+      }
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
     } else if (strongDraw) {
       action = 'BET'; sizingText = `semi-bluff (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
