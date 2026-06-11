@@ -7,7 +7,7 @@ import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonT
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
 import EquityReasoningBlock from '../components/EquityReasoning'
 import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
@@ -633,13 +633,10 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
-    // Pro reasoning (equity vs price) — only when FACING a raise/jam (a real call
-    // decision), never on an open. Preflop equity is the raw all-in equity vs the field.
-    if (toCall > 0 && (vsJam || scenario === 'vsopen' || scenario === 'squeeze' || scenario === 'vs3bet' || scenario === 'vs4bet')) {
-      const eqPre = monteCarloEquity([hero.holeCards[0], hero.holeCards[1]], [], opponents, 1200)
-      reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board: [], pot, toCall, equity: eqPre,
-        decision: rec === 'fold' ? 'fold' : rec === 'call' ? 'call' : 'aggro' })
-    }
+    // NOTE: no equity-vs-pot-odds reasoning block pre-flop — there the decision is a
+    // RANGE call (domination / realizability), not a pot-odds one, so the "I have/don't
+    // have the price" framing would contradict a correct range fold (e.g. ATo folds a
+    // 3-bet despite ~45% raw equity vs the field). The reasoning block is postflop-only.
     const recLabel = rec === 'fold' ? 'FOLD'
       : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL')
       : rec === '3bet' ? (scenario === 'squeeze' ? 'SQUEEZE (3-bet)' : '3-BET')
@@ -666,7 +663,12 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = 'Fold un peu serré'; lines.push(`${key} pouvait suivre (cote/jouabilité), mais le fold reste défendable.`) }
   } else {
     const villainBets = record.actions.slice(0, actionIdx).filter(a => isAggroAction(a, pfInfo.deadAllIn))
-    const barrels = new Set(villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.phase)).size
+    const postBets = villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')
+    const barrels = new Set(postBets.map(a => a.phase)).size
+    // Distinct opponents who actually bet/raised postflop — only THEY have a polarized
+    // value range; cold-callers stay capped, so a multiway pot doesn't crush a strong
+    // hand (mirrors the live coach).
+    const aggressors = new Set(postBets.map(a => a.seatIdx)).size
     // Size-aware aggression: a BIG bet polarizes the range to value far more than a
     // small one — counting bets alone under-rates a single large turn/river barrel.
     // pot already includes the bet hero faces, so pot-before-bet = pot - toCall.
@@ -679,7 +681,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const preAggr = preflopRaises >= 3 ? 0.6 : preflopRaises === 2 ? 0.4 : 0
     const aggression = Math.min(0.85, Math.max(preAggr, villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
     const villainTier = preflopRaises >= 3 ? '4bet' as const : preflopRaises === 2 ? '3bet' as const : undefined
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier })
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
@@ -2911,6 +2913,10 @@ export default function GamePage(): JSX.Element {
   // Villain aggression → range-aware equity. Count opponents' bets/raises this hand
   // (a dead short jam under the bet is NOT a barrel); barrels = post-flop streets fired.
   const villainAggro = handActions.filter(a => isAggroAction(a, pfLive.deadAllIn))
+  // Distinct opponents who actually BET/RAISED POSTFLOP — only their range is
+  // polarized to value. The others merely called (capped range), so multiway equity
+  // isn't crushed by treating every caller as a value-bettor.
+  const heroAggressors = new Set(villainAggro.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river').map(a => a.seatIdx)).size
   // Pre-flop pot type → premium-heavy villain range (3-bet/4-bet) for the equity model.
   const heroVillainTier = preflopRaiseActions >= 3 ? '4bet' as const : preflopRaiseActions === 2 ? '3bet' as const : undefined
   const preAggrFloor = preflopRaiseActions >= 3 ? 0.6 : preflopRaiseActions === 2 ? 0.4 : 0
@@ -3026,7 +3032,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors })
     if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
     if (adv.action === 'CHECK') return void heroAction('CHECK')
     if (adv.action === 'CALL') return void heroAction('CALL', toCall)
@@ -3933,6 +3939,7 @@ export default function GamePage(): JSX.Element {
                 aggression={heroAggression}
                 barrels={heroBarrels}
                 villainTier={heroVillainTier}
+                aggressors={heroAggressors}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}

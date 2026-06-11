@@ -230,21 +230,29 @@ function preflopWeight(a: Card, b: Card, tier: VillainTier): number {
 // would actually be betting/continuing it (see betFrequency), scaled by `aggression`
 // (0 = random range … ~0.85 = multi-barreled, very polarized to value), and by the
 // pre-flop pot type (`tier`: a 3-bet/4-bet pot is premium-heavy).
-export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800, tier?: VillainTier): number {
+export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800, tier?: VillainTier, aggressors?: number): number {
   if (opponents < 1) return 1
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const deck = fullDeck().filter(c => !known.has(c.rank + c.suit))
   const needBoard = 5 - board.length
   const a = Math.max(0, Math.min(0.9, aggression))
+  // MULTIWAY: only the players who actually BET/RAISED have a polarized-to-value
+  // range. The others merely CALLED — their range is capped/drawing, barely stronger
+  // than random — so applying the bettor's aggression to ALL opponents wildly
+  // under-rates a strong hand (e.g. KK overpair folds the turn 5-way because the 3
+  // cold-callers are wrongly treated as value-bettors). `aggressors` = how many
+  // opponents drove the action; the rest get a mild "caller" weighting.
+  const nAgg = aggressors === undefined ? opponents : Math.max(0, Math.min(opponents, aggressors))
+  const callerA = a * 0.4 // a continuing (calling) range: slightly above random, NOT polarized to value
 
-  const keepProb = (oppHole: Card[]): number => {
+  const keepProb = (oppHole: Card[], aggr: number): number => {
     let w = 1
-    if (a > 0 && board.length >= 3) {
+    if (aggr > 0 && board.length >= 3) {
       // Blend a uniform range with the bet-frequency-shaped (polarized-to-value) range.
       // The blend ramps to 100% by the time we've seen ~2 barrels, so a barreled range
       // is fully shaped (weak hands carry little weight) rather than half-uniform air.
-      const blend = Math.min(1, a / 0.45)
-      w *= (1 - blend) * 1 + blend * betFrequency(oppHole, board, a)
+      const blend = Math.min(1, aggr / 0.45)
+      w *= (1 - blend) * 1 + blend * betFrequency(oppHole, board, aggr)
     }
     if (tier === '3bet' || tier === '4bet') w *= preflopWeight(oppHole[0], oppHole[1], tier)
     return w
@@ -263,7 +271,7 @@ export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggr
     let p = needBoard, w = 1, beaten = false, tie = 1
     for (let o = 0; o < opponents; o++) {
       const oh = [pool[p], pool[p + 1]]; p += 2
-      w *= keepProb(oh)
+      w *= keepProb(oh, o < nAgg ? a : callerA) // first nAgg slots = aggressors, rest = callers
       const sc = best7(oh.concat(fullBoard))
       if (sc > heroScore) beaten = true
       else if (sc === heroScore) tie++
@@ -331,14 +339,14 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
   const aggression = Math.max(0, Math.min(0.9, input.aggression ?? 0))
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
 
-  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, 1800, input.villainTier)
+  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, 1800, input.villainTier, input.aggressors)
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
   const { cat, pair, name } = analyseMade(hole, board)
   const draws = detectDraws(hole, board)
