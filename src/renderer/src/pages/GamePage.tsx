@@ -1318,7 +1318,6 @@ export default function GamePage(): JSX.Element {
   // usable); a short grace timer lets the cursor travel from the cards to the popup.
   const [oppPanelHover, setOppPanelHover] = useState(false)
   const oppPanelHoverRef = useRef(false)
-  const oppCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rangeFilmRef = useRef(false) // mirrors rangeFilmOpen for timer reads
 
   const gsRef = useRef<GState>(gs)
@@ -1798,14 +1797,17 @@ export default function GamePage(): JSX.Element {
         effect: 'toutes les mains, pondérées par combos', caption: 'Range de départ (toutes mains)',
       }]
     }
-    rangeRef.current[seatIdx] = applyAction(rangeRef.current[seatIdx], cat, {
+    // Build the action context ONCE and reuse it for the range update AND the
+    // snapshot (so a clicked cell can be explained with the exact same inputs).
+    const ctx = {
       preflop, board, toCall, potOdds,
       posBonus: POS_BONUS[seat.position] ?? 0.75,
       tier: Math.max(1, Math.min(3, seat.level)),
       human: seat.seatType === 'human',
       mood: moodRef.current[seatIdx] ?? 0,
       priorRaises: raisesSoFar,  // # of raises this player faced (0/1/2/≥3) → open/3-bet/4-bet logic
-    })
+    }
+    rangeRef.current[seatIdx] = applyAction(rangeRef.current[seatIdx], cat, ctx)
     const meta = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })
     rangeMetaRef.current[seatIdx] = meta
     // Append this action's snapshot to the film (for the animated hover popup).
@@ -1816,7 +1818,7 @@ export default function GamePage(): JSX.Element {
       : `${action === 'BET' ? 'mise' : 'relance'}${amount ? ' $' + Math.round(amount) : ''}`
     ;(rangeHistoryRef.current[seatIdx] ??= []).push({
       view: rangeView(rangeRef.current[seatIdx]), move: meta.move, effect: meta.effect,
-      caption: `${phaseLabel} · ${actLabel}`,
+      caption: `${phaseLabel} · ${actLabel}`, ctx, observed: cat,
     })
   }
 
@@ -3545,8 +3547,9 @@ export default function GamePage(): JSX.Element {
                     if (seat.isHero) {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { if (oppCloseTimer.current) clearTimeout(oppCloseTimer.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { oppCloseTimer.current = setTimeout(() => { if (!oppPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 300) } // grace: let the cursor reach the film popup
+                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    // Opponent: leaving the cards does NOT close — the film popup stays
+                    // so the cursor can travel into it (closes via the popup / ✕ / Échap).
                   }}
                   onHover={(entering, e) => {
                     // NAME / STACK zone. For the on-turn player in manual mode this
@@ -3561,8 +3564,8 @@ export default function GamePage(): JSX.Element {
                     if (seat.isHero) {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { if (oppCloseTimer.current) clearTimeout(oppCloseTimer.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { oppCloseTimer.current = setTimeout(() => { if (!oppPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 300) } // grace: let the cursor reach the film popup
+                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    // Opponent: leaving the name/stack does NOT close (see cards handler).
                   }}
                 />
               )
@@ -4030,11 +4033,12 @@ export default function GamePage(): JSX.Element {
         if (x < 8) x = 8
         if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
         if (y < 8) y = 8
+        const closeFilm = () => { oppPanelHoverRef.current = false; setOppPanelHover(false); setHoverSeat(null) }
         return (
           <div className="fixed z-[80] pointer-events-auto" style={{ left: x, top: y }}
-            onMouseEnter={() => { if (oppCloseTimer.current) clearTimeout(oppCloseTimer.current); oppPanelHoverRef.current = true; setOppPanelHover(true) }}
-            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); setHoverSeat(s => (s === hoverSeat ? null : s)) }}>
-            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462} />
+            onMouseEnter={() => { oppPanelHoverRef.current = true; setOppPanelHover(true) }}
+            onMouseLeave={closeFilm}>
+            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462} onClose={closeFilm} />
           </div>
         )
       })()}

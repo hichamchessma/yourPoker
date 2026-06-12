@@ -227,6 +227,87 @@ export function applyAction(range: RangeWeights, observed: ActCat, ctx: ActionCt
   return out
 }
 
+// Number of starting combos for a 169-grid key (pair=6, suited=4, offsuit=12).
+export function handCombos(key: string): number {
+  return key.length === 2 ? 6 : key.endsWith('s') ? 4 : 12
+}
+
+// Explain, for ONE hand, why a single observed action kept it (prob→1), cut it
+// (prob→0) or only trimmed it (mid) — using the SAME policy the range engine
+// applies. Returns the multiplier P(action|hand) plus a human-readable reason, so
+// the UI can replay a clicked cell's fate action-by-action.
+export function explainHandStep(handKey: string, observed: ActCat, ctx: ActionCtx): { prob: number; reason: string } {
+  const h = HANDS.find(x => x.key === handKey)
+  if (!h) return { prob: 1, reason: '' }
+  const [a, b] = h.rep
+  const pol = policyFor(ctx.tier, ctx.human, ctx.mood)
+  const strength = ctx.preflop ? preflopStrength(a, b) : madeStrength([a, b], ctx.board)
+  const draw = ctx.preflop ? false : hasStrongDraw([a, b], ctx.board)
+  const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, pol, ctx.priorRaises)
+  const prob = probs[observed]
+  const pc = (x: number) => `${Math.round(x * 100)}%`
+  let reason = ''
+
+  if (ctx.preflop) {
+    const openTh = 10.0 - ctx.posBonus * 5.3
+    const sv = strength.toFixed(1)
+    if (ctx.priorRaises <= 0) {
+      if (observed === 'aggr') reason = prob > 0
+        ? `Force chart ${sv} ≥ seuil d'open ${openTh.toFixed(1)} → cette main fait partie des mains d'ouverture → gardée.`
+        : `Force chart ${sv} < seuil d'open ${openTh.toFixed(1)} → elle n'ouvre jamais ici → éliminée par l'OPEN.`
+      else if (observed === 'check') reason = prob > 0
+        ? `Trop faible pour ouvrir (${sv} < ${openTh.toFixed(1)}) → elle se contente de checker la grosse blinde → gardée.`
+        : `Assez forte pour ouvrir (${sv} ≥ ${openTh.toFixed(1)}) → elle aurait MISÉ, pas checké → exclue.`
+      else reason = prob > 0 ? `Main limpée (style passif, rare) → gardée en fraction.` : `Cette main ne limpe pas → exclue.`
+    } else if (ctx.priorRaises === 1) {
+      if (observed === 'aggr') reason = strength >= 10
+        ? `Premium (force ${sv} ≥ 10) → 3-bet pour la valeur → gardée.`
+        : prob > 0 ? `3-bet light / polarisé (bluff) → gardée en petite fraction.` : `Ne 3-bet pas face à une ouverture → exclue du RE-RAISE.`
+      else if (observed === 'call') reason = prob > 0
+        ? `Dans la bande de flat (assez forte pour défendre, pas assez pour 3-bet) → suit l'ouverture → gardée.`
+        : strength >= 10 ? `Premium : elle aurait 3-bet, pas juste call → quasi exclue.` : `Trop faible pour défendre face à l'open → exclue par le CALL.`
+    } else if (ctx.priorRaises === 2) {
+      if (observed === 'aggr') reason = strength >= 14 ? `Monstre (AA/KK/QQ) → 4-bet → gardée.` : prob > 0 ? `4-bet bluff léger → fraction.` : `Ne 4-bet pas → exclue.`
+      else if (observed === 'call') reason = prob > 0
+        ? `Cœur de range value qui paie un 3-bet (88+, AK, broadways assortis…) → gardée.`
+        : strength >= 14 ? `Premium : elle 4-bet → exclue du simple CALL.` : `Trop faible face à un 3-bet → exclue.`
+    } else {
+      if (observed === 'aggr') reason = strength >= 15 ? `Les nuts (AA/KK) → tapis sur le 4-bet → gardée.` : `Ne jam pas un 4-bet → exclue.`
+      else if (observed === 'call') reason = strength >= 12 && strength < 15 ? `QQ/JJ/AKs → paie le 4-bet → gardée.` : `Hors range de call-off d'un 4-bet → exclue.`
+    }
+  } else {
+    const sPct = pc(strength)
+    if (ctx.toCall <= 0) {
+      const aggrP = strength >= pol.betValue ? pol.betFreqStrong : draw ? pol.semiBluff : pol.bluff
+      if (observed === 'check') {
+        reason = strength >= pol.betValue
+          ? `Main forte (${sPct}) : sur ce board elle MISE ~${pc(pol.betFreqStrong)} du temps → un CHECK ne la garde qu'à ~${pc(1 - aggrP)} → fortement réduite (c'est ça, une range cappée).`
+          : draw ? `Tirage : il semi-bluffe ~${pc(pol.semiBluff)} → un CHECK le garde à ~${pc(1 - aggrP)}.`
+          : `Main faible/moyenne (${sPct}) : elle checke le plus souvent (~${pc(1 - aggrP)}) → gardée.`
+      } else {
+        reason = strength >= pol.betValue
+          ? `Main forte (${sPct}) : value-bet ~${pc(pol.betFreqStrong)} → gardée en grande partie.`
+          : draw ? `Tirage : semi-bluff ~${pc(pol.semiBluff)} → gardée en fraction.`
+          : `Main faible : ne mise quasi jamais (bluff ~${pc(pol.bluff)}) → quasi exclue du BET.`
+      }
+    } else {
+      if (strength >= pol.raiseValue) {
+        reason = observed === 'aggr'
+          ? `Très forte (${sPct} ≥ seuil de relance) → relance → gardée.`
+          : `Très forte : elle aurait RELANCÉ → un simple ${observed === 'call' ? 'CALL' : 'CHECK'} la réduit fortement.`
+      } else {
+        const callsByOdds = strength >= ctx.potOdds + pol.callEdge
+        if (observed === 'call') reason = prob > 0
+          ? (callsByOdds ? `Assez d'équité (${sPct}) vs la cote (${pc(ctx.potOdds)}) → paie → gardée.`
+            : draw ? `Tirage avec la cote (implicite) → paie → gardée.` : `Payée en fraction (call light) → gardée partiellement.`)
+          : `Pas la cote (${sPct} < ${pc(ctx.potOdds)}) et rien à toucher → ne paie pas → exclue du CALL.`
+        else reason = prob > 0 ? `Relance en (semi-)bluff / value fine → gardée en fraction.` : `Ne relance pas ici → exclue du RAISE.`
+      }
+    }
+  }
+  return { prob, reason }
+}
+
 // Initial range: every hand weighted by its number of combos, minus board blockers.
 export function initRange(board: Card[] = []): RangeWeights {
   const used = RANK_BLOCK(board)

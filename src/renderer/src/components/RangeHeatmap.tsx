@@ -9,7 +9,7 @@ function heat(intensity: number): { bg: string; fg: string } {
 }
 
 export default function RangeHeatmap({
-  view, move, effect, name, heroKey, style, width = 300,
+  view, move, effect, name, heroKey, style, width = 300, onCellClick, selectedKey,
 }: {
   view: RangeView
   move: string
@@ -18,11 +18,13 @@ export default function RangeHeatmap({
   heroKey?: string | null
   style?: React.CSSProperties
   width?: number
+  onCellClick?: (key: string) => void   // when set, cells become clickable
+  selectedKey?: string | null           // highlighted (clicked) cell
 }) {
   const s = width / 300            // scale factor — fonts scale with the grid
   const f = (px: number) => Math.round(px * s)
   return (
-    <div className="pointer-events-none rounded-xl border border-[#c9a227]/40 shadow-2xl"
+    <div className={`${onCellClick ? '' : 'pointer-events-none'} rounded-xl border border-[#c9a227]/40 shadow-2xl`}
       style={{ background: 'rgba(7,13,26,0.97)', width, padding: f(10), ...style }}>
       {/* Header: who + last move + consequence + range width */}
       <div style={{ marginBottom: f(6) }}>
@@ -44,18 +46,22 @@ export default function RangeHeatmap({
             const intensity = view.cells[key] ?? 0
             const c = heat(intensity)
             const isHero = !!heroKey && key === heroKey
+            const isSel = !!selectedKey && key === selectedKey
             return (
               <div key={`${i}-${j}`}
+                onClick={onCellClick ? () => onCellClick(key) : undefined}
                 className="relative flex items-center justify-center rounded-[2px] select-none"
                 style={{
                   aspectRatio: '1', fontSize: f(7), fontWeight: 700, background: c.bg, color: c.fg,
-                  outline: isHero ? '2px solid #00e5ff' : 'none', outlineOffset: isHero ? '-1px' : 0,
+                  cursor: onCellClick ? 'pointer' : 'default',
+                  outline: isSel ? '2px solid #fff' : isHero ? '2px solid #00e5ff' : 'none', outlineOffset: (isSel || isHero) ? '-1px' : 0,
                   // Cyan ring for the hero; otherwise a soft gold glow that grows as the
                   // hand becomes more represented — so when the range narrows between
                   // steps, the surviving value hands visibly "light up".
-                  boxShadow: isHero ? '0 0 8px rgba(0,229,255,0.85)'
+                  boxShadow: isSel ? '0 0 8px rgba(255,255,255,0.9)'
+                    : isHero ? '0 0 8px rgba(0,229,255,0.85)'
                     : intensity > 0.6 ? `0 0 ${f(5)}px rgba(201,162,39,${((intensity - 0.6) * 0.9).toFixed(2)})` : 'none',
-                  zIndex: isHero ? 2 : 1,
+                  zIndex: (isSel || isHero) ? 2 : 1,
                   // Smoothly fade/brighten between range snapshots (the "film" effect).
                   transition: 'background-color 450ms ease, color 450ms ease, box-shadow 450ms ease',
                 }}>
