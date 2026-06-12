@@ -20,11 +20,12 @@ function colorVerdict(intensity: number): { label: string; color: string } {
   return { label: 'OR PÂLE — encore là, mais réduite (jouée en mixte)', color: '#c9a227' }
 }
 
-export default function RangeEvolution({ history, name, width = 462, onClose }: {
+export default function RangeEvolution({ history, name, width = 462, onClose, pinned }: {
   history: RangeStep[]
   name: string
   width?: number
   onClose?: () => void
+  pinned?: boolean
 }) {
   const steps = history && history.length ? history : []
   const last = Math.max(0, steps.length - 1)
@@ -59,6 +60,10 @@ export default function RangeEvolution({ history, name, width = 462, onClose }: 
       <div className="relative">
         <RangeHeatmap view={cur.view} move={cur.move} effect={cur.effect} name={name} width={width}
           onCellClick={setSelKey} selectedKey={selKey} />
+        {pinned && (
+          <span className="absolute top-1.5 left-1.5 rounded-md bg-[#c9a227]/20 border border-[#c9a227]/40 text-[#c9a227] font-bold"
+            style={{ fontSize: f(8.5), padding: `${f(2)}px ${f(6)}px` }}>📌 épinglé</span>
+        )}
         {onClose && (
           <button onClick={onClose} title="Fermer (Échap)"
             className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-md bg-black/40 border border-white/15 text-white/60 hover:text-white hover:bg-black/60 transition-all"
@@ -91,7 +96,9 @@ export default function RangeEvolution({ history, name, width = 462, onClose }: 
           </div>
 
           <p className="text-center text-white/30" style={{ fontSize: f(7.5), marginTop: f(6) }}>
-            ⏸ chrono en pause — clique une case pour savoir POURQUOI elle est là (ou pas)
+            {pinned
+              ? '📌 épinglé — ✕ ou Échap pour fermer · clique une case pour le POURQUOI'
+              : '⏸ clic ou Espace pour épingler · clique une case pour le POURQUOI'}
           </p>
         </div>
       )}

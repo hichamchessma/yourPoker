@@ -1319,6 +1319,9 @@ export default function GamePage(): JSX.Element {
   const [oppPanelHover, setOppPanelHover] = useState(false)
   const oppPanelHoverRef = useRef(false)
   const rangeFilmRef = useRef(false) // mirrors rangeFilmOpen for timer reads
+  // When the film is "pinned" (the user clicked it or pressed Space) it stays open
+  // even if the mouse leaves its zone — only the ✕ / Échap closes it then.
+  const [filmPinned, setFilmPinned] = useState(false)
 
   const gsRef = useRef<GState>(gs)
   // Bumped on every flow transition (revive / exit-sim / stop / next-hand) so a
@@ -2941,8 +2944,23 @@ export default function GamePage(): JSX.Element {
   // The opponent range "film" is open while hovering an in-hand opponent (or its
   // popup). Like the coach card, it FREEZES the clock — the point is to LEARN how
   // the range evolved, not to be rushed.
-  const rangeFilmOpen = (hoverSeat !== null && hoverSeat !== hero?.idx) || oppPanelHover
+  const rangeFilmOpen = (hoverSeat !== null && hoverSeat !== hero?.idx) || oppPanelHover || filmPinned
   rangeFilmRef.current = rangeFilmOpen
+  // Each time the hovered seat changes (incl. closing), start the new film unpinned.
+  useEffect(() => { setFilmPinned(false) }, [hoverSeat])
+  // SPACE pins the open film (so leaving its zone won't close it). Only when open and
+  // not typing in a field; swallow the key so it doesn't scroll / trigger a button.
+  useEffect(() => {
+    if (!rangeFilmOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' && e.key !== ' ') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+      e.preventDefault(); setFilmPinned(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [rangeFilmOpen])
   // Hero's represented (perceived) range — shown postflop in the coach panel.
   const heroRepView = (coachOpen && hero && gs.community.filter(Boolean).length >= 3 && rangeRef.current[hero.idx])
     ? rangeView(rangeRef.current[hero.idx]) : null
@@ -3474,9 +3492,11 @@ export default function GamePage(): JSX.Element {
           )}
         </AnimatePresence>
 
-        {/* Table container */}
-        <div ref={tableRef} className="absolute inset-0 flex items-center justify-center p-2"
-          onMouseLeave={() => setHoverSeat(s => (s !== null && s !== hero?.idx ? null : s))}>
+        {/* Table container — note: leaving it must NOT close the opponent range film
+            (the film is a fixed popup rendered OUTSIDE this container, so the cursor
+            crosses this boundary to reach it). The film closes via its own zone-leave,
+            the ✕, or Échap. Only clear a non-film hover (hero coach handles itself). */}
+        <div ref={tableRef} className="absolute inset-0 flex items-center justify-center p-2">
           <div className="relative w-full h-full" style={{maxWidth:1240,maxHeight:700}}>
 
             {/* Table SVG */}
@@ -4033,12 +4053,13 @@ export default function GamePage(): JSX.Element {
         if (x < 8) x = 8
         if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
         if (y < 8) y = 8
-        const closeFilm = () => { oppPanelHoverRef.current = false; setOppPanelHover(false); setHoverSeat(null) }
+        const closeFilm = () => { oppPanelHoverRef.current = false; setOppPanelHover(false); setFilmPinned(false); setHoverSeat(null) }
         return (
           <div className="fixed z-[80] pointer-events-auto" style={{ left: x, top: y }}
             onMouseEnter={() => { oppPanelHoverRef.current = true; setOppPanelHover(true) }}
-            onMouseLeave={closeFilm}>
-            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462} onClose={closeFilm} />
+            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) closeFilm() }}
+            onMouseDown={() => setFilmPinned(true)}>
+            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462} pinned={filmPinned} onClose={closeFilm} />
           </div>
         )
       })()}
