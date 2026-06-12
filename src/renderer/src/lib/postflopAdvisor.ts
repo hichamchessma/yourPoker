@@ -166,7 +166,12 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
 // aggressor's range. A bettor is mostly value (top pair+, sets) + draws (semi-bluff)
 // + a SMALL fraction of pure bluffs — NOT ~half air. This is what makes a weak made
 // hand (e.g. bottom pair) correctly low-equity against a bet, so the coach folds it.
-function betFrequency(oppHole: Card[], board: Card[], a: number): number {
+// `donkLead`: the bettor is NOT the pre-flop aggressor and is LEADING into the field
+// (a donk-lead / lead-and-barrel, often OOP into several players). That line is far
+// more value-defined than a generic c-bet — a passive caller who then bets out is
+// rarely doing it with air/draws — so we STRIP the bluffy tail (weak pairs, draws,
+// air) and concentrate the range on real value (top pair+/overpair/two pair/sets).
+function betFrequency(oppHole: Card[], board: Card[], a: number, donkLead = false): number {
   const cat = categoryOf(best7([...oppHole, ...board]))
   if (cat >= 3) return 0.95                              // set / straight / flush / boat+ → value
   const bRanks = board.map(c => RV[c.rank]).sort((x, y) => y - x)
@@ -188,11 +193,11 @@ function betFrequency(oppHole: Card[], board: Card[], a: number): number {
     // "two pair" (really one pair) correctly low-equity against a triple barrel.
     if (pocket && pairRank > bRanks[0]) return Math.max(0.25, 0.80 * (1 - a * 0.28)) // overpair
     if (above === 0) return Math.max(0.22, 0.78 * (1 - a * 0.32))                     // top pair
-    if (above === 1) return Math.max(0.08, 0.52 * (1 - a * 0.7))                      // 2nd pair / middle
-    return Math.max(0.05, 0.36 * (1 - a * 0.85))                                      // weak / bottom pair
+    if (above === 1) return Math.max(0.08, 0.52 * (1 - a * 0.7)) * (donkLead ? 0.3 : 1)  // 2nd pair / middle
+    return Math.max(0.05, 0.36 * (1 - a * 0.85)) * (donkLead ? 0.22 : 1)              // weak / bottom pair
   }
-  if (hasStrongDraw(oppHole, board)) return 0.58         // semi-bluff
-  return Math.max(0.05, 0.18 * (1 - a * 0.4))            // air bluff (incl. board-pair-only) — polarized barrel
+  if (hasStrongDraw(oppHole, board)) return 0.58 * (donkLead ? 0.4 : 1)  // semi-bluff (a lead has fewer)
+  return Math.max(0.05, 0.18 * (1 - a * 0.4)) * (donkLead ? 0.18 : 1)    // air bluff — a donk-lead almost never
 }
 
 // Pre-flop pot type narrows the villain's range BEFORE the flop. A 3-bet/4-bet pot
@@ -230,7 +235,7 @@ function preflopWeight(a: Card, b: Card, tier: VillainTier): number {
 // would actually be betting/continuing it (see betFrequency), scaled by `aggression`
 // (0 = random range … ~0.85 = multi-barreled, very polarized to value), and by the
 // pre-flop pot type (`tier`: a 3-bet/4-bet pot is premium-heavy).
-export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800, tier?: VillainTier, aggressors?: number): number {
+export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800, tier?: VillainTier, aggressors?: number, donkLead = false): number {
   if (opponents < 1) return 1
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const deck = fullDeck().filter(c => !known.has(c.rank + c.suit))
@@ -252,7 +257,7 @@ export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggr
       // The blend ramps to 100% by the time we've seen ~2 barrels, so a barreled range
       // is fully shaped (weak hands carry little weight) rather than half-uniform air.
       const blend = Math.min(1, aggr / 0.45)
-      w *= (1 - blend) * 1 + blend * betFrequency(oppHole, board, aggr)
+      w *= (1 - blend) * 1 + blend * betFrequency(oppHole, board, aggr, donkLead)
     }
     if (tier === '3bet' || tier === '4bet') w *= preflopWeight(oppHole[0], oppHole[1], tier)
     return w
@@ -339,7 +344,7 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number; donkLead?: boolean
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
   const rawAggr0 = Math.max(0, Math.min(0.9, input.aggression ?? 0))
@@ -358,7 +363,7 @@ export function getPostflopAdvice(input: {
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
 
-  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, input.iters ?? 1800, input.villainTier, input.aggressors)
+  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, input.iters ?? 1800, input.villainTier, input.aggressors, input.donkLead)
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
   const { cat, pair, name } = analyseMade(hole, board)
   const draws = detectDraws(hole, board)
@@ -375,6 +380,7 @@ export function getPostflopAdvice(input: {
   reasons.push(`Ton équité réelle ≈ ${pct(eq)}${villainGaveUp ? ' — l’adversaire a misé puis checké : son range est plafonné/faible' : aggression > 0 ? ` face à une range ${barrels >= 2 ? 'forte (plusieurs mises)' : 'resserrée'}` : ` face à ${opponents} adversaire${opponents > 1 ? 's' : ''}`}.`)
   if (toCall > 0) reasons.push(`Cote du pot : il te faut ${pct(potOdds)} d'équité pour payer ${toCall}.`)
   if (input.cappedRange && toCall > 0) reasons.push('Range PLAFONNÉE : l’adversaire a checké une rue plus tôt — il aurait misé ses mains fortes avant. Son bet retardé est donc rarement le nuts (plus de bluffs / mains moyennes) → tu peux bluff-catcher plus large.')
+  if (input.donkLead && toCall > 0) reasons.push('LEAD adverse : ce n’est PAS le relanceur préflop qui mise — un joueur qui flatte puis MÈNE/barrele (souvent hors de position dans le champ) le fait rarement avec de l’air. Sa range est value-lourde (top paire+/overpaire/sets) → ta paire marginale est dominée plus souvent, sois prudent (fold plus tôt qu’un bluff-catch classique).')
   // "Playing the board" is strictly a RIVER concept (5 community cards) where your
   // hole cards add nothing. Pre-river you always hold at least high-card / a draw,
   // so we never mislabel it (and we avoid padding the board with fake cards).

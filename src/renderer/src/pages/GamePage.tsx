@@ -698,7 +698,12 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // have a strong range → de-value a lone overpair/one pair (mirrors the live coach).
     const calledStreets = new Set(record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && !a.isHero && a.actionType === 'CALL' && (a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')).map(a => a.phase)).size
     const callPressure = Math.min(0.85, calledStreets * 0.25 + (live.length > 2 ? 0.15 : 0))
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure })
+    // DONK-LEAD (mirrors live): the bettor hero faces is NOT the pre-flop aggressor —
+    // a lead/barrel by a passive caller → value-defined range, fold marginal pairs earlier.
+    const postAggOpp = postBets.filter(a => a.seatIdx !== hero.idx)
+    const lastPostAggressorIdx = postAggOpp.length ? postAggOpp[postAggOpp.length - 1].seatIdx : -1
+    const donkLead = toCall > 0 && lastPreflopRaiserIdx >= 0 && lastPostAggressorIdx >= 0 && lastPostAggressorIdx !== lastPreflopRaiserIdx
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
@@ -3041,6 +3046,13 @@ export default function GamePage(): JSX.Element {
       const acts = handActions.filter(a => a.seatIdx >= 0 && a.phase === st)
       return acts.length > 0 && !acts.some(a => a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')
     })
+  // DONK-LEAD: the player whose bet the hero faces is NOT the pre-flop aggressor — a
+  // passive caller leading/barrelling out (often OOP into the field). That line is far
+  // more value-defined than a c-bet → concentrate the villain range on real value so a
+  // marginal bluff-catcher (2nd pair / underpair) folds earlier instead of paying down.
+  const heroPostAggro = villainAggro.filter(a => (a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river') && a.seatIdx !== hero?.idx)
+  const heroLastPostAggressor = heroPostAggro.length ? heroPostAggro[heroPostAggro.length - 1].seatIdx : -1
+  const heroDonkLead = heroToCallNow > 0 && lastPreRaiserSeat >= 0 && heroLastPostAggressor >= 0 && heroLastPostAggressor !== lastPreRaiserSeat
   // Range width is driven by how many *active* players (still in the hand, dealt
   // in, not folded / sitting out / busted) remain to act after the hero — NOT by
   // the static table size. So a fold-around to the SB becomes a true blind-vs-
@@ -3153,7 +3165,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead })
     if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
     if (adv.action === 'CHECK') return void heroAction('CHECK')
     if (adv.action === 'CALL') return void heroAction('CALL', toCall)
@@ -4096,6 +4108,7 @@ export default function GamePage(): JSX.Element {
                 villainTier={heroVillainTier}
                 aggressors={heroAggressors}
                 cappedRange={heroCappedRange}
+                donkLead={heroDonkLead}
                 callPressure={heroCallPressure}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
