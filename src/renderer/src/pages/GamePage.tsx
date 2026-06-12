@@ -4054,12 +4054,16 @@ export default function GamePage(): JSX.Element {
         if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
         if (y < 8) y = 8
         const closeFilm = () => { oppPanelHoverRef.current = false; setOppPanelHover(false); setFilmPinned(false); setHoverSeat(null) }
+        // Pop the per-hand explanation toward the screen centre (room there).
+        const explainSide: 'left' | 'right' = x > window.innerWidth / 2 ? 'left' : 'right'
+        const heroDead = (hero?.holeCards.filter(Boolean) ?? []) as Card[]
         return (
           <div className="fixed z-[80] pointer-events-auto" style={{ left: x, top: y }}
             onMouseEnter={() => { oppPanelHoverRef.current = true; setOppPanelHover(true) }}
             onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) closeFilm() }}
             onMouseDown={() => setFilmPinned(true)}>
-            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462} pinned={filmPinned} onClose={closeFilm} />
+            <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462}
+              pinned={filmPinned} onClose={closeFilm} side={explainSide} deadCards={heroDead} />
           </div>
         )
       })()}

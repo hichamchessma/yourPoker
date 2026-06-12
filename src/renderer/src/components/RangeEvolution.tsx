@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { RotateCcw, ChevronLeft, ChevronRight, Play, Pause, X } from 'lucide-react'
 import RangeHeatmap from './RangeHeatmap'
-import { explainHandStep, handCombos, type RangeView, type ActionCtx, type ActCat } from '../lib/rangeEstimator'
+import { explainHandStep, comboCount, type RangeView, type ActionCtx, type ActCat, type Card } from '../lib/rangeEstimator'
 
 // One frame of the "film": the range as it stood right after a given action, plus
 // the teaching labels AND the raw action context (so a clicked cell can be explained
@@ -20,12 +20,14 @@ function colorVerdict(intensity: number): { label: string; color: string } {
   return { label: 'OR PÂLE — encore là, mais réduite (jouée en mixte)', color: '#c9a227' }
 }
 
-export default function RangeEvolution({ history, name, width = 462, onClose, pinned }: {
+export default function RangeEvolution({ history, name, width = 462, onClose, pinned, side = 'right', deadCards }: {
   history: RangeStep[]
   name: string
   width?: number
   onClose?: () => void
   pinned?: boolean
+  side?: 'left' | 'right'        // which side to pop the per-hand explanation
+  deadCards?: Card[]             // hero's hole cards (blockers for the combo count)
 }) {
   const steps = history && history.length ? history : []
   const last = Math.max(0, steps.length - 1)
@@ -56,7 +58,7 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
   const goto = (i: number) => { setPlaying(false); setStep(Math.max(0, Math.min(last, i))) }
 
   return (
-    <div style={{ width, maxHeight: '94vh', overflowY: 'auto' }} className="rounded-xl">
+    <div style={{ width, position: 'relative' }} className="rounded-xl">
       <div className="relative">
         <RangeHeatmap view={cur.view} move={cur.move} effect={cur.effect} name={name} width={width}
           onCellClick={setSelKey} selectedKey={selKey} />
@@ -103,14 +105,22 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
         </div>
       )}
 
-      {/* Per-hand explanation, rebuilt from the action history up to the current step */}
-      {selKey && <HandExplain selKey={selKey} steps={steps} step={step} f={f} onClear={() => setSelKey(null)} />}
+      {/* Per-hand explanation — pops BESIDE the grid (so everything is visible at
+          once), rebuilt from the action history up to the current step. */}
+      {selKey && (
+        <div className="absolute" style={{
+          top: 0, width: Math.min(300, width * 0.72), maxHeight: '84vh', overflowY: 'auto', zIndex: 5,
+          ...(side === 'left' ? { right: '100%', marginRight: f(8) } : { left: '100%', marginLeft: f(8) }),
+        }}>
+          <HandExplain selKey={selKey} steps={steps} step={step} f={f} deadCards={deadCards} onClear={() => setSelKey(null)} />
+        </div>
+      )}
     </div>
   )
 }
 
-function HandExplain({ selKey, steps, step, f, onClear }: {
-  selKey: string; steps: RangeStep[]; step: number; f: (px: number) => number; onClear: () => void
+function HandExplain({ selKey, steps, step, f, deadCards, onClear }: {
+  selKey: string; steps: RangeStep[]; step: number; f: (px: number) => number; deadCards?: Card[]; onClear: () => void
 }) {
   const intensity = steps[Math.min(step, steps.length - 1)]?.view.cells[selKey] ?? 0
   const verdict = colorVerdict(intensity)
@@ -124,7 +134,10 @@ function HandExplain({ selKey, steps, step, f, onClear }: {
     survive *= prob
     lines.push({ caption: st.caption, reason, prob })
   }
-  const combos = handCombos(selKey)
+  // Exact starting combos, minus the hero's known cards (card removal) — e.g. AKs
+  // is only 3 combos if the hero holds an ace of that suit.
+  const combos = comboCount(selKey, deadCards ?? [])
+  const blocked = combos < comboCount(selKey, [])
 
   return (
     <div className="rounded-xl border" style={{ marginTop: f(5), padding: f(9), background: 'rgba(10,14,24,0.98)', borderColor: 'rgba(255,255,255,0.12)' }}>
@@ -135,7 +148,7 @@ function HandExplain({ selKey, steps, step, f, onClear }: {
       <div className="rounded-lg" style={{ padding: `${f(4)}px ${f(7)}px`, marginBottom: f(7), background: 'rgba(255,255,255,0.04)' }}>
         <span style={{ fontSize: f(10.5), fontWeight: 800, color: verdict.color }}>{verdict.label}</span>
         <div className="text-white/45" style={{ fontSize: f(8.5), marginTop: f(1) }}>
-          Départ : {combos} combos · survie estimée ≈ {Math.round(survive * 100)}% de ses combos
+          Départ : {combos} combos{blocked ? ' (réduit — tu bloques une de ses cartes)' : ''} · survie estimée ≈ {Math.round(survive * 100)}% de ses combos
         </div>
       </div>
 

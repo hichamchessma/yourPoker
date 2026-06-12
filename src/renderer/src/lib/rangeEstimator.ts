@@ -232,6 +232,26 @@ export function handCombos(key: string): number {
   return key.length === 2 ? 6 : key.endsWith('s') ? 4 : 12
 }
 
+const SUITS = ['♠', '♥', '♦', '♣']
+// EXACT available combos of a 169 key given a set of DEAD cards (board + the hero's
+// known hole cards). A hand the dead cards block has fewer combos — e.g. AKs is only
+// 3 combos if the hero holds the A♠, AA is 3 combos if one ace is dead, etc.
+export function comboCount(key: string, dead: Card[] = []): number {
+  const ds = new Set(dead.map(c => c.rank + c.suit))
+  if (key.length === 2) {                         // pair
+    const r = key[0]
+    const avail = SUITS.filter(s => !ds.has(r + s)).length
+    return (avail * (avail - 1)) / 2              // C(avail, 2)
+  }
+  const r1 = key[0], r2 = key[1]
+  if (key.endsWith('s')) {                         // suited: same suit, both live
+    return SUITS.filter(s => !ds.has(r1 + s) && !ds.has(r2 + s)).length
+  }
+  let n = 0                                        // offsuit: different suits, both live
+  for (const a of SUITS) for (const b of SUITS) if (a !== b && !ds.has(r1 + a) && !ds.has(r2 + b)) n++
+  return n
+}
+
 // Explain, for ONE hand, why a single observed action kept it (prob→1), cut it
 // (prob→0) or only trimmed it (mid) — using the SAME policy the range engine
 // applies. Returns the multiplier P(action|hand) plus a human-readable reason, so
