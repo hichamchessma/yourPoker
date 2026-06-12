@@ -55,7 +55,7 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
       <p className="text-[9px] uppercase tracking-widest text-[#7cc4ec] font-bold mb-2">🧠 Comment je raisonne</p>
       <div className="space-y-1.5">
         {/* Pot odds */}
-        <p className="text-[11.5px] text-white/80 leading-relaxed">
+        <p className="text-[12.5px] text-white/80 leading-relaxed">
           <span className="text-[#3aa0d8] mr-1">▸</span>
           Le pot fait <b className="text-white">{money(r.pot)}</b> et je dois payer <b className="text-white">{money(r.toCall)}</b>.
           {' '}Ma cote = mise ÷ (pot + mise) = {money(r.toCall)} ÷ ({money(r.pot)} + {money(r.toCall)}) ≈ <b style={{ color: '#e8c547' }}>{reqTxt}</b> :
@@ -64,7 +64,7 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
 
         {/* Outs as cards (flop/turn) */}
         {r.cardsToCome > 0 && hasOuts && (
-          <div className="text-[11.5px] text-white/80 leading-relaxed">
+          <div className="text-[12.5px] text-white/80 leading-relaxed">
             <span className="text-[#3aa0d8] mr-1">▸</span>
             J'ai <b className="text-white">{r.outs.length}</b> out{r.outs.length > 1 ? 's' : ''} qui m'améliorent :
             <div className="mt-1 mb-1 space-y-1 pl-4">
@@ -72,11 +72,12 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
                 const weak = g.cards.every(c => c.weak)
                 return (
                   <div key={g.label} className="flex items-start gap-1.5">
-                    <span className="text-[9px] leading-[18px] w-[78px] shrink-0" style={{ color: weak ? 'rgba(245,158,11,0.85)' : 'rgba(255,255,255,0.5)' }}>
-                      {g.label}{weak ? ' ⚠︎' : ''} <span className="text-white/30">({g.cards.length})</span>
+                    <span className="text-[10px] leading-[21px] w-[82px] shrink-0" style={{ color: weak ? 'rgba(245,158,11,0.9)' : 'rgba(255,255,255,0.55)' }}>
+                      {g.label}{weak ? ' ⚠︎' : ''} <span className="text-white/35">({g.cards.length})</span>
                     </span>
                     <div className="flex flex-wrap gap-0.5">
-                      {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} dim={o.weak} />)}
+                      {/* Dominated-flush outs are STILL real outs (counted in equity) — full-colour. */}
+                      {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} />)}
                     </div>
                   </div>
                 )
@@ -87,13 +88,13 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
           </div>
         )}
         {r.cardsToCome > 0 && !hasOuts && (
-          <p className="text-[11.5px] text-white/80 leading-relaxed">
+          <p className="text-[12.5px] text-white/80 leading-relaxed">
             <span className="text-[#3aa0d8] mr-1">▸</span>
             Aucune carte ne m'améliore vraiment — mon équité vient seulement de ce que je bats déjà.
           </p>
         )}
         {r.cardsToCome === 0 && !r.preflop && (
-          <p className="text-[11.5px] text-white/80 leading-relaxed">
+          <p className="text-[12.5px] text-white/80 leading-relaxed">
             <span className="text-[#3aa0d8] mr-1">▸</span>
             Plus de carte à venir : mon équité, c'est uniquement ce que je bats à l'abattage.
           </p>
@@ -102,7 +103,7 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
         {/* Real equity — explain WHERE the number comes from. When outs cards are
             shown (flop/turn) they already illustrate it, so keep it short; otherwise
             (preflop / river, no outs) spell out the Monte-Carlo simulation. */}
-        <p className="text-[11.5px] text-white/80 leading-relaxed">
+        <p className="text-[12.5px] text-white/80 leading-relaxed">
           <span className="text-[#3aa0d8] mr-1">▸</span>
           Mon équité réelle ≈ <b style={{ color: '#34d399' }}>{eqTxt}</b>
           {hasOuts
@@ -120,7 +121,7 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
           const noImp = Math.max(0.05, 1 - r.outsApprox) // P(I miss all my outs)
           const beatShare = Math.min(0.99, sdv / noImp)  // P(my current hand beats his range | no improve)
           return (
-            <p className="text-[11px] leading-relaxed rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(52,211,153,0.08)', color: 'rgba(255,255,255,0.78)' }}>
+            <p className="text-[12px] leading-relaxed rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(52,211,153,0.08)', color: 'rgba(255,255,255,0.78)' }}>
               <span className="font-bold" style={{ color: '#34d399' }}>Pourquoi {eqTxt} et pas {pct(r.outsApprox)} ?</span> Les {pct(r.outsApprox)} ne comptent QUE les fois où je touche un out. Mais je gagne AUSSI sans m'améliorer : <b style={{ color: '#34d399' }}>{pct(r.outsApprox)}</b> (j'améliore) + <b style={{ color: '#34d399' }}>~{pct(sdv)}</b> (déjà devant au showdown) ≈ <b style={{ color: '#34d399' }}>{eqTxt}</b>.
               <br />
               <span className="text-white/55">Et ce ~{pct(sdv)} se calcule : je rate mes outs ~<b className="text-white/75">{pct(noImp)}</b> du temps × ma main bat déjà ~<b className="text-white/75">{pct(beatShare)}</b> de sa range au showdown (ses bluffs, tirages ratés, cartes plus basses) ≈ {pct(noImp)} × {pct(beatShare)} = ~{pct(sdv)}.</span>
@@ -129,7 +130,7 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
         })()}
 
         {/* Verdict */}
-        <p className="text-[12px] leading-relaxed font-semibold mt-0.5" style={{ color: verdictColor }}>
+        <p className="text-[13px] leading-relaxed font-semibold mt-0.5" style={{ color: verdictColor }}>
           {verdictText}
         </p>
       </div>

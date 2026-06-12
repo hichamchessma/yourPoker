@@ -348,18 +348,20 @@ export default function RangeAssistant({
                         const weak = g.cards.every(c => c.weak)
                         return (
                           <div key={g.label} className="flex items-start gap-1.5">
-                            <span className="text-[8px] leading-[18px] w-[70px] shrink-0" style={{ color: weak ? 'rgba(245,158,11,0.85)' : 'rgba(255,255,255,0.45)' }}>
-                              {g.label}{weak ? ' ⚠︎' : ''} <span className="text-white/30">({g.cards.length})</span>
+                            <span className="text-[10px] leading-[21px] w-[82px] shrink-0" style={{ color: weak ? 'rgba(245,158,11,0.9)' : 'rgba(255,255,255,0.55)' }}>
+                              {g.label}{weak ? ' ⚠︎' : ''} <span className="text-white/35">({g.cards.length})</span>
                             </span>
                             <div className="flex flex-wrap gap-0.5">
-                              {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} dim={o.weak} />)}
+                              {/* Dominated-flush outs are STILL real outs (counted in equity) — show
+                                  them full-colour; the ⚠︎ label + note below carry the nuance. */}
+                              {g.cards.map((o, i) => <MiniCard key={i} rank={o.card.rank} suit={o.card.suit} />)}
                             </div>
                           </div>
                         )
                       })}
                     </div>
                     {advice.outs.some(o => o.weak) && (
-                      <p className="text-[8px] text-amber-400/70 mt-1.5 leading-snug">⚠︎ couleur dominée : tu peux toucher et perdre quand même face à une couleur plus haute (déjà comptée dans ton équité).</p>
+                      <p className="text-[10px] text-amber-400/80 mt-1.5 leading-snug">⚠︎ couleur dominée : ça reste un out (compté dans ton équité), mais tu peux toucher et perdre quand même face à une couleur plus haute.</p>
                     )}
                   </div>
                 )}
@@ -369,11 +371,11 @@ export default function RangeAssistant({
               {reasoning && <EquityReasoningBlock r={reasoning} />}
 
               {/* Reasons */}
-              <div className="space-y-1.5 mb-4">
+              <div className="space-y-2 mb-4">
                 {advice.reasons.map((r, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <span className="text-[#c9a227] mt-0.5 text-[10px]">▸</span>
-                    <p className="text-[11px] text-white/70 leading-relaxed">{r}</p>
+                    <span className="text-[#c9a227] mt-0.5 text-[12px]">▸</span>
+                    <p className="text-[13px] text-white/80 leading-relaxed">{r}</p>
                   </div>
                 ))}
               </div>
@@ -403,7 +405,7 @@ export default function RangeAssistant({
                 {answer && (
                   <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                     className="mt-3 p-3 rounded-lg bg-[#00d4ff]/8 border border-[#00d4ff]/20">
-                    <p className="text-[11px] text-white/80 leading-relaxed whitespace-pre-line">💬 {answer}</p>
+                    <p className="text-[13px] text-white/85 leading-relaxed whitespace-pre-line">💬 {answer}</p>
                   </motion.div>
                 )}
               </div>
