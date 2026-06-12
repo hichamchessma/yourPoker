@@ -433,7 +433,7 @@ export function getPostflopAdvice(input: {
   // stays tiny, so a genuine bluffcatch that beats the price still calls.
   const dominatedPair = effCat === 1 && (effPair === 'second' || effPair === 'weak' || (effPair === 'top' && (wet > 0.4 || !!input.facingRaise)))
   const onePairMargin = dominatedPair
-    ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0)
+    ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0) + (input.facingRaise ? 0.08 : 0)
     : 0.01
   const callMargin = drawIsOnlyEquity
     ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
@@ -528,11 +528,24 @@ export function getPostflopAdvice(input: {
     const protectionBet = !!input.cappedRange && isOnePair && !isStrongValue && !thinValueVsCapped
       && (effPair === 'second' || effPair === 'weak') && board.length < 5
       && eq >= Math.max(0.42, fairShare + 0.06) && eq < 0.70
-    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet) {
+    // PROTECTION on a DRAW-heavy board (no capped read needed): a TOP pair / overpair
+    // (incl. a board-leaning two pair demoted to top pair) that is the LIKELY BEST hand
+    // must BET to charge the flush/straight DRAWS — checking gives a free card that
+    // completes them. The coach only value-bet a top pair at ≥60%, so it CHECKED
+    // strong-but-not-60% hands on wet boards and let the draw hit for free.
+    const maxSuitB = Math.max(0, ...Object.values(suitCntB))
+    const drawyBoard = board.length < 5 && (maxSuitB === 2 || straightPossibleB || wet >= 0.4)
+    const protectVsDraw = toCall <= 0 && !isStrongValue && !thinValueVsCapped && !protectionBet
+      && isOnePair && (effPair === 'top' || effPair === 'overpair')
+      && drawyBoard && eq >= Math.max(0.48, fairShare + 0.1)
+    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw) {
       action = 'BET'
       if (protectionBet) {
         sizingText = `bet de protection (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
         reasons.push('Bet de PROTECTION / déni d’équité : face à une range plafonnée tu es la main la plus probable DEVANT, mais elle est VULNÉRABLE (sous-paires → brelan, surcartes → paire). Tu mises pour FINIR le coup et empêcher un outdraw gratuit — pas pour te faire payer.')
+      } else if (protectVsDraw) {
+        sizingText = `bet de protection (~⅔ pot, $${round(pot * 0.66)})`; betFrac = 0.66
+        reasons.push('Bet de PROTECTION : board à TIRAGE (couleur/quinte possible) et tu es très probablement DEVANT. Mise ~⅔ pot pour faire payer les tirages et leur refuser une carte gratuite — checker ta main forte ici laisse la couleur/quinte se compléter pour rien (c’est exactement comme ça qu’on se fait remonter).')
       } else if (thinValueVsCapped && eq < 0.8) {
         sizingText = `value fine (~⅓ pot, $${round(pot * 0.4)})`; betFrac = 0.4
         reasons.push('Range adverse PLAFONNÉE (checks répétés) : ta paire bat la plupart de ses mains → value FINE. Mise PETIT (~⅓ pot) pour te faire payer par les pires paires — un gros bet les ferait coucher.')
