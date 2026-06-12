@@ -703,7 +703,10 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const postAggOpp = postBets.filter(a => a.seatIdx !== hero.idx)
     const lastPostAggressorIdx = postAggOpp.length ? postAggOpp[postAggOpp.length - 1].seatIdx : -1
     const donkLead = toCall > 0 && lastPreflopRaiserIdx >= 0 && lastPostAggressorIdx >= 0 && lastPostAggressorIdx !== lastPreflopRaiserIdx
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead })
+    // FACING A RAISE (mirrors live): ≥2 aggressive actions on this street → a bet got raised.
+    const curStreetAggro = record.actions.slice(0, actionIdx).filter(a => a.phase === phase && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+    const facingRaise = toCall > 0 && curStreetAggro >= 2  // postflop branch only
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
@@ -3053,6 +3056,11 @@ export default function GamePage(): JSX.Element {
   const heroPostAggro = villainAggro.filter(a => (a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river') && a.seatIdx !== hero?.idx)
   const heroLastPostAggressor = heroPostAggro.length ? heroPostAggro[heroPostAggro.length - 1].seatIdx : -1
   const heroDonkLead = heroToCallNow > 0 && lastPreRaiserSeat >= 0 && heroLastPostAggressor >= 0 && heroLastPostAggressor !== lastPreRaiserSeat
+  // FACING A RAISE: a bet was RAISED on the current street (≥2 aggressive actions) and
+  // the hero must call the raise. A raise is the strongest line (two-pair+/sets) — far
+  // stronger than a bet/lead — so a lone (even top) pair should not stack off.
+  const heroCurStreetAggro = handActions.filter(a => a.phase === gs.phase && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+  const heroFacingRaise = heroToCallNow > 0 && gs.phase !== 'preflop' && heroCurStreetAggro >= 2
   // Range width is driven by how many *active* players (still in the hand, dealt
   // in, not folded / sitting out / busted) remain to act after the hero — NOT by
   // the static table size. So a fold-around to the SB becomes a true blind-vs-
@@ -3165,7 +3173,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead, facingRaise: heroFacingRaise })
     if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
     if (adv.action === 'CHECK') return void heroAction('CHECK')
     if (adv.action === 'CALL') return void heroAction('CALL', toCall)
@@ -4109,6 +4117,7 @@ export default function GamePage(): JSX.Element {
                 aggressors={heroAggressors}
                 cappedRange={heroCappedRange}
                 donkLead={heroDonkLead}
+                facingRaise={heroFacingRaise}
                 callPressure={heroCallPressure}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
