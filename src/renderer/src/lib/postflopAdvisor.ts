@@ -435,8 +435,16 @@ export function getPostflopAdvice(input: {
   const onePairMargin = dominatedPair
     ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0) + (input.facingRaise ? 0.08 : 0)
     : 0.01
+  // AIR (no pair, no real draw — overcards / backdoors only) REALIZES poorly: it must
+  // improve to win and can't barrel profitably, especially OOP / multiway. So it needs
+  // a real cushion over the raw price, not the tiny one-pair margin — otherwise the
+  // coach calls a c-bet with ace-high (e.g. A5 high on J-Q-7) that beats the price on
+  // raw equity but is a clear fold once realization is accounted for.
+  const airNoDraw = effCat === 0 && !playsBoard && !drawIsOnlyEquity && !strongDraw
+  const airMargin = 0.05 + (!inPosition ? 0.05 : 0) + (Math.max(1, opponents) >= 2 ? 0.04 : 0)
   const callMargin = drawIsOnlyEquity
     ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
+    : airNoDraw ? airMargin
     : onePairMargin
   // Implied-odds buffer below direct pot odds: generous on the flop (two cards to
   // come), almost none on the turn (one card, little room to get paid).
