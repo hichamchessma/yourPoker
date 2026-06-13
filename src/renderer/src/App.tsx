@@ -7,6 +7,7 @@ import HistoryPage from './pages/HistoryPage'
 import TrainingSetupPage from './pages/TrainingSetupPage'
 import TournamentSetupPage from './pages/TournamentSetupPage'
 import SetupPositionPage from './pages/SetupPositionPage'
+import SimulationPage from './pages/SimulationPage'
 import GamePage from './pages/GamePage'
 import AppLayout from './layouts/AppLayout'
 import { useAuthStore } from './store/authStore'
@@ -34,6 +35,7 @@ function App(): JSX.Element {
         <Route path="handtrainer" element={<HandTrainerPage />} />
         <Route path="training" element={<TrainingSetupPage />} />
         <Route path="tournament" element={<TournamentSetupPage />} />
+        <Route path="simulation" element={<SimulationPage />} />
         <Route path="setup" element={<SetupPositionPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="history" element={<HistoryPage />} />

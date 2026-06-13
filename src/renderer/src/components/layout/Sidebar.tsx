@@ -13,6 +13,7 @@ import {
   History,
   Trophy,
   HeadphonesIcon,
+  FlaskConical,
   LogOut
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'handtrainer', label: 'Hand Trainer', icon: <Target size={20} />, path: '/handtrainer' },
   { id: 'training', label: 'Entraînement CashGame', icon: <GraduationCap size={20} />, path: '/training' },
   { id: 'tournament', label: 'Entraînement Tournoi', icon: <Medal size={20} />, path: '/tournament' },
+  { id: 'simulation', label: 'Simulation (banc de test)', icon: <FlaskConical size={20} />, path: '/simulation' },
   { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup' },
   { id: 'library', label: 'Bibliothèque', icon: <BookOpen size={20} />, path: '/library' },
   { id: 'stats', label: 'Statistiques', icon: <BarChart2 size={20} />, path: '/stats' },

@@ -67,7 +67,7 @@ function best7(cards: Card[]): number {
   return best
 }
 const CAT_STRENGTH = [0.08, 0.42, 0.68, 0.80, 0.86, 0.91, 0.96, 0.99, 1.0]
-function madeStrength(hole: Card[], board: Card[]): number {
+export function madeStrength(hole: Card[], board: Card[]): number {
   const cat = Math.floor(best7([...hole, ...board]) / 15 ** 5)
   if (cat !== 1) return CAT_STRENGTH[cat] ?? 0.08
   const bR = board.map(c => RV[c.rank]).sort((a, b) => b - a)
@@ -78,7 +78,7 @@ function madeStrength(hole: Card[], board: Card[]): number {
   if (bR[1] !== undefined && hR.includes(bR[1])) return 0.42
   return 0.32
 }
-function hasStrongDraw(hole: Card[], board: Card[]): boolean {
+export function hasStrongDraw(hole: Card[], board: Card[]): boolean {
   if (board.length >= 5 || board.length < 3) return false
   const all = [...hole, ...board]
   const bs: Record<string, number> = {}; all.forEach(c => (bs[c.suit] = (bs[c.suit] ?? 0) + 1))
@@ -90,7 +90,7 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
 // Chen formula — a fine-grained, widely-used preflop hand ranking (~ -1 … 20).
 // Far more resolution than a coarse chart, so position-based thresholds map to
 // realistic range widths. MUST stay identical to the copy in GamePage.tsx.
-function preflopStrength(c1: Card, c2: Card): number {
+export function preflopStrength(c1: Card, c2: Card): number {
   const r1 = RV[c1.rank] ?? 2, r2 = RV[c2.rank] ?? 2
   const hi = Math.max(r1, r2), lo = Math.min(r1, r2)
   const val = (r: number) => r === 14 ? 10 : r === 13 ? 8 : r === 12 ? 7 : r === 11 ? 6 : r / 2
