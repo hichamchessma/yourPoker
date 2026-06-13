@@ -3053,6 +3053,12 @@ export default function GamePage(): JSX.Element {
     return Math.max(0, Math.min(1, 1 - toBubble / (tournament.field * 0.12 + 6)))
   })() : 0
   const icmTighten = 1 - icmPressure * 0.45
+  // ICM RISK for POSTFLOP tournament management: the bubble/pay-jump pressure, at FULL
+  // weight when you're COVERED (a bigger stack can bust you → busting is catastrophic),
+  // much lower when you're the chip leader (nothing covers you → keep applying pressure).
+  // 0 in cash. Drives pot-control / no-stack-off with marginal hands in getPostflopAdvice.
+  const heroCoveredByBigger = !!hero && gs.seats.some(s => !s.isFolded && !s.isEliminated && !s.isHero && (s.stack + s.bet) > hero.stack)
+  const heroIcmRisk = tournament ? icmPressure * (heroCoveredByBigger ? 1 : 0.4) : 0
   // vs-3bet: size of the 3-bet relative to the open (3 ≈ standard) → continue width.
   const heroReRaiseRatio = pfLive.amts.length >= 2 && pfLive.amts[0] > 0 ? pfLive.amts[1] / pfLive.amts[0] : undefined
   // Villain aggression → range-aware equity. Count opponents' bets/raises this hand
@@ -3206,7 +3212,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead, facingRaise: heroFacingRaise })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead, facingRaise: heroFacingRaise, icmRisk: heroIcmRisk })
     if (adv.action === 'FOLD') return { action: canCheck ? 'CHECK' : 'FOLD', amount: 0 }
     if (adv.action === 'CHECK') return { action: 'CHECK', amount: 0 }
     if (adv.action === 'CALL') return { action: 'CALL', amount: toCall }
@@ -4199,6 +4205,7 @@ export default function GamePage(): JSX.Element {
                 raiserBehindJam={heroRaiserBehindJam}
                 icmTighten={icmTighten}
                 icmPressure={icmPressure}
+                icmRisk={heroIcmRisk}
                 actionRecap={gs.log.slice(-10)}
                 onClose={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(null) }}
               />

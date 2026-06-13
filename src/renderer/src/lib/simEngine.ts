@@ -24,6 +24,7 @@ export interface SimSeat {
   allIn: boolean
   position: string          // UTG / HJ / CO / BTN / SB / BB …
   inHand: boolean           // dealt in (not busted)
+  icmRisk?: number          // tournament ICM pressure for postflop (set per hand in MTT)
 }
 
 export interface HandAction { id: number; street: Street; type: 'BET' | 'RAISE' | 'CALL' | 'CHECK' | 'FOLD' | 'ALL-IN'; amount: number; pos: string }
@@ -278,6 +279,8 @@ export interface MTTConfig {
   botTier: number
   maxHands?: number
   fieldShrink: (field: number, levelFloat: number) => number
+  paidPlaces?: number       // ITM threshold → ICM bubble pressure (postflop tournament play)
+  disableIcm?: boolean      // for A/B testing the ICM logic
 }
 export function playMTT(cfg: MTTConfig, makeDecider: (seats: SimSeat[]) => Decider): { place: number; field: number; hands: number } {
   const field = cfg.tableSize * cfg.numTables
@@ -289,6 +292,18 @@ export function playMTT(cfg: MTTConfig, makeDecider: (seats: SimSeat[]) => Decid
   const decider = makeDecider(seats)
   let buttonIdx = 0, hands = 0
   let fieldAlive = field
+
+  // Per-hand ICM pressure for the coach (postflop tournament management): high near the
+  // bubble / pay jumps, full weight when COVERED by a bigger stack at the table, lower
+  // when the coach is the big stack. Set on the coach seat; the coach decider reads it.
+  const paid = cfg.paidPlaces ?? Math.round(field * 0.15)
+  const setIcm = () => {
+    if (cfg.disableIcm) { coach.icmRisk = 0; return }
+    const toBubble = fieldAlive - paid
+    const bubble = fieldAlive <= 1 ? 0 : toBubble <= 0 ? 0.22 : Math.max(0, Math.min(1, 1 - toBubble / (field * 0.12 + 6)))
+    const covered = seats.some(s => s.id !== coach.id && s.inHand && s.stack > coach.stack)
+    coach.icmRisk = bubble * (covered ? 1 : 0.4)
+  }
 
   // Reseat the coach (keeping its stack) at a fresh full table of opponents drawn at the
   // field's typical depth (median < mean, right-skewed field). This is table rebalancing:
@@ -314,7 +329,7 @@ export function playMTT(cfg: MTTConfig, makeDecider: (seats: SimSeat[]) => Decid
       while (seats.filter(s => s.inHand).length > 1 && hands < maxHands) {
         const L = cfg.levels[Math.min(cfg.levels.length - 1, Math.floor(hands / cfg.handsPerLevel))]
         do { buttonIdx = (buttonIdx + 1) % seats.length } while (!seats[buttonIdx].inHand)
-        playHand(seats, buttonIdx, L.sb, L.bb, L.ante, decider)
+        setIcm(); playHand(seats, buttonIdx, L.sb, L.bb, L.ante, decider)
         hands++
         for (const s of seats) if (s.inHand && s.stack <= 0) { s.inHand = false; finish.push(s.id) }
       }
@@ -333,7 +348,7 @@ export function playMTT(cfg: MTTConfig, makeDecider: (seats: SimSeat[]) => Decid
       if (fieldAlive <= cfg.tableSize) break
       const L = cfg.levels[Math.min(cfg.levels.length - 1, Math.floor(hands / cfg.handsPerLevel))]
       do { buttonIdx = (buttonIdx + 1) % seats.length } while (!seats[buttonIdx].inHand || seats[buttonIdx].stack <= 0)
-      playHand(seats, buttonIdx, L.sb, L.bb, L.ante, decider)
+      setIcm(); playHand(seats, buttonIdx, L.sb, L.bb, L.ante, decider)
       hands++
       for (const s of seats) if (s.inHand && s.stack <= 0) s.inHand = false
     }

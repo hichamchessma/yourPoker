@@ -41,7 +41,7 @@ export default function RangeAssistant({
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
   raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0,
   raiserBehindJam = false, aggressors, cappedRange, callPressure, donkLead, facingRaise,
-  icmTighten = 1, icmPressure = 0, actionRecap, onClose, villainTier,
+  icmTighten = 1, icmPressure = 0, icmRisk = 0, actionRecap, onClose, villainTier,
   embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
@@ -73,6 +73,7 @@ export default function RangeAssistant({
   facingRaise?: boolean
   icmTighten?: number
   icmPressure?: number
+  icmRisk?: number
   villainTier?: VillainTier
   actionRecap: string[]
   onClose: () => void
@@ -158,7 +159,7 @@ export default function RangeAssistant({
       }
     }
     if (board.length < 3) return null
-    const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
+    const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise, icmRisk })
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier, aggressors, cappedRange, callPressure])

@@ -349,7 +349,7 @@ function boardWetness(board: Card[]): number {
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
-  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number; donkLead?: boolean; facingRaise?: boolean
+  aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number; donkLead?: boolean; facingRaise?: boolean; icmRisk?: number
 }): Advice {
   const { hole, board, pot, toCall, opponents, inPosition } = input
   const rawAggr0 = Math.max(0, Math.min(0.9, input.aggression ?? 0))
@@ -490,6 +490,17 @@ export function getPostflopAdvice(input: {
   // hero "has it" if they make a straight+ (effCat>=4) — then they CAN raise for value.
   const raiseGetsOnlyValue = (flushPossibleB || straightPossibleB) && effCat >= 2 && effCat < 4 && toCall > 0 && aggression >= 0.5
 
+  // ── ICM / tournament management ──────────────────────────────────────────────
+  // Near the bubble / a pay jump, or covered by a big stack, BUSTING is far costlier than
+  // the chips you'd win ("you can't win the tournament in one hand, but you can lose it").
+  // So play resilient: POT-CONTROL non-premium hands (don't bloat the pot OOP with a
+  // marginal made hand or a bare semi-bluff) and DON'T stack off a marginal made hand.
+  // Scales with `icmRisk` (0 in cash → no effect). Only the BIG, stack-threatening spots
+  // change; cheap spots and the pot odds are untouched.
+  const icm = Math.max(0, Math.min(1, input.icmRisk ?? 0))
+  const icmCheck = icm >= 0.35 && !isStrongValue && spr > 1.0   // check it back, preserve your stack
+  const icmNoRaise = icm >= 0.45 && effCat < 3 && eq < 0.72     // call, don't commit a big chunk
+
   let action: AdviceAction
   let sizingText = ''
   let confidence: Advice['confidence'] = 'moyenne'
@@ -499,7 +510,7 @@ export function getPostflopAdvice(input: {
   if (toCall > 0) {
     // ── Facing a bet/raise. Golden rule: NEVER fold when equity beats the pot
     // odds — only raise (strong value) or call/fold around the price. ──
-    if (isStrongValue && eq >= 0.55 && !raiseGetsOnlyValue) {
+    if (isStrongValue && eq >= 0.55 && !raiseGetsOnlyValue && !icmNoRaise) {
       // Strong made hand with the edge → value raise.
       if (spr <= 1.5) { action = 'RAISE'; sizingText = `relance ALL-IN (SPR bas)`; jam = true }
       else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})`; betFrac = wet > 0.4 ? 0.85 : 0.66 }
@@ -510,7 +521,7 @@ export function getPostflopAdvice(input: {
       // draws, reverse implied odds raise it for vulnerable ones). Frame by hand type.
       action = 'CALL'
       if (raiseGetsOnlyValue) { sizingText = `paie $${toCall} (bluff-catch)`; reasons.push(`⚠️ Board à ${straightPossibleB ? 'quinte' : 'couleur'} possible que tu n'as PAS : ta ${name.toLowerCase()} est un BLUFF-CATCHER ici. Relancer ferait fuir ses bluffs (que tu bats) et ne serait payé QUE par ses ${straightPossibleB ? 'quintes' : 'couleurs'}/mains qui te battent → tu PAIES (tu bats ses bluffs), tu ne relances pas.`); confidence = 'moyenne' }
-      else if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push('Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
+      else if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push(icmNoRaise ? '🛡️ ICM : main de valeur correcte, mais NE STACK PAS OFF près de la bulle — relancer mettrait ton tournoi en jeu sur une main non-nut. Paie et garde le contrôle, ne te commets pas.' : 'Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
       else if (drawIsOnlyEquity) {
         sizingText = `paie $${toCall} (tirage)`
         reasons.push(callMargin < 0
@@ -556,7 +567,7 @@ export function getPostflopAdvice(input: {
     const protectVsDraw = toCall <= 0 && !isStrongValue && !thinValueVsCapped && !protectionBet
       && isOnePair && (effPair === 'top' || effPair === 'overpair')
       && drawyBoard && eq >= Math.max(0.48, fairShare + 0.1)
-    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw) {
+    if (!icmCheck && (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw)) {
       action = 'BET'
       if (protectionBet) {
         sizingText = `bet de protection (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
@@ -572,13 +583,15 @@ export function getPostflopAdvice(input: {
         reasons.push('Main forte : mise pour la valeur et fais payer les tirages.')
       }
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
-    } else if (strongDraw) {
+    } else if (strongDraw && !icmCheck) {
       action = 'BET'; sizingText = `semi-bluff (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
       reasons.push('Tirage fort : un semi-bluff gagne le pot tout de suite ou en touchant.')
       confidence = 'basse'
-    } else if (isOnePair) {
+    } else if (isOnePair || strongDraw || icmCheck) {
       action = 'CHECK'; sizingText = 'checke (contrôle du pot)'
-      reasons.push('Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.')
+      reasons.push(icmCheck
+        ? `🛡️ GESTION DE TOURNOI (ICM) : près de la bulle / d’un palier de prix, buster coûte bien plus que les jetons gagnés. Ne gonfle pas le pot avec une main non-premium — checke, réalise ton équité à bon marché et PRÉSERVE ton tapis (tu vises la place payée / la table finale, pas un coup héroïque). Tu mises gros uniquement avec une vraie grosse main.`
+        : 'Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.')
       confidence = 'moyenne'
     } else {
       // Weak hand, ~no showdown value. If the villain showed weakness (barreled then
