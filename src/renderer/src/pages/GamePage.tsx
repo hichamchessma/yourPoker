@@ -3202,13 +3202,14 @@ export default function GamePage(): JSX.Element {
   function executeCoachMove() { const mv = computeCoachMove(); if (mv) heroAction(mv.action, mv.amount) }
   coachMoveRef.current = executeCoachMove
 
-  // TURBO: when it's the hero's turn, peek the coach's move — auto-play (skip) folds and
-  // checks instantly, only STOP for a real money decision (call / bet / raise / all-in).
-  // Each skipped action charges its virtual think-time to the level clock (like the bots).
+  // TURBO: when it's the hero's turn, peek the coach's move — auto-play (skip) ONLY a
+  // FOLD (you're out of the hand → nothing to see). Everything else, incl. a CHECK,
+  // STOPS for you (you're in the hand). Each skipped fold charges its virtual think-time
+  // to the level clock (like the bots) so the blinds keep rising at a logical pace.
   useEffect(() => {
     if (!isHeroTurn || gs.paused || manualMode || !turboRef.current) return
     const mv = computeCoachMove()
-    if (!mv || (mv.action !== 'FOLD' && mv.action !== 'CHECK')) return // real decision → wait for you
+    if (!mv || mv.action !== 'FOLD') return // only a FOLD is skipped; anything else → wait for you
     const id = setTimeout(() => {
       const h = gsRef.current.seats.find(s => s.isHero)
       if (!gsRef.current.paused && h?.isActive && turboRef.current) {
@@ -3420,7 +3421,7 @@ export default function GamePage(): JSX.Element {
               const cur = gsRef.current
               if (nf && !cur.paused && !manualModeRef.current && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20)
             }}
-            title={turbo ? 'TURBO — saute (auto-folde/checke) les spots où tu n’as pas d’action, ne s’arrête que sur tes vraies décisions (call/relance). Clic → Normal' : fastFwd ? 'Accéléré — bots instantanés, s’arrête à ta décision. Clic → Turbo' : 'Accélérer — bots instantanés. Clic → Accéléré'}
+            title={turbo ? 'TURBO — auto-folde et saute uniquement les mains où le coach te couche ; s’arrête sur tout le reste (check inclus). Clic → Normal' : fastFwd ? 'Accéléré — bots instantanés, s’arrête à ta décision. Clic → Turbo' : 'Accélérer — bots instantanés. Clic → Accéléré'}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
             style={turbo
               ? { borderColor: 'rgba(168,139,255,0.75)', background: 'rgba(124,78,214,0.28)', color: '#c9b8ff' }
