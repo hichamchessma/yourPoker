@@ -262,3 +262,82 @@ export function playTournament(cfg: TourConfig, makeDecider: (seats: SimSeat[]) 
   const coachPlace = seats.length - finishOrder.indexOf(coachId) // 1 = winner
   return { finishOrder, coachPlace, hands }
 }
+
+// ── MULTI-TABLE TOURNAMENT (MTT) ──────────────────────────────────────────────
+// We fully simulate the COACH'S table (faithful coach decisions) and MODEL the rest
+// of the field's attrition (fieldRemaining), refilling busted seats with average
+// stacks — exactly how the live tournament mode balances tables — until the field
+// reaches one table (the final table), which we then play down to a winner. Returns
+// the coach's place IN THE FIELD (1 = wins the whole thing) for the payout curve.
+export interface MTTConfig {
+  tableSize: number
+  numTables: number
+  startStack: number
+  levels: BlindLevel[]
+  handsPerLevel: number
+  botTier: number
+  maxHands?: number
+  fieldShrink: (field: number, levelFloat: number) => number
+}
+export function playMTT(cfg: MTTConfig, makeDecider: (seats: SimSeat[]) => Decider): { place: number; field: number; hands: number } {
+  const field = cfg.tableSize * cfg.numTables
+  const maxHands = cfg.maxHands ?? 20000
+  // The coach is ALWAYS seat 0; opponents are rebuilt each "table" (rebalancing). The
+  // decider closes over this `seats` array, which we mutate in place between tables.
+  const seats: SimSeat[] = Array.from({ length: cfg.tableSize }, (_, i): SimSeat => ({ id: i, stack: cfg.startStack, kind: i === 0 ? 'coach' : 'bot', tier: cfg.botTier, hole: null, bet: 0, totalBet: 0, folded: false, allIn: false, position: '', inHand: true }))
+  const coach = seats[0]
+  const decider = makeDecider(seats)
+  let buttonIdx = 0, hands = 0
+  let fieldAlive = field
+
+  // Reseat the coach (keeping its stack) at a fresh full table of opponents drawn at the
+  // field's typical depth (median < mean, right-skewed field). This is table rebalancing:
+  // the coach's edge COMPOUNDS because each table is chip-conserved (it keeps what it wins).
+  const reseat = () => {
+    const median = (field * cfg.startStack / fieldAlive) * 0.5
+    for (const s of seats) {
+      s.hole = null; s.bet = 0; s.totalBet = 0; s.folded = false; s.allIn = false; s.inHand = true
+      if (s.id !== coach.id) { s.stack = Math.max(cfg.startStack * 0.15, Math.round(median * (0.35 + Math.random() * 1.3))); s.tier = cfg.botTier }
+    }
+  }
+
+  while (hands < maxHands && coach.stack > 0) {
+    const level = hands / cfg.handsPerLevel
+    fieldAlive = Math.min(fieldAlive, Math.max(1, cfg.fieldShrink(field, level)))
+
+    if (fieldAlive <= cfg.tableSize) {
+      // ── FINAL TABLE: coach + (fieldAlive−1) opponents at field depth, played to a winner ──
+      reseat()
+      const ftSize = Math.max(2, Math.round(fieldAlive))
+      for (const s of seats) if (s.id !== coach.id && seats.filter(x => x.inHand).length > ftSize) s.inHand = false
+      const finish: number[] = []
+      while (seats.filter(s => s.inHand).length > 1 && hands < maxHands) {
+        const L = cfg.levels[Math.min(cfg.levels.length - 1, Math.floor(hands / cfg.handsPerLevel))]
+        do { buttonIdx = (buttonIdx + 1) % seats.length } while (!seats[buttonIdx].inHand)
+        playHand(seats, buttonIdx, L.sb, L.bb, L.ante, decider)
+        hands++
+        for (const s of seats) if (s.inHand && s.stack <= 0) { s.inHand = false; finish.push(s.id) }
+      }
+      finish.push(...seats.filter(s => s.inHand).map(s => s.id))
+      const ftCount = Math.min(ftSize, seats.length)
+      return { place: Math.max(1, ftCount - finish.indexOf(coach.id)), field, hands }
+    }
+
+    // ── Regular phase: play a CHIP-CONSERVED table down to short-handed (coach keeps its
+    //    winnings), then rebalance to a fresh table. Busts elsewhere shrink the field. ──
+    reseat()
+    const breakAt = Math.max(2, Math.ceil(cfg.tableSize / 2))
+    while (seats.filter(s => s.inHand).length > breakAt && coach.stack > 0 && hands < maxHands) {
+      const lvl = hands / cfg.handsPerLevel
+      fieldAlive = Math.min(fieldAlive, Math.max(1, cfg.fieldShrink(field, lvl)))
+      if (fieldAlive <= cfg.tableSize) break
+      const L = cfg.levels[Math.min(cfg.levels.length - 1, Math.floor(hands / cfg.handsPerLevel))]
+      do { buttonIdx = (buttonIdx + 1) % seats.length } while (!seats[buttonIdx].inHand || seats[buttonIdx].stack <= 0)
+      playHand(seats, buttonIdx, L.sb, L.bb, L.ante, decider)
+      hands++
+      for (const s of seats) if (s.inHand && s.stack <= 0) s.inHand = false
+    }
+    if (coach.stack <= 0) return { place: Math.round(fieldAlive), field, hands } // busted → place = players still alive
+  }
+  return { place: Math.max(1, Math.round(fieldAlive)), field, hands }
+}
