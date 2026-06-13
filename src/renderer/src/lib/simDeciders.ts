@@ -165,7 +165,6 @@ function coachDecision(seat: SimSeat, hs: HandState): SimDecision {
   const adv = getPostflopAdvice({
     hole: [c1, c2], board, pot, toCall, heroStack: seat.stack, effStack, opponents, inPosition,
     aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise,
-    icmRisk: seat.icmRisk ?? 0,
     iters: 400, // lighter Monte-Carlo: fast enough for thousands of tournaments, stats stay stable
   })
   if (adv.action === 'FOLD') return toCall <= 0 ? { action: 'check' } : { action: 'fold' }

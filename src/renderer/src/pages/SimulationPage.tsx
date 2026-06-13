@@ -44,7 +44,7 @@ export default function SimulationPage(): JSX.Element {
   function runOne(coachKind: 'coach' | 'bot'): { place: number; hands: number } {
     const levels = genLevels(startStack)
     if (mode === 'mtt') {
-      const cfg: MTTConfig = { tableSize: seats, numTables, startStack, levels, handsPerLevel, botTier, fieldShrink: fieldRemaining, paidPlaces: paid }
+      const cfg: MTTConfig = { tableSize: seats, numTables, startStack, levels, handsPerLevel, botTier, fieldShrink: fieldRemaining }
       return playMTT(cfg, (s: SimSeat[]) => { if (coachKind === 'bot') s[0].kind = 'bot'; return makeSimDecider(s) })
     }
     const cfg: TourConfig = { players: Array.from({ length: seats }, (_, i): { kind: 'coach' | 'bot'; tier: number } => ({ kind: i === 0 ? coachKind : 'bot', tier: botTier })), startStack, levels, handsPerLevel, maxHands: 8000 }
