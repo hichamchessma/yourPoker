@@ -21,11 +21,12 @@ function createNoopClient(): SupabaseClient {
 export const supabase: SupabaseClient = isConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       // Desktop uses a deep-link token flow (session injected manually), so it keeps
-      // persistSession off. On the web we want the standard browser flow: persist the
-      // session in localStorage and let Supabase parse the OAuth callback from the URL.
+      // persistSession off. On the web we persist the session in localStorage but handle
+      // the OAuth/recovery callback OURSELVES in main.tsx (detectSessionInUrl off) — the
+      // automatic parser races with the HashRouter and can silently miss the code.
       auth: isElectron
         ? { persistSession: false }
-        : { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        : { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
     })
   : createNoopClient()
 

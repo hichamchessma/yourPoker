@@ -7,24 +7,64 @@ import { supabase } from './lib/supabase'
 import { isWeb } from './lib/platform'
 import { useAuthStore } from './store/authStore'
 
-// Web: detect a password-recovery return synchronously from the URL (the link
-// carries `type=recovery`), before the router/Supabase rewrite the URL — this is
-// more reliable than waiting only for the PASSWORD_RECOVERY event in a HashRouter SPA.
-if (isWeb && window.location.href.includes('type=recovery')) {
-  useAuthStore.getState().setPasswordRecovery(true)
-}
-
+// Register the auth listener FIRST so no event is missed during the callback exchange.
 supabase.auth.onAuthStateChange((event, session) => {
-  // A recovery link opens a temporary session AND fires PASSWORD_RECOVERY —
-  // flag it so the app shows the "new password" screen instead of the lobby.
+  // A recovery link opens a temporary session AND fires PASSWORD_RECOVERY — flag it so
+  // the app shows the "new password" screen instead of the lobby.
   if (event === 'PASSWORD_RECOVERY') {
     useAuthStore.getState().setPasswordRecovery(true)
   }
   useAuthStore.getState().setSession(session)
 })
 
-// Handle OAuth deep link: yourpoker://auth/callback?code=... (PKCE)
-//                      or yourpoker://auth/callback#access_token=... (implicit)
+// ── Web auth callback (OAuth / magic link / password recovery) ──────────────────
+// In a HashRouter SPA, Supabase's automatic detectSessionInUrl can race with the router
+// rewriting the URL and silently miss the code. So on web we DISABLE it (see supabase.ts)
+// and exchange the callback ourselves here, deterministically, before React mounts. We
+// read the session from the exchange result directly (not just the event) so it's applied
+// regardless of timing. Handles PKCE (?code=) and implicit (#access_token=) returns.
+if (isWeb) {
+  const href = window.location.href
+  if (href.includes('type=recovery')) useAuthStore.getState().setPasswordRecovery(true)
+
+  const search = new URLSearchParams(window.location.search)
+  const code = search.get('code')
+  // The hash is either a router path (#/route) or implicit tokens (#access_token=...).
+  const rawHash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+  const hashParams = new URLSearchParams(rawHash.includes('=') ? rawHash : '')
+  const access_token = hashParams.get('access_token')
+  const refresh_token = hashParams.get('refresh_token')
+  // Errors (e.g. provider denied) are left in the URL for AuthPage to surface.
+  const hasError = /[?#&]error(?:_description)?=/.test(href)
+
+  if (!hasError && (code || (access_token && refresh_token))) {
+    useAuthStore.getState().setLoading(true)
+    ;(async () => {
+      try {
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) throw error
+          if (data.session) useAuthStore.getState().setSession(data.session)
+        } else if (access_token && refresh_token) {
+          const { data, error } = await supabase.auth.setSession({ access_token, refresh_token })
+          if (error) throw error
+          if (data.session) useAuthStore.getState().setSession(data.session)
+        }
+        // Strip callback params so a refresh doesn't re-trigger, and hand a clean hash
+        // route to the router.
+        const recovery = useAuthStore.getState().passwordRecovery
+        window.history.replaceState({}, document.title, window.location.origin + (recovery ? '/#/auth' : '/#/'))
+      } catch (err) {
+        console.error('[auth] web callback exchange failed:', err)
+      } finally {
+        useAuthStore.getState().setLoading(false)
+      }
+    })()
+  }
+}
+
+// Handle OAuth deep link (desktop): yourpoker://auth/callback?code=... (PKCE)
+//                                or yourpoker://auth/callback#access_token=... (implicit)
 window.api?.onAuthDeepLink?.(async (deepLinkUrl: string) => {
   try {
     const normalized = deepLinkUrl.replace(/\\/g, '/')
