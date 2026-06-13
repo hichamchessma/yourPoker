@@ -132,7 +132,7 @@ export default function AuthPage(): JSX.Element {
     setIsLoading(true)
     try {
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(identifier.trim(), {
-        redirectTo: window.location.origin
+        redirectTo: `${window.location.origin}/?type=recovery`
       })
       if (resetErr) throw resetErr
       setNotice('Si un compte existe pour cette adresse, un e-mail de réinitialisation vient d’être envoyé.')

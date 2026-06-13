@@ -4,7 +4,15 @@ import { HashRouter } from 'react-router-dom'
 import App from './App'
 import './assets/styles/globals.css'
 import { supabase } from './lib/supabase'
+import { isWeb } from './lib/platform'
 import { useAuthStore } from './store/authStore'
+
+// Web: detect a password-recovery return synchronously from the URL (the link
+// carries `type=recovery`), before the router/Supabase rewrite the URL — this is
+// more reliable than waiting only for the PASSWORD_RECOVERY event in a HashRouter SPA.
+if (isWeb && window.location.href.includes('type=recovery')) {
+  useAuthStore.getState().setPasswordRecovery(true)
+}
 
 supabase.auth.onAuthStateChange((event, session) => {
   // A recovery link opens a temporary session AND fires PASSWORD_RECOVERY —
