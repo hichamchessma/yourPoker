@@ -10,7 +10,8 @@ import {
   User,
   History,
   FlaskConical,
-  LogOut
+  LogOut,
+  ChevronRight
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
@@ -38,13 +39,16 @@ const NAV_ITEMS: NavItem[] = [
 
 interface SidebarProps {
   activeItem?: string
+  /** On the game table we hide the menu and reveal it on a left-edge hover (immersion). */
+  autoHide?: boolean
 }
 
-export default function Sidebar({ activeItem }: SidebarProps): JSX.Element {
+export default function Sidebar({ activeItem, autoHide = false }: SidebarProps): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
   const { signOut } = useAuthStore()
   const [confirmLogout, setConfirmLogout] = useState(false)
+  const [revealed, setRevealed] = useState(false)
 
   const currentPath = location.pathname
 
@@ -54,8 +58,8 @@ export default function Sidebar({ activeItem }: SidebarProps): JSX.Element {
     navigate('/auth', { replace: true })
   }
 
-  return (
-    <aside className="w-[220px] flex-shrink-0 bg-poker-darker border-r border-poker-border flex flex-col">
+  const content = (
+    <div className="w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
       {/* Logo */}
       <div className="p-6 pb-4">
         <div className="flex flex-col items-center gap-2">
@@ -159,6 +163,43 @@ export default function Sidebar({ activeItem }: SidebarProps): JSX.Element {
 
         <p className="text-white/20 text-[10px] uppercase tracking-widest text-center">v1.0.0</p>
       </div>
-    </aside>
+    </div>
+  )
+
+  // Normal pages: the menu is always docked.
+  if (!autoHide) return content
+
+  // Game table: the menu hides for immersion and reveals on a left-edge hover with a
+  // laser sweep. A thin glowing strip + pulsing handle shows it's there.
+  return (
+    <>
+      <div className="fixed left-0 top-0 bottom-0 w-4 z-40" onMouseEnter={() => setRevealed(true)}>
+        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-poker-teal to-transparent opacity-70" style={{ boxShadow: '0 0 8px #00d4ff' }} />
+        <motion.div className="absolute left-0 top-1/2 -translate-y-1/2"
+          animate={{ opacity: [0.45, 1, 0.45] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+          <div className="flex items-center justify-center w-5 h-12 rounded-r-lg bg-poker-teal/15 border border-l-0 border-poker-teal/40 text-poker-teal">
+            <ChevronRight size={14} />
+          </div>
+        </motion.div>
+      </div>
+
+      <motion.div
+        initial={false}
+        animate={{ x: revealed ? 0 : '-101%' }}
+        transition={{ type: 'tween', duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+        onMouseLeave={() => { setRevealed(false); setConfirmLogout(false) }}
+        className="fixed left-0 top-0 bottom-0 z-50 shadow-2xl shadow-black/60"
+      >
+        {revealed && (
+          <motion.div
+            initial={{ x: -40, opacity: 0 }}
+            animate={{ x: 260, opacity: [0, 0.9, 0] }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+            className="pointer-events-none absolute inset-y-0 w-16 z-20 bg-gradient-to-r from-transparent via-poker-teal/40 to-transparent blur-md"
+          />
+        )}
+        {content}
+      </motion.div>
+    </>
   )
 }
