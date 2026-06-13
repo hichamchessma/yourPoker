@@ -318,9 +318,11 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
     <div className={`absolute flex flex-col items-center gap-0.5 transition-all duration-500 ${seat.isSittingOut?'opacity-50':''}`}
       style={{...style,zIndex:seat.isActive?20:8}}>
       {/* Hole cards — hovering here shows the RANGE (not the bet panel). Only the
-          cards are dimmed when folded; name & stack stay readable */}
+          cards are dimmed when folded; name & stack stay readable. Height is RESERVED
+          permanently (always 80) so the profile zone never shifts up/down during the
+          deal — only the cards themselves animate (fly in). */}
       <div className={`flex relative mb-0.5 transition-all duration-500 ${seat.isFolded?'opacity-20 grayscale':''}`}
-        style={{height:hasCard0||hasCard1?80:0,overflow:'visible',minWidth:80}}
+        style={{height:80,overflow:'visible',minWidth:80}}
         onMouseEnter={onHoverCards ? (e) => onHoverCards(true, e) : undefined}
         onMouseLeave={onHoverCards ? () => onHoverCards(false) : undefined}>
         <AnimatePresence>
