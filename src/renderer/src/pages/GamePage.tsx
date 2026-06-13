@@ -1256,8 +1256,14 @@ export default function GamePage(): JSX.Element {
   const handHistoryRef = useRef<HandHistoryRecord[]>([]) // complete list (state lags via setState)
   const savedSessionRef = useRef(false)                  // guard against double-persisting
   // Fast-forward: bots act near-instantly; the flow only "stops" on the hero's turn.
-  const [fastFwd, setFastFwd] = useState(false)
+  const [fastFwd, setFastFwd] = useState(false)   // bots act instantly (fast OR turbo)
   const fastFwdRef = useRef(false)
+  // TURBO: on top of fast, auto-play (skip) the hero's spot when the coach would FOLD or
+  // CHECK — only STOP for a real money decision (call / bet / raise / all-in). Lets you
+  // breeze past hands where you're not involved; the level clock is still charged the
+  // virtual time of each skipped action so the blinds rise at a logical pace.
+  const [turbo, setTurbo] = useState(false)
+  const turboRef = useRef(false)
   // Engine-safe current blinds (read from the ref so timer-driven hands use the
   // up-to-date level even across stale closures).
   const tourBlinds = () => {
@@ -3142,12 +3148,14 @@ export default function GamePage(): JSX.Element {
   // ── "Follow the coach" auto-play: execute EXACTLY the coach's recommended move
   // for the hero's current decision (precise fold/check/call/bet/raise/all-in size).
   // Uses the same engine + inputs as the live coach panel, so the action matches.
-  function executeCoachMove() {
+  // Compute the coach's recommended move for the hero's CURRENT decision WITHOUT playing
+  // it (so Turbo can peek: auto-play folds/checks, stop for real decisions).
+  function computeCoachMove(): { action: string; amount: number } | null {
     const cur = gsRef.current
     const h = cur.seats.find(s => s.isHero)
-    if (!h || !h.isActive || manualModeRef.current || cur.paused) return
+    if (!h || !h.isActive || manualModeRef.current || cur.paused) return null
     const c1 = h.holeCards[0], c2 = h.holeCards[1]
-    if (!c1 || !c2) return
+    if (!c1 || !c2) return null
     const toCall = Math.max(0, cur.currentBet - h.bet)
     const allInTo = h.bet + h.stack
     const minTo = Math.min(allInTo, cur.currentBet + cur.minRaise)
@@ -3164,12 +3172,10 @@ export default function GamePage(): JSX.Element {
         : buildRangeMap(heroScenario as Scenario, h.position, heroPlayersBehind,
             { effBB, raiseToBB: heroRaiseToBB, multiway: heroMultiway, vsOpenerPos: heroVsOpenerPos, reRaiseRatio: heroReRaiseRatio, threeBettorIP: heroThreeBettorIP, icmTighten, closingAction: heroPlayersBehind === 0, potOdds: potOddsPre })
       const chart = map.get(heroKey) ?? 'fold'
-      if (chart === 'fold') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
-      if (chart === 'call') return void heroAction(canCheck ? 'CHECK' : 'CALL', toCall)
-      if (effBB <= 13 || vsJam) return void heroAction('ALL-IN', allInTo) // short stack → jam
-      // Re-shove (3-bet jam): facing an open/squeeze the chart returns 'raise' (not '3bet')
-      // only in the 14-25bb jam-or-fold zone → shove all-in.
-      if (chart === 'raise' && (heroScenario === 'vsopen' || heroScenario === 'squeeze')) return void heroAction('ALL-IN', allInTo)
+      if (chart === 'fold') return { action: canCheck ? 'CHECK' : 'FOLD', amount: 0 }
+      if (chart === 'call') return { action: canCheck ? 'CHECK' : 'CALL', amount: toCall }
+      if (effBB <= 13 || vsJam) return { action: 'ALL-IN', amount: allInTo } // short stack → jam
+      if (chart === 'raise' && (heroScenario === 'vsopen' || heroScenario === 'squeeze')) return { action: 'ALL-IN', amount: allInTo } // re-shove zone
       let to: number
       if (chart === '3bet') to = Math.round(cur.currentBet * 3)
       else if (chart === '4bet') to = Math.round(cur.currentBet * 2.3)
@@ -3177,7 +3183,7 @@ export default function GamePage(): JSX.Element {
         const limpers = cur.seats.filter(s => !s.isFolded && !s.isHero && s.bet >= bbAmt && s.bet < cur.currentBet).length
         to = Math.round((heroScenario === 'iso' ? 3.5 : 2.5) * bbAmt) + limpers * bbAmt
       }
-      return void heroAction('RAISE', Math.min(allInTo, Math.max(minTo, rb(to))))
+      return { action: 'RAISE', amount: Math.min(allInTo, Math.max(minTo, rb(to))) }
     }
 
     // ── Postflop: same advice engine as the panel ──
@@ -3185,14 +3191,34 @@ export default function GamePage(): JSX.Element {
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
       inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead, facingRaise: heroFacingRaise })
-    if (adv.action === 'FOLD') return void heroAction(canCheck ? 'CHECK' : 'FOLD')
-    if (adv.action === 'CHECK') return void heroAction('CHECK')
-    if (adv.action === 'CALL') return void heroAction('CALL', toCall)
-    if (adv.jam) return void heroAction('ALL-IN', allInTo)
-    if (adv.action === 'BET') return void heroAction('BET', Math.min(allInTo, Math.max(bbAmt, rb(cur.pot * (adv.betFrac || 0.6)))))
-    if (adv.action === 'RAISE') return void heroAction('RAISE', Math.min(allInTo, Math.max(minTo, cur.currentBet + rb((cur.pot + toCall) * (adv.betFrac || 0.66)))))
+    if (adv.action === 'FOLD') return { action: canCheck ? 'CHECK' : 'FOLD', amount: 0 }
+    if (adv.action === 'CHECK') return { action: 'CHECK', amount: 0 }
+    if (adv.action === 'CALL') return { action: 'CALL', amount: toCall }
+    if (adv.jam) return { action: 'ALL-IN', amount: allInTo }
+    if (adv.action === 'BET') return { action: 'BET', amount: Math.min(allInTo, Math.max(bbAmt, rb(cur.pot * (adv.betFrac || 0.6)))) }
+    if (adv.action === 'RAISE') return { action: 'RAISE', amount: Math.min(allInTo, Math.max(minTo, cur.currentBet + rb((cur.pot + toCall) * (adv.betFrac || 0.66)))) }
+    return null
   }
+  function executeCoachMove() { const mv = computeCoachMove(); if (mv) heroAction(mv.action, mv.amount) }
   coachMoveRef.current = executeCoachMove
+
+  // TURBO: when it's the hero's turn, peek the coach's move — auto-play (skip) folds and
+  // checks instantly, only STOP for a real money decision (call / bet / raise / all-in).
+  // Each skipped action charges its virtual think-time to the level clock (like the bots).
+  useEffect(() => {
+    if (!isHeroTurn || gs.paused || manualMode || !turboRef.current) return
+    const mv = computeCoachMove()
+    if (!mv || (mv.action !== 'FOLD' && mv.action !== 'CHECK')) return // real decision → wait for you
+    const id = setTimeout(() => {
+      const h = gsRef.current.seats.find(s => s.isHero)
+      if (!gsRef.current.paused && h?.isActive && turboRef.current) {
+        if (fastFwdRef.current) consumeTourTime(1.5) // charge the skipped action's virtual time
+        heroAction(mv.action, mv.amount)
+      }
+    }, 0)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHeroTurn, gs.handNum, gs.currentBet, gs.phase, turbo])
 
   // ── Keyboard shortcuts — only on the hero's turn, ignored while typing ──
   //   f = fold · c = check/call · &(1) = ⅓ pot · é(2) = ⅔ pot · p = pot · a = all-in
@@ -3384,13 +3410,24 @@ export default function GamePage(): JSX.Element {
         {/* History button — replaced by Restart inside a Revive sandbox. */}
         {/* Accélérer — tournament only: bots act near-instantly, flow stops only at the hero's decision. */}
         {tournament && !simMode && gs.phase !== 'idle' && (
-          <button onClick={() => { const v = !fastFwdRef.current; fastFwdRef.current = v; setFastFwd(v); if (v) { const cur = gsRef.current; if (!cur.paused && !manualModeRef.current && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20) } }}
-            title={fastFwd ? 'Vitesse normale' : 'Accélérer — les bots jouent instantanément, ça ne s’arrête qu’à ta décision'}
+          <button onClick={() => {
+              // Cycle: Normal → Accéléré → Turbo → Normal.
+              let nf: boolean, nt: boolean
+              if (!fastFwdRef.current) { nf = true; nt = false }
+              else if (!turboRef.current) { nf = true; nt = true }
+              else { nf = false; nt = false }
+              fastFwdRef.current = nf; setFastFwd(nf); turboRef.current = nt; setTurbo(nt)
+              const cur = gsRef.current
+              if (nf && !cur.paused && !manualModeRef.current && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20)
+            }}
+            title={turbo ? 'TURBO — saute (auto-folde/checke) les spots où tu n’as pas d’action, ne s’arrête que sur tes vraies décisions (call/relance). Clic → Normal' : fastFwd ? 'Accéléré — bots instantanés, s’arrête à ta décision. Clic → Turbo' : 'Accélérer — bots instantanés. Clic → Accéléré'}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
-            style={fastFwd
+            style={turbo
+              ? { borderColor: 'rgba(168,139,255,0.75)', background: 'rgba(124,78,214,0.28)', color: '#c9b8ff' }
+              : fastFwd
               ? { borderColor: 'rgba(201,162,39,0.7)', background: 'rgba(201,162,39,0.22)', color: '#f2d375' }
               : { borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            <FastForward size={11}/> {fastFwd ? 'Rapide ⚡' : 'Accélérer'}
+            <FastForward size={11}/> {turbo ? 'Turbo 🚀' : fastFwd ? 'Rapide ⚡' : 'Accélérer'}
           </button>
         )}
 
