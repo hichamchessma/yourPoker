@@ -367,9 +367,15 @@ export function getPostflopAdvice(input: {
   const aggression = input.cappedRange ? rawAggr * 0.5 : rawAggr
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
-
-  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, input.iters ?? 1800, input.villainTier, input.aggressors, input.donkLead, input.facingRaise)
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
+  // A TINY bet (great pot odds, e.g. a 6%-pot "shove" of a short stack's last chips) is
+  // NOT a value-defined line — it's a blocker / busted draw / desperate jam, full of
+  // bluffs. So DON'T concentrate the villain's range to value (ignore donkLead/facingRaise)
+  // when the price is tiny — that wrongly crushes your equity and folds a made hand that
+  // is getting 10:1+. (The reverse-implied-odds margin is also dropped below.)
+  const tinyBet = toCall > 0 && potOdds < 0.15
+
+  const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, input.iters ?? 1800, input.villainTier, input.aggressors, input.donkLead && !tinyBet, input.facingRaise && !tinyBet)
   const { cat, pair, name } = analyseMade(hole, board)
   const draws = detectDraws(hole, board)
   const strongDraw = draws.some(d => d.includes('couleur') || d.includes('ouvert'))
@@ -442,10 +448,14 @@ export function getPostflopAdvice(input: {
   // raw equity but is a clear fold once realization is accounted for.
   const airNoDraw = effCat === 0 && !playsBoard && !drawIsOnlyEquity && !strongDraw
   const airMargin = 0.05 + (!inPosition ? 0.05 : 0) + (Math.max(1, opponents) >= 2 ? 0.04 : 0)
-  const callMargin = drawIsOnlyEquity
+  const rawCallMargin = drawIsOnlyEquity
     ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
     : airNoDraw ? airMargin
     : onePairMargin
+  // Facing a TINY bet (huge pot odds, often an all-in closing the action) there's no
+  // reverse-implied-odds risk — call on the raw price. Don't stack a safety cushion on
+  // top of a 10:1+ price: that's how you fold a made hand getting 17:1 (a catastrophe).
+  const callMargin = tinyBet ? Math.min(rawCallMargin, 0.01) : rawCallMargin
   // Implied-odds buffer below direct pot odds: generous on the flop (two cards to
   // come), almost none on the turn (one card, little room to get paid).
   const impliedBuf = board.length <= 3 ? 0.05 : 0.01
