@@ -9,6 +9,7 @@ import RangeHeatmap from '../components/RangeHeatmap'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
+import { isElectron } from '../lib/platform'
 import EquityReasoningBlock from '../components/EquityReasoning'
 import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
@@ -3516,15 +3517,17 @@ export default function GamePage(): JSX.Element {
           </div>
         )}
 
-        {/* Window controls — always visible, even mid-game */}
-        <div className="app-drag-none flex items-center gap-2 pl-1">
-          <button onClick={() => window.api?.minimizeWindow()} title="Réduire"
-            className="w-3.5 h-3.5 rounded-full bg-yellow-400/70 hover:bg-yellow-400 transition-colors"/>
-          <button onClick={() => window.api?.maximizeWindow()} title="Agrandir"
-            className="w-3.5 h-3.5 rounded-full bg-green-400/70 hover:bg-green-400 transition-colors"/>
-          <button onClick={() => window.api?.closeWindow()} title="Fermer"
-            className="w-3.5 h-3.5 rounded-full bg-red-400/70 hover:bg-red-400 transition-colors"/>
-        </div>
+        {/* Window controls — desktop only (hidden on web) */}
+        {isElectron && (
+          <div className="app-drag-none flex items-center gap-2 pl-1">
+            <button onClick={() => window.api?.minimizeWindow()} title="Réduire"
+              className="w-3.5 h-3.5 rounded-full bg-yellow-400/70 hover:bg-yellow-400 transition-colors"/>
+            <button onClick={() => window.api?.maximizeWindow()} title="Agrandir"
+              className="w-3.5 h-3.5 rounded-full bg-green-400/70 hover:bg-green-400 transition-colors"/>
+            <button onClick={() => window.api?.closeWindow()} title="Fermer"
+              className="w-3.5 h-3.5 rounded-full bg-red-400/70 hover:bg-red-400 transition-colors"/>
+          </div>
+        )}
       </header>
 
       {/* ── TABLE AREA ── */}

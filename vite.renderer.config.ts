@@ -15,6 +15,12 @@ export default defineConfig({
       '@renderer': resolve(__dirname, 'src/renderer/src')
     }
   },
+  // Web (browser) build target — a standalone static SPA. HashRouter means no server
+  // rewrites are needed, so the output deploys as-is to any static host (Vercel/Netlify).
+  build: {
+    outDir: resolve(__dirname, 'dist-web'),
+    emptyOutDir: true
+  },
   server: {
     port: 5173
   }

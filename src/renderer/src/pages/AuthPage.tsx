@@ -5,6 +5,7 @@ import Sidebar from '../components/layout/Sidebar'
 import SocialButton from '../components/auth/SocialButton'
 import WindowControls from '../components/layout/WindowControls'
 import { supabase } from '../lib/supabase'
+import { isElectron } from '../lib/platform'
 import { useAuthStore } from '../store/authStore'
 import type { Session } from '@supabase/supabase-js'
 
@@ -132,17 +133,24 @@ export default function AuthPage(): JSX.Element {
   const handleGoogleLogin = async () => {
     setError(null)
     console.warn('[google] signInWithOAuth start')
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: 'yourpoker://auth/callback',
-        skipBrowserRedirect: true
-      }
-    })
-    console.warn('[google] result url:', data?.url, 'error:', error?.message)
-    if (error) { setError(`Google: ${error.message}`); return }
-    if (!data?.url) { setError('URL Google null — activez Google dans Supabase Auth → Providers'); return }
-    await window.api.openExternal(data.url)
+    if (isElectron) {
+      // Desktop: open the system browser and catch the deep-link callback (yourpoker://).
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: 'yourpoker://auth/callback', skipBrowserRedirect: true }
+      })
+      console.warn('[google] result url:', data?.url, 'error:', error?.message)
+      if (error) { setError(`Google: ${error.message}`); return }
+      if (!data?.url) { setError('URL Google null — activez Google dans Supabase Auth → Providers'); return }
+      await window.api.openExternal(data.url)
+    } else {
+      // Web: standard browser redirect back to the app origin; Supabase parses the callback.
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin }
+      })
+      if (error) { setError(`Google: ${error.message}`); return }
+    }
   }
 
   return (

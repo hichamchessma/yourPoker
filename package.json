@@ -7,6 +7,9 @@
                     "dev":  "node scripts/dev.cjs",
                     "build":  "electron-vite build",
                     "preview":  "electron-vite preview",
+                    "dev:web":  "vite --config vite.renderer.config.ts",
+                    "build:web":  "vite build --config vite.renderer.config.ts",
+                    "preview:web":  "vite preview --config vite.renderer.config.ts",
                     "build:win":  "electron-vite build \u0026\u0026 electron-builder --win",
                     "build:mac":  "electron-vite build \u0026\u0026 electron-builder --mac",
                     "build:linux":  "electron-vite build \u0026\u0026 electron-builder --linux"

@@ -1,4 +1,7 @@
-export default function WindowControls(): JSX.Element {
+import { isElectron } from '../../lib/platform'
+
+export default function WindowControls(): JSX.Element | null {
+  if (!isElectron) return null
   const minimize = () => window.api?.minimizeWindow()
   const maximize = () => window.api?.maximizeWindow()
   const close = () => window.api?.closeWindow()
