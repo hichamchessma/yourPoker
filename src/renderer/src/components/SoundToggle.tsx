@@ -11,7 +11,7 @@ export default function SoundToggle({ className = '' }: { className?: string }) 
   return (
     <div className={`relative ${className}`} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button
-        onClick={() => { toggleMute(); if (muted) playSound('click') }}
+        onClick={() => { const wasMuted = muted; toggleMute(); if (wasMuted) playSound('chips') }}
         title={muted ? 'Activer le son' : 'Couper le son'}
         className="p-2 rounded-lg hover:bg-white/10 transition-colors text-white/60 hover:text-white/90"
       >

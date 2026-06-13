@@ -30,6 +30,21 @@ function ensure(): AudioContext | null {
   return ctx
 }
 
+// Browsers start the AudioContext SUSPENDED and only allow resuming it from inside a
+// real user gesture. Our sounds fire from timers (dealing, bot actions) — NOT a gesture —
+// so without this the context never resumes and nothing plays. Unlock on the first
+// interaction (creating + resuming the context while we're inside the gesture), and keep
+// it resumed on later interactions.
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    const c = ensure()
+    if (c && c.state === 'suspended') c.resume().catch(() => {})
+  }
+  ;(['pointerdown', 'touchstart', 'keydown', 'click'] as const).forEach(ev =>
+    window.addEventListener(ev, unlock, { passive: true })
+  )
+}
+
 function noiseBuffer(c: AudioContext): AudioBuffer {
   if (noiseBuf) return noiseBuf
   const len = Math.floor(c.sampleRate * 0.5)
