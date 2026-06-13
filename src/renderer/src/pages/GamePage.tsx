@@ -2317,10 +2317,19 @@ export default function GamePage(): JSX.Element {
     if (tournament) {
       const t = tourRef.current
       if (!t.finalTable) {
-        // Table balancing: refill busted bots from the (still large) field.
+        // Table balancing: refill busted bots with an incoming player from another table.
+        // The field's survivors are RIGHT-SKEWED (many short stacks, a few big) → a random
+        // arrival has ~the MEDIAN, well BELOW the mean. Refilling at the mean (field×start
+        // ÷ left, which GROWS as the field shrinks) makes the hero face an endless wall of
+        // ever-bigger stacks → it can never build a dominant stack and almost never reaches
+        // the final table. Refill around the MEDIAN (≈0.55× mean) with variance, so a hero
+        // that ACCUMULATES stays ahead and can actually run deep / win.
         const startChips = tournament.startBB * tourLevels[0].bb
-        const avgChips = Math.max(Math.round(startChips * 0.25), Math.round((tournament.field * startChips) / Math.max(1, t.playersLeft)))
-        seats = seats.map(s => (s.isEliminated && !s.isHero) ? refillSeat(s, avgChips) : s)
+        const fieldAvg = (tournament.field * startChips) / Math.max(1, t.playersLeft)
+        const median = fieldAvg * 0.55
+        seats = seats.map(s => (s.isEliminated && !s.isHero)
+          ? refillSeat(s, Math.max(Math.round(startChips * 0.15), Math.round(median * (0.4 + Math.random() * 1.4))))
+          : s)
       } else {
         // Final table: no refill. If the hero is the last one standing → victory.
         const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
