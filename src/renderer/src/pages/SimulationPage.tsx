@@ -79,21 +79,36 @@ export default function SimulationPage(): JSX.Element {
 
   async function run() {
     cancelRef.current = false; setRunning(true); setProgress(0)
-    const s = blank(field), b = blank(field)
-    const baseN = Math.max(20, Math.round(tours / 4)) // smaller "average player" baseline for comparison
+    const baseN = Math.max(40, Math.round(tours / 4))
     const total = tours + baseN
     let done = 0
-    const tick = async () => { setProgress(done / total); setStats({ ...s, places: [...s.places] }); setBase({ ...b, places: [...b.places] }); await new Promise(r => setTimeout(r, 0)) }
-    for (let t = 0; t < tours; t++) { if (cancelRef.current) break; const r = runOne('coach'); accumulate(s, r.place, r.hands); done++; if (t % 8 === 7) await tick() }
-    for (let t = 0; t < baseN; t++) { if (cancelRef.current) break; const r = runOne('bot'); accumulate(b, r.place, r.hands); done++; if (t % 8 === 7) await tick() }
-    setProgress(1); setStats({ ...s, places: [...s.places] }); setBase({ ...b, places: [...b.places] })
-    setRunning(false)
+    const yieldUI = () => new Promise(r => setTimeout(r, 0))
+    // 1) Baseline FIRST. In MTT, place is CALIBRATED from how long the player survived
+    //    (more hands alive = deeper run = better place). The average-player baseline gets
+    //    its places assigned by RANK over the full field → exactly uniform → median =
+    //    field/2, ITM = % paid, ROI ≈ 0. The coach is then ranked against that same
+    //    distribution, so its deeper survival gives a FAIR ABSOLUTE place / ROI.
+    const baseRaw: { place: number; hands: number }[] = []
+    for (let t = 0; t < baseN; t++) { if (cancelRef.current) break; baseRaw.push(runOne('bot')); done++; if (t % 8 === 7) { setProgress(done / total); await yieldUI() } }
+    const N = baseRaw.length
+    const baseAsc = baseRaw.map(r => r.hands).sort((a, b) => a - b)
+    const countGreater = (h: number) => { let lo = 0, hi = N; while (lo < hi) { const m = (lo + hi) >> 1; if (baseAsc[m] <= h) lo = m + 1; else hi = m } return N - lo } // baseline runs that survived MORE
+    const placeOf = (r: { place: number; hands: number }) => mode === 'mtt' ? Math.max(1, Math.min(field, Math.round(1 + (field - 1) * countGreater(r.hands) / Math.max(1, N)))) : r.place
+    // Baseline stats: assign places by descending-survival RANK (best → 1, worst → field).
+    const b = blank(field)
+    if (mode === 'mtt') { [...baseRaw].sort((x, y) => y.hands - x.hands).forEach((r, j) => accumulate(b, Math.max(1, Math.min(field, Math.round(1 + (field - 1) * j / Math.max(1, N - 1)))), r.hands)) }
+    else { for (const r of baseRaw) accumulate(b, r.place, r.hands) }
+    // 2) Coach — ranked against the same baseline distribution.
+    const s = blank(field)
+    const tick = async () => { setProgress(done / total); setStats({ ...s, places: [...s.places] }); setBase({ ...b, places: [...b.places] }); await yieldUI() }
+    for (let t = 0; t < tours; t++) { if (cancelRef.current) break; const r = runOne('coach'); accumulate(s, placeOf(r), r.hands); done++; if (t % 8 === 7) await tick() }
+    setProgress(1); setStats({ ...s, places: [...s.places] }); setBase({ ...b, places: [...b.places] }); setRunning(false)
   }
 
   const pct = (n: number, d: number) => (d > 0 ? (100 * n / d).toFixed(1) : '0.0')
   const roi = (st: Stats) => st.done > 0 ? (100 * st.profit / (st.done * buyin)) : 0
   const med = (st: Stats) => { const arr: number[] = []; st.places.forEach((c, p) => { for (let i = 0; i < c; i++) arr.push(p) }); arr.sort((a, b) => a - b); return arr[Math.floor(arr.length / 2)] ?? 0 }
-  const estTotal = estMs != null ? (estMs * tours * 1.25) : null // +25% for the baseline batch
+  const estTotal = estMs != null ? (estMs * (tours + Math.max(40, Math.round(tours / 4)))) : null // incl. the baseline batch
   const fmtTime = (ms: number) => ms < 1000 ? `${Math.round(ms)} ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : `${(ms / 60000).toFixed(1)} min`
 
   const Num = ({ label, value, set, min, max, step = 1, suffix }: { label: string; value: number; set: (n: number) => void; min: number; max: number; step?: number; suffix?: string }) => (
@@ -205,7 +220,7 @@ export default function SimulationPage(): JSX.Element {
             <p className="text-[12px] text-white/40">
               <b className="text-white/70">Verdict :</b> le coach fait un ROI de <span className={roi(stats) > roi(base) ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{roi(stats) >= 0 ? '+' : ''}{roi(stats).toFixed(0)}%</span> contre <span className="text-white/60 font-bold">{roi(base).toFixed(0)}%</span> pour un joueur moyen à sa place →
               {roi(stats) > roi(base) ? <span className="text-emerald-400 font-bold"> il bat clairement le field de {(roi(stats) - roi(base)).toFixed(0)} points de ROI.</span> : <span className="text-red-400"> pas d'edge mesurable sur cet échantillon.</span>}
-              <span className="text-white/30"> (Note : le modèle multi-tables a un biais négatif absolu — c'est l'ÉCART coach vs joueur moyen qui est significatif, pas le chiffre brut.)</span>
+              {mode === 'mtt' && <span className="text-white/30"> (Places CALIBRÉES sur la survie : le joueur moyen ressort à ~0% de ROI / {(100 * paid / field).toFixed(0)}% d'ITM — donc les chiffres ABSOLUS du coach sont fiables, pas seulement l'écart.)</span>}
             </p>
           )}
         </div>
