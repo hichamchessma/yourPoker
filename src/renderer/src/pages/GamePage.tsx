@@ -2819,6 +2819,22 @@ export default function GamePage(): JSX.Element {
     rebuyHero(tournament.startBB * tourLevels[0].bb)
   }
 
+  // Replay a brand-new tournament with the SAME config — reset the clock / field /
+  // result and deal a fresh hand 1, without going back through the setup page.
+  function restartTournament() {
+    if (!tournament) return
+    flowGenRef.current++
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
+    dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+    tourRef.current = { levelIdx: 0, secondsLeft: tournament.levelMinutes * 60, playersLeft: tournament.field, finalTable: false, busted: false, place: 0 }
+    setTourLevelIdx(0)
+    setTourHud({ playersLeft: tournament.field, secondsLeft: tournament.levelMinutes * 60 })
+    setTourResult(null)
+    sitOutRef.current = false; setSitOut(false)
+    startHand(createSeats(), 0, 0)
+  }
+
   function setPaused(paused: boolean) {
     const cur = gsRef.current
     if (cur.paused === paused) return
@@ -4056,6 +4072,11 @@ export default function GamePage(): JSX.Element {
                     <RefreshCw size={14}/> Re-entry
                   </button>
                 )}
+                <button onClick={restartTournament} title="Lance un nouveau tournoi avec la même configuration"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-[0.16em] text-[12px] transition-all hover:scale-[1.03]"
+                  style={{ background: 'linear-gradient(135deg,#5ad19a,#2e9e6b)', color: '#04140c' }}>
+                  <RefreshCw size={14}/> Rejouer
+                </button>
                 <button onClick={() => navigate('/tournament')}
                   className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
                   Quitter
