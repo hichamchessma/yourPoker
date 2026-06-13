@@ -90,13 +90,54 @@ function PlayingCard({ rank, suit, rotation = 0, glowColor = '#c9a227' }: { rank
 }
 
 export default function AuthPage(): JSX.Element {
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const { setSession } = useAuthStore()
+
+  const switchMode = (m: 'login' | 'signup') => {
+    setMode(m); setError(null); setNotice(null); setConfirmPassword('')
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    if (mode === 'signup') return handleSignup(e)
+    return handleLogin(e)
+  }
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null); setNotice(null)
+    if (!identifier.includes('@')) { setError('Entre une adresse e-mail valide.'); return }
+    if (password.length < 6) { setError('Le mot de passe doit faire au moins 6 caractères.'); return }
+    if (password !== confirmPassword) { setError('Les mots de passe ne correspondent pas.'); return }
+    setIsLoading(true)
+    try {
+      const { data, error: signErr } = await supabase.auth.signUp({
+        email: identifier.trim(),
+        password,
+        options: { emailRedirectTo: window.location.origin }
+      })
+      if (signErr) throw signErr
+      if (data.session) {
+        // Email confirmation disabled in Supabase → user is logged in immediately.
+        setSession(data.session)
+      } else {
+        // Confirmation enabled → a verification email was sent.
+        setNotice('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.')
+        switchMode('login')
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur lors de l'inscription")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -265,18 +306,18 @@ export default function AuthPage(): JSX.Element {
                 Poker Elite Coach
               </h1>
               <p className="text-poker-teal text-xs tracking-[0.35em] uppercase mt-2 font-semibold">
-                Page d'Authentification
+                {mode === 'signup' ? 'Créer un compte' : "Page d'Authentification"}
               </p>
               <div className="w-28 h-px bg-gradient-to-r from-transparent via-poker-teal/60 to-transparent mx-auto mt-3" />
             </div>
 
             {/* Auth card */}
             <div className="glass-card p-7">
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Email */}
                 <div>
                   <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
-                    E-mail ou Nom d'Utilisateur
+                    {mode === 'signup' ? 'E-mail' : "E-mail ou Nom d'Utilisateur"}
                   </label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
@@ -307,7 +348,7 @@ export default function AuthPage(): JSX.Element {
                       onChange={(e) => setPassword(e.target.value)}
                       className="input-dark pl-10 pr-24"
                       placeholder="••••••••••"
-                      autoComplete="current-password"
+                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     />
                     <button
                       type="button"
@@ -320,7 +361,30 @@ export default function AuthPage(): JSX.Element {
                   </div>
                 </div>
 
-                {/* Remember + Forgot */}
+                {/* Confirm password — signup only */}
+                {mode === 'signup' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
+                      Confirmer le mot de passe
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
+                        <Lock size={15} />
+                      </div>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="input-dark pl-10"
+                        placeholder="••••••••••"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Remember + Forgot — login only */}
+                {mode === 'login' && (
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer" onClick={() => setRememberMe(!rememberMe)}>
                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${rememberMe ? 'bg-poker-teal border-poker-teal' : 'border-white/30'}`}>
@@ -336,6 +400,7 @@ export default function AuthPage(): JSX.Element {
                     Mot de passe oublié ?
                   </button>
                 </div>
+                )}
 
                 {error && (
                   <motion.p initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
@@ -344,11 +409,20 @@ export default function AuthPage(): JSX.Element {
                   </motion.p>
                 )}
 
-                {/* Dev shortcut */}
-                <button type="button" onClick={() => { setIdentifier('admin'); setPassword('admin') }}
-                  className="text-[10px] text-poker-gold/70 hover:text-poker-gold transition-colors text-center uppercase tracking-wider">
-                  Accès dev : admin / admin
-                </button>
+                {notice && (
+                  <motion.p initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                    className="text-xs text-emerald-300 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-4 py-2 text-center">
+                    {notice}
+                  </motion.p>
+                )}
+
+                {/* Dev shortcut — login only */}
+                {mode === 'login' && (
+                  <button type="button" onClick={() => { setIdentifier('admin'); setPassword('admin') }}
+                    className="text-[10px] text-poker-gold/70 hover:text-poker-gold transition-colors text-center uppercase tracking-wider w-full">
+                    Accès dev : admin / admin
+                  </button>
+                )}
 
                 <motion.button
                   type="submit"
@@ -363,16 +437,16 @@ export default function AuthPage(): JSX.Element {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                       </svg>
-                      Connexion...
+                      {mode === 'signup' ? 'Création...' : 'Connexion...'}
                     </span>
-                  ) : 'Se Connecter'}
+                  ) : (mode === 'signup' ? "S'inscrire" : 'Se Connecter')}
                 </motion.button>
               </form>
 
               {/* Divider */}
               <div className="flex items-center gap-3 my-5">
                 <div className="flex-1 h-px bg-white/10" />
-                <span className="text-[10px] text-white/30 uppercase tracking-widest">Ou se connecter avec</span>
+                <span className="text-[10px] text-white/30 uppercase tracking-widest">{mode === 'signup' ? "Ou s'inscrire avec" : 'Ou se connecter avec'}</span>
                 <div className="flex-1 h-px bg-white/10" />
               </div>
 
@@ -385,9 +459,12 @@ export default function AuthPage(): JSX.Element {
               </div>
 
               <p className="text-center mt-5 text-[10px] text-white/40 uppercase tracking-wider">
-                Pas encore de compte ?{' '}
-                <button className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
-                  S'inscrire ici
+                {mode === 'signup' ? 'Déjà un compte ?' : 'Pas encore de compte ?'}{' '}
+                <button
+                  type="button"
+                  onClick={() => switchMode(mode === 'signup' ? 'login' : 'signup')}
+                  className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
+                  {mode === 'signup' ? 'Se connecter' : "S'inscrire ici"}
                 </button>
               </p>
             </div>
