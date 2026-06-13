@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Lock, KeyRound } from 'lucide-react'
-import Sidebar from '../components/layout/Sidebar'
 import SocialButton from '../components/auth/SocialButton'
 import WindowControls from '../components/layout/WindowControls'
 import { supabase } from '../lib/supabase'
@@ -251,8 +250,7 @@ export default function AuthPage(): JSX.Element {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <Sidebar activeItem="lobby" />
-
+      {/* No app sidebar on the auth screen — the nav must not show before login. */}
       <div className="flex-1 relative overflow-hidden">
         {/* ── BACKGROUND ── */}
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 60% 40%, #0d2545 0%, #080e1c 55%, #040810 100%)' }} />
