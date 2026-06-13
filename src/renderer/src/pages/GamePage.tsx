@@ -1587,17 +1587,24 @@ export default function GamePage(): JSX.Element {
 
   // ─── Blind / seat setup ──────────────────────────────────────────────────
   function findBlinds(seats: Seat[], dealerIdx: number): { sbIdx: number; bbIdx: number } {
-    const active = seats.filter(s => !s.isEliminated && s.stack > 0 && !s.isSittingOut)
+    const isLive = (s?: Seat) => !!s && !s.isEliminated && s.stack > 0 && !s.isSittingOut
+    const active = seats.filter(isLive)
     const n = active.length
     // Fewer than 2 active players (e.g. you sit out heads-up): never charge a
     // sitting-out player — point both blinds at the lone active seat.
     if (n < 2) { const only = active[0]?.idx ?? dealerIdx; return { sbIdx: only, bbIdx: only } }
+    // SB/BB are the next LIVE seats after the button — SKIP eliminated/empty seats.
+    // (At a final table players bust without replacement, so dealer+1 / dealer+2 by raw
+    // index can land on an empty seat → blinds never posted. This walks to live seats.)
+    const nextLive = (from: number) => { let i = (from + 1) % seats.length, g = 0; while (g++ < seats.length && !isLive(seats[i])) i = (i + 1) % seats.length; return i }
     if (n === 2) {
-      // HU: dealer is SB
-      return { sbIdx: dealerIdx, bbIdx: (dealerIdx + 1) % seats.length }
+      // HU: dealer is SB (or, if the button sits on a dead seat, the first live seat).
+      const sb = isLive(seats[dealerIdx]) ? dealerIdx : active[0].idx
+      const bb = active.find(s => s.idx !== sb)?.idx ?? nextLive(sb)
+      return { sbIdx: sb, bbIdx: bb }
     }
-    const sbIdx = (dealerIdx + 1) % seats.length
-    const bbIdx = (dealerIdx + 2) % seats.length
+    const sbIdx = nextLive(dealerIdx)
+    const bbIdx = nextLive(sbIdx)
     return { sbIdx, bbIdx }
   }
 
@@ -2352,7 +2359,11 @@ export default function GamePage(): JSX.Element {
         setTourHud(h => ({ ...h, playersLeft: alive.length }))
       }
     }
-    const newDealerIdx = (gsRef.current.dealerIdx + 1) % numPlayers
+    // Advance the button to the next LIVE seat — at a final table eliminated seats aren't
+    // refilled, so a raw +1 would park the button on an empty seat (and skew the blinds).
+    const liveSeat = (i: number) => { const s = seats[i]; return !!s && !s.isEliminated && s.stack > 0 && !s.isSittingOut }
+    let newDealerIdx = (gsRef.current.dealerIdx + 1) % numPlayers
+    for (let g = 0; g < numPlayers && !liveSeat(newDealerIdx); g++) newDealerIdx = (newDealerIdx + 1) % numPlayers
     startHand(seats, newDealerIdx, gsRef.current.handNum)
   }
 
