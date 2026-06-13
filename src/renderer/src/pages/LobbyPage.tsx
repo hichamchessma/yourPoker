@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import {
-  Bell, Search, ChevronDown, Play, Trophy, Target,
-  Zap, Star, BarChart2, Users, BookOpen, LogOut,
-  TrendingUp, Clock, ChevronRight, Send, Wallet, DollarSign
+  Target, GraduationCap, Medal, FlaskConical, SlidersHorizontal, History,
+  Wallet, TrendingUp, Trophy, Spade, ArrowRight, Crown
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { computePlayerStats } from '../lib/playerStats'
 import WindowControls from '../components/layout/WindowControls'
 
 
@@ -165,58 +166,43 @@ function ChipStack() {
   )
 }
 
-// ── Skill bar ──────────────────────────────────────────────────────────
-function SkillBar({ label, value, color = '#00d4ff' }: { label: string; value: number; color?: string }) {
+// ── Feature shortcut card (navigates to a trainer) ──────────────────────
+function ShortcutCard({ icon, title, desc, accent, onClick }: { icon: React.ReactNode; title: string; desc: string; accent: string; onClick: () => void }) {
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between items-center">
-        <span className="text-[10px] text-white/50 uppercase tracking-wide">{label}</span>
-        <span className="text-[10px] font-bold" style={{ color }}>{value}%</span>
+    <button onClick={onClick}
+      className="group text-left rounded-2xl border border-white/10 bg-white/[0.02] p-3.5 hover:bg-white/[0.04] hover:border-white/20 transition-all">
+      <div className="flex items-center gap-2.5 mb-1.5">
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: accent + '1f', color: accent }}>{icon}</span>
+        <span className="text-[12px] font-bold text-white/85">{title}</span>
+        <ArrowRight size={13} className="ml-auto text-white/20 group-hover:text-white/60 group-hover:translate-x-0.5 transition-all" />
       </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${value}%` }}
-          transition={{ duration: 1, delay: 0.3, ease: 'easeOut' }}
-          className="h-full rounded-full"
-          style={{ background: `linear-gradient(90deg, ${color}88, ${color})` }}
-        />
-      </div>
-    </div>
+      <p className="text-[10.5px] text-white/40 leading-snug">{desc}</p>
+    </button>
   )
 }
 
-// ── Tournament row ──────────────────────────────────────────────────────
-function TournamentRow({ rank, name, sub, prize, color }: { rank: number; name: string; sub: string; prize: string; color: string }) {
+// ── Real stat tile ──────────────────────────────────────────────────────
+function StatTile({ icon, label, value, accent = '#ffffff' }: { icon: React.ReactNode; label: string; value: string; accent?: string }) {
   return (
-    <div className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group">
-      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: color + '22', color }}>
-        {rank}
-      </div>
-      <div className="w-7 h-7 rounded-full bg-poker-blue flex items-center justify-center flex-shrink-0">
-        <Trophy size={12} className="text-poker-gold" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-white/80 truncate">{name}</p>
-        <p className="text-[10px] text-white/30 truncate">{sub}</p>
-      </div>
-      <span className="text-[10px] font-bold text-poker-gold flex-shrink-0">{prize}</span>
+    <div className="bg-white/[0.03] rounded-lg p-2.5 flex flex-col gap-1">
+      <span className="text-white/30">{icon}</span>
+      <span className="text-[9px] text-white/35 uppercase tracking-wide">{label}</span>
+      <span className="text-sm font-black font-mono" style={{ color: accent }}>{value}</span>
     </div>
   )
 }
 
 export default function LobbyPage(): JSX.Element {
   const { user } = useAuthStore()
-  const [searchVal, setSearchVal] = useState('')
-  const [joinInput, setJoinInput] = useState('')
+  const navigate = useNavigate()
+  const stats = useMemo(() => computePlayerStats(4), [])
 
-  // Play-money balance (persisted locally). Real-money play is UI-only for now.
+  // Play-money balance (persisted locally).
   const [balance, setBalance] = useState<number>(() => {
     const saved = Number(localStorage.getItem('pokerBalance'))
     return Number.isFinite(saved) && saved > 0 ? saved : 10000
   })
   const [rechargeAmt, setRechargeAmt] = useState(5000)
-  const [realMoneyNote, setRealMoneyNote] = useState(false)
   useEffect(() => { localStorage.setItem('pokerBalance', String(balance)) }, [balance])
 
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Joueur'
@@ -240,28 +226,11 @@ export default function LobbyPage(): JSX.Element {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="flex-1 max-w-sm relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-          <input
-            type="text"
-            placeholder="Recherche au global"
-            value={searchVal}
-            onChange={e => setSearchVal(e.target.value)}
-            className="w-full bg-white/5 border border-white/8 rounded-lg pl-9 pr-4 py-2 text-xs text-white/70 placeholder-white/25 focus:outline-none focus:border-poker-teal/40 transition-colors"
-          />
-        </div>
-
         <div className="flex-1" />
 
-        {/* Bell */}
-        <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors">
-          <Bell size={18} className="text-white/50" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
-
-        {/* User */}
-        <div className="flex items-center gap-2 pl-2 border-l border-white/10 cursor-pointer group">
+        {/* User — click to open profile */}
+        <button onClick={() => navigate('/profile')}
+          className="flex items-center gap-2 pl-2 border-l border-white/10 group">
           <div className="w-8 h-8 rounded-full overflow-hidden border border-poker-gold/30 flex-shrink-0">
             {avatarUrl ? (
               <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
@@ -271,14 +240,11 @@ export default function LobbyPage(): JSX.Element {
               </div>
             )}
           </div>
-          <div className="hidden sm:block">
-            <p className="text-xs font-bold text-white/90 leading-tight">{displayName}</p>
-            <div className="flex items-center gap-1">
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-poker-gold/20 text-poker-gold font-bold uppercase tracking-wide">PRO+</span>
-            </div>
+          <div className="hidden sm:block text-left">
+            <p className="text-xs font-bold text-white/90 leading-tight group-hover:text-white transition-colors">{displayName}</p>
+            <p className="text-[9px] text-white/35 group-hover:text-poker-teal transition-colors">Voir mon profil</p>
           </div>
-          <ChevronDown size={14} className="text-white/30 group-hover:text-white/60 transition-colors" />
-        </div>
+        </button>
 
         <WindowControls />
       </header>
@@ -403,89 +369,22 @@ export default function LobbyPage(): JSX.Element {
             </div>
           </div>
 
-          {/* Bottom 3 cards */}
-          <div className="grid grid-cols-3 gap-3 flex-shrink-0">
-
-            {/* Live session */}
-            <div className="glass-card p-0 overflow-hidden">
-              <div className="relative bg-poker-navy h-24 flex items-center justify-center">
-                <div className="absolute inset-0 bg-gradient-to-br from-poker-blue to-poker-darker" />
-                <div className="relative z-10 flex items-center justify-center w-10 h-10 rounded-full bg-white/10 border border-white/20 cursor-pointer hover:bg-white/20 transition-colors">
-                  <Play size={16} className="text-white fill-white ml-0.5" />
-                </div>
-                <div className="absolute top-2 left-2 flex items-center gap-1 bg-red-500 rounded px-1.5 py-0.5">
-                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                  <span className="text-[9px] font-bold text-white uppercase">Direct</span>
-                </div>
-              </div>
-              <div className="p-3">
-                <p className="text-[10px] text-poker-teal uppercase tracking-wider font-semibold mb-0.5">Sessions en direct</p>
-                <p className="text-xs font-bold text-white/90">Défenses de Big Blind</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="flex-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full w-1/3 bg-poker-teal rounded-full" />
-                  </div>
-                  <span className="text-[9px] text-white/30">12:34</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Weekly challenge */}
-            <div className="glass-card p-4">
-              <p className="text-[10px] text-poker-gold uppercase tracking-wider font-semibold mb-3">Défis de la semaine</p>
-              <div className="space-y-1 mb-3">
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-white/40">Progression</span>
-                  <span className="text-poker-gold font-bold">88%</span>
-                </div>
-                <div className="h-2 bg-white/8 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: '88%' }}
-                    transition={{ duration: 1.2, ease: 'easeOut' }}
-                    className="h-full rounded-full"
-                    style={{ background: 'linear-gradient(90deg, #a07d10, #e8c547)' }}
-                  />
-                </div>
-              </div>
-              <div className="flex justify-center gap-4 mt-3">
-                {[
-                  { icon: <Target size={14} />, label: '3/5' },
-                  { icon: <Trophy size={14} />, label: '2 pts' },
-                  { icon: <Zap size={14} />, label: 'x2' }
-                ].map((item, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1">
-                    <div className="w-8 h-8 rounded-lg bg-poker-gold/10 border border-poker-gold/20 flex items-center justify-center text-poker-gold">
-                      {item.icon}
-                    </div>
-                    <span className="text-[9px] text-white/40">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tournament feed */}
-            <div className="glass-card p-3 flex flex-col">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] text-white/60 uppercase tracking-wider font-semibold">Tournament Feed</p>
-                <ChevronRight size={12} className="text-white/30" />
-              </div>
-              <div className="flex-1 space-y-0.5">
-                <TournamentRow rank={1} name="Tournament 1" sub="3 tournements" prize="20k" color="#c9a227" />
-                <TournamentRow rank={2} name="Coocche" sub="Maintenant requis" prize="40k" color="#00d4ff" />
-                <TournamentRow rank={3} name="Tournament 2" sub="3 tournements" prize="80k" color="#a855f7" />
-              </div>
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5">
-                <input
-                  value={joinInput}
-                  onChange={e => setJoinInput(e.target.value)}
-                  placeholder="Rejoier un tournement..."
-                  className="flex-1 bg-transparent text-[10px] text-white/50 placeholder-white/20 focus:outline-none"
-                />
-                <button className="w-6 h-6 rounded bg-poker-teal/20 flex items-center justify-center hover:bg-poker-teal/30 transition-colors">
-                  <Send size={10} className="text-poker-teal" />
-                </button>
-              </div>
+          {/* Quick-launch shortcuts to the trainers */}
+          <div className="flex-shrink-0">
+            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold mb-2 px-1">Lancer un entraînement</p>
+            <div className="grid grid-cols-3 gap-3">
+              <ShortcutCard icon={<Target size={16} />} title="Hand Trainer" accent="#00d4ff"
+                desc="Lecture de spot & décisions au quiz." onClick={() => navigate('/handtrainer')} />
+              <ShortcutCard icon={<GraduationCap size={16} />} title="Cash Game" accent="#22c55e"
+                desc="Joue en cash avec le coach en direct." onClick={() => navigate('/training')} />
+              <ShortcutCard icon={<Medal size={16} />} title="Tournoi (MTT)" accent="#c9a227"
+                desc="Tournois multi-tables, push/fold & ICM." onClick={() => navigate('/tournament')} />
+              <ShortcutCard icon={<FlaskConical size={16} />} title="Simulation" accent="#a855f7"
+                desc="Banc de test : mesure l'EV du coach." onClick={() => navigate('/simulation')} />
+              <ShortcutCard icon={<SlidersHorizontal size={16} />} title="Scénario" accent="#e0457b"
+                desc="Recrée n'importe quel spot sur mesure." onClick={() => navigate('/setup')} />
+              <ShortcutCard icon={<History size={16} />} title="Historique" accent="#9aa4b2"
+                desc="Revois et analyse tes coups joués." onClick={() => navigate('/history')} />
             </div>
           </div>
         </div>
@@ -537,85 +436,60 @@ export default function LobbyPage(): JSX.Element {
               ))}
             </div>
 
-            {/* Real-money play (UI only) */}
-            <button
-              onClick={() => setRealMoneyNote(v => !v)}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-600/40 bg-emerald-900/15 text-emerald-300/90 text-[10px] font-bold uppercase tracking-wide hover:bg-emerald-900/30 transition-all">
-              <DollarSign size={12} /> Jouer en argent réel
-            </button>
-            {realMoneyNote && (
-              <p className="text-[9px] text-white/40 mt-2 text-center leading-relaxed">
-                Le mode argent réel arrive bientôt — paiements et retraits sécurisés.
+          </div>
+
+          {/* Tes stats — real, derived from history */}
+          <div className="glass-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Tes stats</p>
+              <button onClick={() => navigate('/profile')} className="ml-auto text-[9px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wide font-bold">Profil →</button>
+            </div>
+            {stats.hasData ? (
+              <div className="grid grid-cols-2 gap-2">
+                <StatTile icon={<Spade size={13} />} label="Sessions" value={String(stats.totalSessions)} />
+                <StatTile icon={<TrendingUp size={13} />} label="Mains jouées" value={String(stats.totalHands)} />
+                <StatTile icon={<Crown size={13} />} label="ITM tournois" value={stats.tourPlayed ? `${stats.tourItmPct}%` : '—'} accent="#c9a227" />
+                <StatTile icon={<Trophy size={13} />} label="Net cash" value={`${stats.cashNetBB > 0 ? '+' : ''}${stats.cashNetBB} BB`} accent={stats.cashNetBB >= 0 ? '#4ade80' : '#f87171'} />
+              </div>
+            ) : (
+              <p className="text-[10.5px] text-white/35 leading-relaxed text-center py-2">
+                Aucune session encore. Lance un entraînement — tes vraies stats apparaîtront ici.
               </p>
             )}
           </div>
 
-          {/* Profile Overview */}
+          {/* Dernières sessions — real recent history */}
           <div className="glass-card p-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-full overflow-hidden border border-poker-gold/30 flex-shrink-0">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-poker-gold/20 flex items-center justify-center">
-                    <span className="text-poker-gold font-bold text-xs">{displayName[0].toUpperCase()}</span>
-                  </div>
-                )}
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Dernières sessions</p>
+              {stats.recent.length > 0 && (
+                <button onClick={() => navigate('/history')} className="ml-auto text-[9px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wide font-bold">Tout voir →</button>
+              )}
+            </div>
+            {stats.recent.length > 0 ? (
+              <div className="space-y-1.5">
+                {stats.recent.map(s => (
+                  <button key={s.id} onClick={() => navigate('/history')}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors text-left group">
+                    <span className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+                      style={{ background: s.kind === 'tournament' ? '#c9a2271f' : '#00d4ff1f', color: s.kind === 'tournament' ? '#c9a227' : '#00d4ff' }}>
+                      {s.kind === 'tournament' ? <Medal size={12} /> : <GraduationCap size={12} />}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[11px] font-semibold text-white/80 truncate group-hover:text-white transition-colors">{s.title}</span>
+                      <span className="block text-[9px] text-white/35 truncate">{s.subtitle}</span>
+                    </span>
+                    <span className={`text-[11px] font-black font-mono flex-shrink-0 ${s.resultBB > 0 ? 'text-emerald-400' : s.resultBB < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                      {s.resultBB > 0 ? '+' : ''}{s.kind === 'tournament' ? `$${Math.abs(s.resultBB).toLocaleString()}` : `${s.resultBB}BB`}
+                    </span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Profil Overview</p>
-                <p className="text-[9px] text-white/30">Skill progress</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <SkillBar label="Décision" value={98} color="#00d4ff" />
-              <SkillBar label="Stolen" value={20} color="#c9a227" />
-              <SkillBar label="Mise" value={20} color="#00d4ff" />
-              <SkillBar label="Découvrez" value={18} color="#c9a227" />
-              <SkillBar label="Précognitive" value={9} color="#a855f7" />
-            </div>
-          </div>
-
-          {/* Vos Favoris */}
-          <div className="glass-card p-4">
-            <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider mb-3">Vos Favoris</p>
-            <div className="space-y-1">
-              {[
-                { icon: <Star size={13} />, label: 'Vos favoris' },
-                { icon: <Users size={13} />, label: 'Vos Profil' },
-                { icon: <BarChart2 size={13} />, label: 'Classement' },
-                { icon: <BookOpen size={13} />, label: 'Vos outils' },
-              ].map((item, i) => (
-                <button key={i} className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors text-left group">
-                  <span className="text-white/30 group-hover:text-poker-teal transition-colors">{item.icon}</span>
-                  <span className="text-[11px] font-medium">{item.label}</span>
-                </button>
-              ))}
-              <div className="h-px bg-white/8 my-1" />
-              <button className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors text-left group">
-                <LogOut size={13} />
-                <span className="text-[11px] font-medium">Déconnexion</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Quick stats */}
-          <div className="glass-card p-4">
-            <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider mb-3">Cette semaine</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { icon: <Clock size={13} />, label: 'Heures', value: '4.5h' },
-                { icon: <TrendingUp size={13} />, label: 'Progrès', value: '+12%' },
-                { icon: <Trophy size={13} />, label: 'Victoires', value: '7' },
-                { icon: <Target size={13} />, label: 'Défis', value: '3/5' },
-              ].map((s, i) => (
-                <div key={i} className="bg-white/3 rounded-lg p-2 flex flex-col gap-1">
-                  <span className="text-white/30">{s.icon}</span>
-                  <span className="text-[9px] text-white/30 uppercase tracking-wide">{s.label}</span>
-                  <span className="text-sm font-bold text-white/80">{s.value}</span>
-                </div>
-              ))}
-            </div>
+            ) : (
+              <p className="text-[10.5px] text-white/35 leading-relaxed text-center py-2">
+                Tes sessions terminées s'afficheront ici.
+              </p>
+            )}
           </div>
 
         </aside>

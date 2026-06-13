@@ -7,12 +7,8 @@ import {
   GraduationCap,
   Medal,
   SlidersHorizontal,
-  BookOpen,
-  BarChart2,
   User,
   History,
-  Trophy,
-  HeadphonesIcon,
   FlaskConical,
   LogOut
 } from 'lucide-react'
@@ -26,6 +22,9 @@ interface NavItem {
   path: string
 }
 
+// Only routes that actually exist (App.tsx). Dead entries (Bibliothèque, Statistiques,
+// Classement, Support) were removed to avoid menu dead-ends; re-add them with a real
+// page when built.
 const NAV_ITEMS: NavItem[] = [
   { id: 'lobby', label: 'Accueil (Lobby)', icon: <Home size={20} />, path: '/lobby' },
   { id: 'handtrainer', label: 'Hand Trainer', icon: <Target size={20} />, path: '/handtrainer' },
@@ -33,12 +32,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'tournament', label: 'Entraînement Tournoi', icon: <Medal size={20} />, path: '/tournament' },
   { id: 'simulation', label: 'Simulation (banc de test)', icon: <FlaskConical size={20} />, path: '/simulation' },
   { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup' },
-  { id: 'library', label: 'Bibliothèque', icon: <BookOpen size={20} />, path: '/library' },
-  { id: 'stats', label: 'Statistiques', icon: <BarChart2 size={20} />, path: '/stats' },
   { id: 'profile', label: 'Profil', icon: <User size={20} />, path: '/profile' },
   { id: 'history', label: 'Historique', icon: <History size={20} />, path: '/history' },
-  { id: 'ranking', label: 'Classement', icon: <Trophy size={20} />, path: '/ranking' },
-  { id: 'support', label: 'Support', icon: <HeadphonesIcon size={20} />, path: '/support' }
 ]
 
 interface SidebarProps {

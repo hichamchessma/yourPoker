@@ -524,9 +524,6 @@ export default function AuthPage(): JSX.Element {
 
                   <div className="flex justify-center gap-3">
                     <SocialButton provider="google" onClick={handleGoogleLogin} />
-                    <SocialButton provider="apple" />
-                    <SocialButton provider="discord" />
-                    <SocialButton provider="facebook" />
                   </div>
                 </>
               )}
