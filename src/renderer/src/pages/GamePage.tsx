@@ -2832,7 +2832,11 @@ export default function GamePage(): JSX.Element {
     setTourHud({ playersLeft: tournament.field, secondsLeft: tournament.levelMinutes * 60 })
     setTourResult(null)
     sitOutRef.current = false; setSitOut(false)
-    startHand(createSeats(), 0, 0)
+    // createSeats() sizes stacks as stackBB × bbAmt, but bbAmt is still the END level's
+    // (huge) blind here (the level-0 re-render hasn't happened yet) → wrong stacks. Force
+    // the configured tournament starting stack (= startBB × level-0 BB, like a re-entry).
+    const freshStack = tournament.startBB * tourLevels[0].bb
+    startHand(createSeats().map(s => ({ ...s, stack: freshStack })), 0, 0)
   }
 
   function setPaused(paused: boolean) {
