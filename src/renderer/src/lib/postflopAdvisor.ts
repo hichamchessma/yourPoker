@@ -351,7 +351,15 @@ export function getPostflopAdvice(input: {
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
   aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number; donkLead?: boolean; facingRaise?: boolean
 }): Advice {
-  const { hole, board, pot, toCall, opponents, inPosition } = input
+  const { hole, board, pot, opponents, inPosition } = input
+  // You can NEVER call more than your remaining stack. Facing a bet bigger than your
+  // stack means you're all-in for LESS, so the true price — and therefore the pot odds —
+  // is your stack, not the full bet. Without this cap the coach prices the full bet and
+  // folds made hands that are getting massive odds to call off their last chips: e.g. AJ
+  // top pair folding for 9k into a 74k pot because it "needed" to pay a 28k river bet. In
+  // a tournament that's a catastrophic leak. When toCall ≤ stack (the normal case) the cap
+  // is a no-op → zero regression on every standard spot.
+  const toCall = input.heroStack > 0 ? Math.min(input.toCall, input.heroStack) : input.toCall
   const rawAggr0 = Math.max(0, Math.min(0.9, input.aggression ?? 0))
   // CALL PRESSURE: opponents who passively CALL several streets (especially multiway)
   // DON'T have air — a called-down range is value-heavy. The aggression model only
