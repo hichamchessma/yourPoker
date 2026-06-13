@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '../store/authStore'
 import { computePlayerStats } from '../lib/playerStats'
 import WindowControls from '../components/layout/WindowControls'
+import SoundToggle from '../components/SoundToggle'
 
 
 function KingCard({ rotation, glow }: { rotation: number; glow: string }) {
@@ -227,6 +228,8 @@ export default function LobbyPage(): JSX.Element {
         </div>
 
         <div className="flex-1" />
+
+        <SoundToggle />
 
         {/* User — click to open profile */}
         <button onClick={() => navigate('/profile')}

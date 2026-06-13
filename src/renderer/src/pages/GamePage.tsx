@@ -10,6 +10,8 @@ import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
 import { isElectron } from '../lib/platform'
+import { playSound, playDeal } from '../lib/sound'
+import SoundToggle from '../components/SoundToggle'
 import EquityReasoningBlock from '../components/EquityReasoning'
 import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
@@ -1522,6 +1524,12 @@ export default function GamePage(): JSX.Element {
     const heroProfit = bbAmt > 0 ? Math.round(((heroAfter - heroBefore) / bbAmt) * 10) / 10 : 0
     const winnerNames = finalGs.winners.map(wi => finalGs.seats[wi]?.name ?? '?')
 
+    // 🔊 win / loss sting — only when the hero actually had a result this hand.
+    if (heroSeat) {
+      if (finalGs.winners.includes(heroSeat.idx) && heroProfit > 0) playSound('win')
+      else if (heroProfit <= -1) playSound('lose')
+    }
+
     const record: HandHistoryRecord = {
       id: Date.now(),
       handNum: finalGs.handNum,
@@ -1928,6 +1936,18 @@ export default function GamePage(): JSX.Element {
     // Safety net: any committing action that empties the stack is all-in.
     if (!seat.isFolded && seat.stack <= 0) seat.isAllIn = true
 
+    // 🔊 Sound for the action (all-in trumps the base action).
+    {
+      const fx = seat.isAllIn ? 'allin'
+        : action === 'FOLD' ? 'fold'
+        : action === 'CHECK' ? 'check'
+        : action === 'CALL' ? 'call'
+        : action === 'BET' ? 'bet'
+        : action === 'RAISE' ? 'raise'
+        : null
+      if (fx) playSound(fx)
+    }
+
     // Range Vision: narrow this player's estimated range (uses pre-action context).
     trackRange(seatIdx, action, currentGs, actualAmount)
 
@@ -2050,6 +2070,9 @@ export default function GamePage(): JSX.Element {
     } else if (phase === 'river') {
       community[4] = deck.pop() ?? null
     }
+
+    // 🔊 board cards landing on the felt
+    playDeal(phase === 'flop' ? 3 : 1, 0.13)
 
     // Record phase event
     recordAction({ phase, seatIdx: -1, name: '', isHero: false, actionType: PHASE_LABEL[phase], amount: 0 }, state.pot)
@@ -2754,6 +2777,7 @@ export default function GamePage(): JSX.Element {
       })
       const ds: GState = { ...dealingState, seats: dealt }
       setGs(ds); gsRef.current = ds
+      playSound('deal')
       const finishT = setTimeout(openPreflop, 40)
       dealTimeoutsRef.current.push(finishT)
       return
@@ -2761,6 +2785,7 @@ export default function GamePage(): JSX.Element {
 
     // Normal mode: pitch the cards one by one for the dealing animation.
     const STEP = 80
+    playDeal(assigns.length, STEP / 1000) // 🔊 staggered card pitches, in sync with the visual
     assigns.forEach((a, i) => {
       const t = setTimeout(() => {
         const cur = gsRef.current
@@ -3516,6 +3541,9 @@ export default function GamePage(): JSX.Element {
             </button>
           </div>
         )}
+
+        {/* Sound mute + volume */}
+        <SoundToggle className="app-drag-none" />
 
         {/* Window controls — desktop only (hidden on web) */}
         {isElectron && (
