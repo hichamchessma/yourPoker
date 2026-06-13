@@ -6,7 +6,12 @@ import './assets/styles/globals.css'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 
-supabase.auth.onAuthStateChange((_event, session) => {
+supabase.auth.onAuthStateChange((event, session) => {
+  // A recovery link opens a temporary session AND fires PASSWORD_RECOVERY —
+  // flag it so the app shows the "new password" screen instead of the lobby.
+  if (event === 'PASSWORD_RECOVERY') {
+    useAuthStore.getState().setPasswordRecovery(true)
+  }
   useAuthStore.getState().setSession(session)
 })
 

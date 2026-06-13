@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Lock, KeyRound } from 'lucide-react'
 import Sidebar from '../components/layout/Sidebar'
@@ -89,8 +89,11 @@ function PlayingCard({ rank, suit, rotation = 0, glowColor = '#c9a227' }: { rank
   )
 }
 
+type AuthMode = 'login' | 'signup' | 'forgot' | 'reset'
+
 export default function AuthPage(): JSX.Element {
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const { setSession, passwordRecovery, setPasswordRecovery } = useAuthStore()
+  const [mode, setMode] = useState<AuthMode>(passwordRecovery ? 'reset' : 'login')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [identifier, setIdentifier] = useState('')
@@ -99,15 +102,67 @@ export default function AuthPage(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const { setSession } = useAuthStore()
 
-  const switchMode = (m: 'login' | 'signup') => {
+  // Surface OAuth / recovery errors that providers return in the URL, and force
+  // the reset screen when a recovery link is opened.
+  useEffect(() => {
+    if (passwordRecovery) setMode('reset')
+    const raw = window.location.href
+    const errMatch = /[?#&]error_description=([^&]+)/.exec(raw) || /[?#&]error=([^&]+)/.exec(raw)
+    if (errMatch) {
+      try { setError(decodeURIComponent(errMatch[1].replace(/\+/g, ' '))) } catch { setError('Erreur d’authentification') }
+    }
+  }, [passwordRecovery])
+
+  const switchMode = (m: AuthMode) => {
     setMode(m); setError(null); setNotice(null); setConfirmPassword('')
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     if (mode === 'signup') return handleSignup(e)
+    if (mode === 'forgot') return handleForgot(e)
+    if (mode === 'reset') return handleReset(e)
     return handleLogin(e)
+  }
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null); setNotice(null)
+    if (!identifier.includes('@')) { setError('Entre l’adresse e-mail de ton compte.'); return }
+    setIsLoading(true)
+    try {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(identifier.trim(), {
+        redirectTo: window.location.origin
+      })
+      if (resetErr) throw resetErr
+      setNotice('Si un compte existe pour cette adresse, un e-mail de réinitialisation vient d’être envoyé.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de l’envoi du lien')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null); setNotice(null)
+    if (password.length < 6) { setError('Le mot de passe doit faire au moins 6 caractères.'); return }
+    if (password !== confirmPassword) { setError('Les mots de passe ne correspondent pas.'); return }
+    setIsLoading(true)
+    try {
+      const { error: updErr } = await supabase.auth.updateUser({ password })
+      if (updErr) throw updErr
+      // Done: drop the recovery session and send the user back to a clean login.
+      await supabase.auth.signOut()
+      setPasswordRecovery(false)
+      setPassword(''); setConfirmPassword('')
+      setNotice('Mot de passe mis à jour ! Connecte-toi avec ton nouveau mot de passe.')
+      setMode('login')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -306,7 +361,10 @@ export default function AuthPage(): JSX.Element {
                 Poker Elite Coach
               </h1>
               <p className="text-poker-teal text-xs tracking-[0.35em] uppercase mt-2 font-semibold">
-                {mode === 'signup' ? 'Créer un compte' : "Page d'Authentification"}
+                {mode === 'signup' ? 'Créer un compte'
+                  : mode === 'forgot' ? 'Mot de passe oublié'
+                  : mode === 'reset' ? 'Nouveau mot de passe'
+                  : "Page d'Authentification"}
               </p>
               <div className="w-28 h-px bg-gradient-to-r from-transparent via-poker-teal/60 to-transparent mx-auto mt-3" />
             </div>
@@ -314,10 +372,11 @@ export default function AuthPage(): JSX.Element {
             {/* Auth card */}
             <div className="glass-card p-7">
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Email */}
+                {/* Email — hidden in reset mode (recovery session already identifies the user) */}
+                {mode !== 'reset' && (
                 <div>
                   <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
-                    {mode === 'signup' ? 'E-mail' : "E-mail ou Nom d'Utilisateur"}
+                    {mode === 'login' ? "E-mail ou Nom d'Utilisateur" : 'E-mail'}
                   </label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
@@ -332,11 +391,13 @@ export default function AuthPage(): JSX.Element {
                     />
                   </div>
                 </div>
+                )}
 
-                {/* Password */}
+                {/* Password — hidden in forgot mode (only the e-mail is needed) */}
+                {mode !== 'forgot' && (
                 <div>
                   <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
-                    Mot de Passe
+                    {mode === 'reset' ? 'Nouveau mot de passe' : 'Mot de Passe'}
                   </label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
@@ -348,7 +409,7 @@ export default function AuthPage(): JSX.Element {
                       onChange={(e) => setPassword(e.target.value)}
                       className="input-dark pl-10 pr-24"
                       placeholder="••••••••••"
-                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     />
                     <button
                       type="button"
@@ -360,9 +421,10 @@ export default function AuthPage(): JSX.Element {
                     </button>
                   </div>
                 </div>
+                )}
 
-                {/* Confirm password — signup only */}
-                {mode === 'signup' && (
+                {/* Confirm password — signup and reset */}
+                {(mode === 'signup' || mode === 'reset') && (
                   <div>
                     <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
                       Confirmer le mot de passe
@@ -396,7 +458,7 @@ export default function AuthPage(): JSX.Element {
                     </div>
                     <span className="text-[10px] text-white/50 uppercase tracking-wider select-none">Se souvenir de moi</span>
                   </label>
-                  <button type="button" className="text-[10px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wider font-semibold">
+                  <button type="button" onClick={() => switchMode('forgot')} className="text-[10px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wider font-semibold">
                     Mot de passe oublié ?
                   </button>
                 </div>
@@ -437,35 +499,67 @@ export default function AuthPage(): JSX.Element {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                       </svg>
-                      {mode === 'signup' ? 'Création...' : 'Connexion...'}
+                      {mode === 'signup' ? 'Création...'
+                        : mode === 'forgot' ? 'Envoi...'
+                        : mode === 'reset' ? 'Mise à jour...'
+                        : 'Connexion...'}
                     </span>
-                  ) : (mode === 'signup' ? "S'inscrire" : 'Se Connecter')}
+                  ) : (
+                    mode === 'signup' ? "S'inscrire"
+                      : mode === 'forgot' ? 'Envoyer le lien'
+                      : mode === 'reset' ? 'Mettre à jour le mot de passe'
+                      : 'Se Connecter'
+                  )}
                 </motion.button>
               </form>
 
-              {/* Divider */}
-              <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-[10px] text-white/30 uppercase tracking-widest">{mode === 'signup' ? "Ou s'inscrire avec" : 'Ou se connecter avec'}</span>
-                <div className="flex-1 h-px bg-white/10" />
-              </div>
+              {/* Divider + social — login/signup only */}
+              {(mode === 'login' || mode === 'signup') && (
+                <>
+                  <div className="flex items-center gap-3 my-5">
+                    <div className="flex-1 h-px bg-white/10" />
+                    <span className="text-[10px] text-white/30 uppercase tracking-widest">{mode === 'signup' ? "Ou s'inscrire avec" : 'Ou se connecter avec'}</span>
+                    <div className="flex-1 h-px bg-white/10" />
+                  </div>
 
-              {/* Social */}
-              <div className="flex justify-center gap-3">
-                <SocialButton provider="google" onClick={handleGoogleLogin} />
-                <SocialButton provider="apple" />
-                <SocialButton provider="discord" />
-                <SocialButton provider="facebook" />
-              </div>
+                  <div className="flex justify-center gap-3">
+                    <SocialButton provider="google" onClick={handleGoogleLogin} />
+                    <SocialButton provider="apple" />
+                    <SocialButton provider="discord" />
+                    <SocialButton provider="facebook" />
+                  </div>
+                </>
+              )}
 
+              {/* Bottom navigation between modes */}
               <p className="text-center mt-5 text-[10px] text-white/40 uppercase tracking-wider">
-                {mode === 'signup' ? 'Déjà un compte ?' : 'Pas encore de compte ?'}{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode(mode === 'signup' ? 'login' : 'signup')}
-                  className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
-                  {mode === 'signup' ? 'Se connecter' : "S'inscrire ici"}
-                </button>
+                {mode === 'login' && (
+                  <>Pas encore de compte ?{' '}
+                    <button type="button" onClick={() => switchMode('signup')}
+                      className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
+                      S'inscrire ici
+                    </button>
+                  </>
+                )}
+                {mode === 'signup' && (
+                  <>Déjà un compte ?{' '}
+                    <button type="button" onClick={() => switchMode('login')}
+                      className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
+                      Se connecter
+                    </button>
+                  </>
+                )}
+                {mode === 'forgot' && (
+                  <>Tu te souviens ?{' '}
+                    <button type="button" onClick={() => switchMode('login')}
+                      className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
+                      Retour à la connexion
+                    </button>
+                  </>
+                )}
+                {mode === 'reset' && (
+                  <>Choisis un nouveau mot de passe pour ton compte.</>
+                )}
               </p>
             </div>
           </motion.div>

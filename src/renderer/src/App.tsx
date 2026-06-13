@@ -13,7 +13,7 @@ import AppLayout from './layouts/AppLayout'
 import { useAuthStore } from './store/authStore'
 
 function App(): JSX.Element {
-  const { session, loading } = useAuthStore()
+  const { session, loading, passwordRecovery } = useAuthStore()
 
   if (loading) {
     return (
@@ -21,6 +21,12 @@ function App(): JSX.Element {
         <div className="w-8 h-8 border-2 border-poker-teal border-t-transparent rounded-full animate-spin" />
       </div>
     )
+  }
+
+  // Password-recovery flow: show the reset screen exclusively, even though the
+  // recovery link created an active session.
+  if (passwordRecovery) {
+    return <AuthPage />
   }
 
   return (
