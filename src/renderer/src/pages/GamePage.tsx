@@ -2204,6 +2204,9 @@ export default function GamePage(): JSX.Element {
       if (i === 0 || sc >= bestShown) { reveal.add(idx); bestShown = Math.max(bestShown, sc) }
     })
     winnerSet.forEach(w => reveal.add(w)) // winners must table to claim
+    // In the Revive sandbox the whole point is to ANALYSE the hand — reveal every
+    // contender's cards (no muck) so the player can study what the opponents had.
+    if (simModeRef.current) contenderIdxs.forEach(idx => reveal.add(idx))
 
     const finalSeats = evaluated.map(s => {
       const shown = !s.isFolded && (s.isHero || reveal.has(s.idx))
@@ -4143,30 +4146,36 @@ export default function GamePage(): JSX.Element {
       {/* ── Revive sandbox: end-of-hand prompt (replay re-draws opponents) ── */}
       <AnimatePresence>
         {simMode && simResult && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            className="fixed inset-0 z-[90] flex items-center justify-center" style={{background:'rgba(6,5,18,0.78)'}}>
-            <motion.div initial={{scale:0.92,y:18}} animate={{scale:1,y:0}}
-              className="rounded-2xl border p-7 text-center max-w-md"
-              style={{ background:'#0e0c22', borderColor:'rgba(167,139,255,0.4)', boxShadow:'0 0 60px rgba(120,90,230,0.35)' }}>
-              <div className="text-4xl mb-2">⚡</div>
-              <h2 className="text-lg font-black uppercase tracking-[0.18em] text-[#c8b6ff]">Main terminée</h2>
-              <p className="text-[12px] text-white/55 mt-2 mb-1">
-                {simResult.winners.map(wi => simResult.seats.find(s => s.idx === wi)?.name ?? '?').join(', ') || '—'} remporte le coup
-                {(() => { const h = simResult.seats.find(s => s.isHero); return h && simResult.winners.includes(h.idx) ? ' — tu gagnes 🎉' : '' })()}
-              </p>
-              <p className="text-[10px] text-white/35 mb-5">Rejouer redistribue de nouvelles cartes aux adversaires (dans leur range) — tes cartes ne changent pas.</p>
-              <div className="flex items-center justify-center gap-3">
+          // Non-blocking dock: the table, the revealed cards and the range popups stay
+          // fully visible/interactive so the player can analyse the hand at their own
+          // pace, then calmly choose to replay or quit.
+          <motion.div initial={{opacity:0, y:-16}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-16}}
+            className="fixed top-[64px] left-1/2 -translate-x-1/2 z-[80] pointer-events-none">
+            <div className="pointer-events-auto rounded-2xl border px-5 py-3 flex items-center gap-5 backdrop-blur-md"
+              style={{ background:'rgba(14,12,34,0.92)', borderColor:'rgba(167,139,255,0.45)', boxShadow:'0 10px 50px rgba(120,90,230,0.4)' }}>
+              <div className="text-left">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚡</span>
+                  <h2 className="text-[12px] font-black uppercase tracking-[0.16em] text-[#c8b6ff]">Main terminée</h2>
+                </div>
+                <p className="text-[11px] text-white/55 mt-0.5">
+                  {simResult.winners.map(wi => simResult.seats.find(s => s.idx === wi)?.name ?? '?').join(', ') || '—'} remporte
+                  {(() => { const h = simResult.seats.find(s => s.isHero); return h && simResult.winners.includes(h.idx) ? ' — tu gagnes 🎉' : '' })()}
+                </p>
+                <p className="text-[9.5px] text-white/35 mt-0.5">Analyse le coup — survole les cartes pour voir les ranges. Prends ton temps.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button onClick={restartSim}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-[0.16em] text-[12px] transition-all hover:scale-[1.03]"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-black uppercase tracking-[0.14em] text-[11px] transition-all hover:scale-[1.04]"
                   style={{ background:'linear-gradient(135deg,#a78bff,#6d4ed6)', color:'#0a0716' }}>
-                  <RefreshCw size={14}/> Rejouer le coup
+                  <RefreshCw size={13}/> Rejouer
                 </button>
                 <button onClick={exitSim}
-                  className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
+                  className="px-4 py-2 rounded-xl font-bold uppercase tracking-[0.14em] text-[11px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
                   Quitter
                 </button>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
