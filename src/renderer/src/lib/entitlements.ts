@@ -9,6 +9,7 @@
 // `isPro` reads the server flag and "Passer Pro" opens checkout.
 // ─────────────────────────────────────────────────────────────────────────────
 import { create } from 'zustand'
+import { supabase } from './supabase'
 
 const LS_PRO = 'yourpoker_pro'
 
@@ -24,6 +25,42 @@ export const useEntitlements = create<EntitlementsState>((set) => ({
 
 export function useIsPro(): boolean {
   return useEntitlements((s) => s.isPro)
+}
+
+// Read the REAL Pro status from the server (the subscriptions table, written by the
+// webhook). If the table/row doesn't exist yet (beta, payments not wired), we leave the
+// local stub untouched — so the beta "free unlock" keeps working. Once a real row
+// exists, the server is authoritative (handles renewals AND cancellations).
+export async function refreshProFromServer(): Promise<void> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    const user = auth?.user
+    if (!user) return
+    const { data, error } = await supabase
+      .from('subscriptions')
+      .select('status,current_period_end')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (error || data == null) return // not configured / no subscription → keep local stub
+    const active = data.status === 'active' &&
+      (!data.current_period_end || new Date(data.current_period_end as string) > new Date())
+    useEntitlements.getState().setPro(active)
+  } catch { /* ignore — offline / not configured */ }
+}
+
+// The Lemon Squeezy checkout URL for a billing cycle, or null in beta (not configured).
+// The user id is passed as custom data so the webhook can map the payment back.
+export function checkoutUrl(cycle: 'monthly' | 'yearly', email?: string, userId?: string): string | null {
+  const base = (cycle === 'yearly'
+    ? import.meta.env.VITE_LS_CHECKOUT_YEARLY
+    : import.meta.env.VITE_LS_CHECKOUT_MONTHLY) as string | undefined
+  if (!base) return null
+  try {
+    const url = new URL(base)
+    if (email) url.searchParams.set('checkout[email]', email)
+    if (userId) url.searchParams.set('checkout[custom][user_id]', userId)
+    return url.toString()
+  } catch { return base }
 }
 
 // Features reserved for Pro (used for menu badges + page gates). Easy to re-split.

@@ -6,6 +6,7 @@ import './assets/styles/globals.css'
 import { supabase } from './lib/supabase'
 import { isWeb } from './lib/platform'
 import { useAuthStore } from './store/authStore'
+import { refreshProFromServer } from './lib/entitlements'
 
 // Register the auth listener FIRST so no event is missed during the callback exchange.
 supabase.auth.onAuthStateChange((event, session) => {
@@ -15,6 +16,8 @@ supabase.auth.onAuthStateChange((event, session) => {
     useAuthStore.getState().setPasswordRecovery(true)
   }
   useAuthStore.getState().setSession(session)
+  // Sync the real Pro status from the server whenever a session is present.
+  if (session) refreshProFromServer()
 })
 
 // Safety: never get stuck on the loading spinner if no auth event ever arrives.

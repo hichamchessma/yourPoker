@@ -1,17 +1,22 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Sparkles, Crown, ArrowLeft } from 'lucide-react'
-import { useEntitlements, PLAN_FREE, PLAN_PRO, PRICE } from '../lib/entitlements'
+import { useAuthStore } from '../store/authStore'
+import { useEntitlements, checkoutUrl, PLAN_FREE, PLAN_PRO, PRICE } from '../lib/entitlements'
 
 export default function PricingPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
   const { isPro, setPro } = useEntitlements()
   const [cycle, setCycle] = useState<'monthly' | 'yearly'>('yearly')
   const [done, setDone] = useState(false)
 
-  // Beta: grant Pro instantly (no payment yet). When Stripe/MoR is wired this becomes
-  // a checkout redirect and `isPro` comes from the server.
-  const goPro = () => { setPro(true); setDone(true) }
+  // Real checkout if Lemon Squeezy is configured, else beta free-unlock.
+  const goPro = () => {
+    const url = checkoutUrl(cycle, user?.email ?? undefined, user?.id)
+    if (url) { window.location.href = url; return }
+    setPro(true); setDone(true)
+  }
 
   const price = cycle === 'monthly' ? PRICE.monthly : PRICE.yearly
   const perMonth = cycle === 'yearly' ? (PRICE.yearly / 12).toFixed(2) : PRICE.monthly.toFixed(2)
