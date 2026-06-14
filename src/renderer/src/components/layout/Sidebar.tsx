@@ -16,12 +16,16 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
+import { useIsPro } from '../../lib/entitlements'
+import ProBadge from '../ProBadge'
+import { Sparkles, Crown } from 'lucide-react'
 
 interface NavItem {
   id: string
   label: string
   icon: React.ReactNode
   path: string
+  pro?: boolean
 }
 
 // Only routes that actually exist (App.tsx). Dead entries (Bibliothèque, Statistiques,
@@ -32,8 +36,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'handtrainer', label: 'Hand Trainer', icon: <Target size={20} />, path: '/handtrainer' },
   { id: 'training', label: 'Entraînement CashGame', icon: <GraduationCap size={20} />, path: '/training' },
   { id: 'tournament', label: 'Entraînement Tournoi', icon: <Medal size={20} />, path: '/tournament' },
-  { id: 'simulation', label: 'Simulation (banc de test)', icon: <FlaskConical size={20} />, path: '/simulation' },
-  { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup' },
+  { id: 'simulation', label: 'Simulation (banc de test)', icon: <FlaskConical size={20} />, path: '/simulation', pro: true },
+  { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup', pro: true },
   { id: 'leaderboard', label: 'Classement', icon: <Trophy size={20} />, path: '/leaderboard' },
   { id: 'profile', label: 'Profil', icon: <User size={20} />, path: '/profile' },
   { id: 'history', label: 'Historique', icon: <History size={20} />, path: '/history' },
@@ -49,6 +53,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
   const navigate = useNavigate()
   const location = useLocation()
   const { signOut } = useAuthStore()
+  const isPro = useIsPro()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [revealed, setRevealed] = useState(false)
 
@@ -111,13 +116,26 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
               <span className="font-display font-semibold text-sm tracking-wide uppercase">
                 {item.label}
               </span>
+              {item.pro && !isPro && <ProBadge className="ml-auto flex-shrink-0" />}
             </motion.button>
           )
         })}
       </nav>
 
-      {/* Bottom — logout + version */}
+      {/* Bottom — upgrade CTA + logout + version */}
       <div className="p-3 space-y-2">
+        {isPro ? (
+          <div className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#c9a227]/10 border border-[#c9a227]/30 text-[#c9a227]">
+            <Crown size={13} /> <span className="text-[10px] font-black uppercase tracking-widest">Membre Pro</span>
+          </div>
+        ) : (
+          <button onClick={() => navigate('/pricing')}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all hover:brightness-110"
+            style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)', color: '#0a0a0a' }}>
+            <Sparkles size={13} /> Passer Pro
+          </button>
+        )}
+
         <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
         <AnimatePresence>
