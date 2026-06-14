@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import AuthPage from './pages/AuthPage'
+import LandingPage from './pages/LandingPage'
 import LobbyPage from './pages/LobbyPage'
 import HandTrainerPage from './pages/HandTrainerPage'
 import ProfilePage from './pages/ProfilePage'
@@ -41,10 +42,12 @@ function App(): JSX.Element {
 
   return (
     <Routes>
+      {/* Public marketing landing — the first thing a logged-out visitor sees. */}
+      <Route path="/welcome" element={session ? <Navigate to="/lobby" replace /> : <LandingPage />} />
       <Route path="/auth" element={session ? <Navigate to="/lobby" replace /> : <AuthPage />} />
       <Route
         path="/"
-        element={session ? <AppLayout /> : <Navigate to="/auth" replace />}
+        element={session ? <AppLayout /> : <Navigate to="/welcome" replace />}
       >
         <Route index element={<Navigate to="/lobby" replace />} />
         <Route path="lobby" element={<LobbyPage />} />
@@ -59,7 +62,7 @@ function App(): JSX.Element {
         <Route path="history" element={<HistoryPage />} />
         <Route path="game" element={<GamePage />} />
       </Route>
-      <Route path="*" element={<Navigate to={session ? '/lobby' : '/auth'} replace />} />
+      <Route path="*" element={<Navigate to={session ? '/lobby' : '/welcome'} replace />} />
     </Routes>
   )
 }
