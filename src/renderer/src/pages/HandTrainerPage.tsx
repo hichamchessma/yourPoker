@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Target, Sliders, Play, Check, RotateCcw, ChevronLeft, Trophy, ScanEye, Zap } from 'lucide-react'
+import { Target, Sliders, Play, Check, RotateCcw, ChevronLeft, Trophy, ScanEye, Zap, ArrowRight, Lock } from 'lucide-react'
 import WindowControls from '../components/layout/WindowControls'
 import { GRID_RANKS, cellKey, handKeyFromCards, buildRangeMap } from '../lib/preflopRanges'
 import SpotReadTrainer from '../components/SpotReadTrainer'
@@ -92,10 +92,29 @@ export default function HandTrainerPage() {
     setPicked(a)
     if (a === q.correct) setScore(s => s + 1)
     else wrongsRef.current.push(q)
-    setTimeout(() => {
-      if (qi + 1 >= questions.length) setScreen('result')
-      else { setQi(qi + 1); setPicked(null) }
-    }, 850)
+    // No auto-advance: the range is revealed → let the player STUDY it, then click Suivant.
+  }
+  function next() {
+    if (qi + 1 >= questions.length) setScreen('result')
+    else { setQi(qi + 1); setPicked(null) }
+  }
+
+  // Full action map (13×13) for the current spot — built ONCE (not 169 chart lookups).
+  function buildSpotMap(q: Question): Record<string, TAction> {
+    const m: Record<string, TAction> = {}
+    if (mode === 'custom' && custom) {
+      const cm = custom[q.scenario]?.[q.position]
+      for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const k = cellKey(i, j); m[k] = cm?.[k] ?? standardAction(q.scenario, q.position, k, q.openerPos) }
+      return m
+    }
+    const full = q.scenario === 'open'
+      ? buildRangeMap('rfi', q.position)
+      : buildRangeMap('vsopen', q.position, undefined, { vsOpenerPos: q.openerPos, raiseToBB: 2.5, effBB: 100 })
+    for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) {
+      const k = cellKey(i, j); const a = full.get(k)
+      m[k] = q.scenario === 'open' ? (a === 'raise' ? 'open' : 'fold') : (a === '3bet' ? '3bet' : a === 'call' ? 'call' : 'fold')
+    }
+    return m
   }
 
   // ── Editor: lazily seed standard ranges for all (scenario, position) ──────────
@@ -199,62 +218,10 @@ export default function HandTrainerPage() {
           )}
 
           {/* ── QUIZ ── */}
-          {screen === 'quiz' && questions[qi] && (() => {
-            const q = questions[qi]
-            const aggLabel = q.scenario === 'open' ? 'OPEN' : '3-BET'
-            const aggAct: TAction = q.scenario === 'open' ? 'open' : '3bet'
-            const reveal = picked !== null
-            const btn = (act: TAction, label: string) => {
-              const isCorrect = act === q.correct
-              const isPicked = picked === act
-              let style: React.CSSProperties = { borderColor: 'rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.7)' }
-              if (reveal && isCorrect) style = { borderColor: '#16a34a', background: 'rgba(22,163,74,0.22)', color: '#4ade80' }
-              else if (reveal && isPicked && !isCorrect) style = { borderColor: '#dc2626', background: 'rgba(220,38,38,0.2)', color: '#f87171' }
-              return (
-                <button key={act} disabled={reveal} onClick={() => answer(act)}
-                  className="flex-1 py-4 rounded-xl text-sm font-black uppercase tracking-widest border transition-all disabled:cursor-default enabled:hover:scale-[1.03]"
-                  style={style}>{label}{reveal && isCorrect && ' ✓'}{reveal && isPicked && !isCorrect && ' ✗'}</button>
-              )
-            }
-            return (
-              <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-lg mt-6">
-                {/* progress */}
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-white/45 font-bold uppercase tracking-widest">Main {qi + 1} / {questions.length}</span>
-                  <span className="text-[11px] font-bold"><span className="text-emerald-400">{score}</span><span className="text-white/30"> bonnes</span></span>
-                </div>
-                <div className="h-1 rounded-full bg-white/8 overflow-hidden mb-6">
-                  <div className="h-full bg-[#00d4ff] transition-all" style={{ width: `${(qi / questions.length) * 100}%` }} />
-                </div>
-
-                {/* spot */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 text-center mb-5">
-                  <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
-                    Position <span className="text-[#c9a227] font-bold">{q.position}</span> — {q.scenario === 'open' ? 'personne n\'a ouvert' : `face à l'ouverture de ${q.openerPos}`}
-                  </p>
-                  <div className="flex items-center justify-center gap-3 my-4">
-                    {[q.c1, q.c2].map((c, i) => (
-                      <div key={i} className="w-20 h-28 rounded-xl bg-white flex flex-col items-center justify-center shadow-lg" style={{ color: RED(c.suit) ? '#d32f2f' : '#1a1a1a' }}>
-                        <span className="font-black text-4xl leading-none">{c.rank}</span>
-                        <span className="text-3xl leading-none">{c.suit}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-white/30 font-mono">{q.key}</p>
-                </div>
-
-                {/* actions */}
-                <div className="flex gap-3">
-                  {btn('fold', 'FOLD')}
-                  {btn('call', 'CALL')}
-                  {btn(aggAct, aggLabel)}
-                </div>
-                {reveal && picked !== q.correct && (
-                  <p className="text-center text-[11px] text-white/50 mt-3">Bonne réponse : <span className="font-bold" style={{ color: ACT[q.correct].color }}>{ACT[q.correct].label}</span></p>
-                )}
-              </motion.div>
-            )
-          })()}
+          {screen === 'quiz' && questions[qi] && (
+            <QuizScreen key="quiz" q={questions[qi]} qi={qi} total={questions.length} score={score}
+              picked={picked} onAnswer={answer} onNext={next} buildSpotMap={buildSpotMap} />
+          )}
 
           {/* ── RESULT ── */}
           {screen === 'result' && (
@@ -285,6 +252,190 @@ export default function HandTrainerPage() {
           )}
         </AnimatePresence>
       </div>
+    </div>
+  )
+}
+
+// ── Quiz screen: question on the left, MYSTERY range grid on the right ─────────
+function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMap }: {
+  q: Question; qi: number; total: number; score: number; picked: TAction | null
+  onAnswer: (a: TAction) => void; onNext: () => void; buildSpotMap: (q: Question) => Record<string, TAction>
+}) {
+  const reveal = picked !== null
+  const spotMap = useMemo(() => buildSpotMap(q), [q]) // eslint-disable-line react-hooks/exhaustive-deps
+  const aggLabel = q.scenario === 'open' ? 'OPEN' : '3-BET'
+  const aggAct: TAction = q.scenario === 'open' ? 'open' : '3bet'
+  const isLast = qi + 1 >= total
+
+  const btn = (act: TAction, label: string) => {
+    const isCorrect = act === q.correct
+    const isPicked = picked === act
+    let style: React.CSSProperties = { borderColor: 'rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.7)' }
+    if (reveal && isCorrect) style = { borderColor: '#16a34a', background: 'rgba(22,163,74,0.22)', color: '#4ade80' }
+    else if (reveal && isPicked && !isCorrect) style = { borderColor: '#dc2626', background: 'rgba(220,38,38,0.2)', color: '#f87171' }
+    return (
+      <button key={act} disabled={reveal} onClick={() => onAnswer(act)}
+        className="flex-1 py-4 rounded-xl text-sm font-black uppercase tracking-widest border transition-all disabled:cursor-default enabled:hover:scale-[1.03]"
+        style={style}>{label}{reveal && isCorrect && ' ✓'}{reveal && isPicked && !isCorrect && ' ✗'}</button>
+    )
+  }
+
+  return (
+    <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="relative w-full max-w-5xl mt-3">
+      <QuizBackground reveal={reveal} correct={reveal ? picked === q.correct : null} />
+
+      <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_minmax(290px,380px)] gap-6 items-start">
+        {/* ── LEFT : question ── */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] text-white/45 font-bold uppercase tracking-widest">Main {qi + 1} / {total}</span>
+            <span className="text-[11px] font-bold"><span className="text-emerald-400">{score}</span><span className="text-white/30"> bonnes</span></span>
+          </div>
+          <div className="h-1 rounded-full bg-white/8 overflow-hidden mb-5">
+            <div className="h-full bg-[#00d4ff] transition-all" style={{ width: `${(qi / total) * 100}%` }} />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6 text-center mb-5">
+            <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+              Position <span className="text-[#c9a227] font-bold">{q.position}</span> — {q.scenario === 'open' ? 'personne n\'a ouvert' : `face à l'ouverture de ${q.openerPos}`}
+            </p>
+            <div className="flex items-center justify-center gap-3 my-4">
+              {[q.c1, q.c2].map((c, i) => (
+                <motion.div key={i} initial={{ rotateY: 90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} transition={{ delay: i * 0.08 }}
+                  className="w-20 h-28 rounded-xl bg-white flex flex-col items-center justify-center shadow-lg" style={{ color: RED(c.suit) ? '#d32f2f' : '#1a1a1a' }}>
+                  <span className="font-black text-4xl leading-none">{c.rank}</span>
+                  <span className="text-3xl leading-none">{c.suit}</span>
+                </motion.div>
+              ))}
+            </div>
+            <p className="text-[10px] text-white/30 font-mono">{q.key}</p>
+          </div>
+
+          <div className="flex gap-3">
+            {btn('fold', 'FOLD')}
+            {btn('call', 'CALL')}
+            {btn(aggAct, aggLabel)}
+          </div>
+
+          <AnimatePresence>
+            {reveal && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
+                {picked !== q.correct && (
+                  <p className="text-center text-[11px] text-white/50 mb-3">Bonne réponse : <span className="font-bold" style={{ color: ACT[q.correct].color }}>{ACT[q.correct].label}</span></p>
+                )}
+                <button onClick={onNext}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black uppercase tracking-[0.18em] text-sm transition-all hover:scale-[1.02]"
+                  style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
+                  {isLast ? 'Voir le résultat' : 'Main suivante'} <ArrowRight size={16} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ── RIGHT : mystery range grid ── */}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            {reveal ? <Target size={13} className="text-[#ff2d55]" /> : <Lock size={13} className="text-white/40" />}
+            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: reveal ? '#ff7a96' : 'rgba(255,255,255,0.45)' }}>
+              {reveal ? 'Range correcte' : 'Range mystère'}
+            </p>
+          </div>
+          <RangeGrid map={spotMap} highlight={q.key} revealed={reveal} />
+          <AnimatePresence>
+            {reveal && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center gap-3 mt-3 flex-wrap">
+                {(q.scenario === 'open' ? ['open', 'fold'] : ['3bet', 'call', 'fold'] as TAction[]).map(a => (
+                  <div key={a} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: ACT[a as TAction].color }} /><span className="text-[9px] text-white/55 font-bold uppercase tracking-wide">{ACT[a as TAction].label}</span></div>
+                ))}
+                <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm border-2" style={{ borderColor: '#ff2d55', boxShadow: '0 0 6px #ff2d55' }} /><span className="text-[9px] text-[#ff7a96] font-bold uppercase tracking-wide">Ta main</span></div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// 13×13 range grid: dark "mystery" until revealed, then each cell wipes in (diagonal
+// stagger) with the played hand ringed in red laser.
+function RangeGrid({ map, highlight, revealed }: { map: Record<string, TAction>; highlight: string; revealed: boolean }) {
+  return (
+    <div className="relative mx-auto" style={{ width: 'min(100%, 360px)' }}>
+      <div className="grid select-none rounded-lg overflow-hidden" style={{ gridTemplateColumns: 'repeat(13,1fr)', gap: 2 }}>
+        {GRID_RANKS.map((_, i) => GRID_RANKS.map((__, j) => {
+          const k = cellKey(i, j)
+          const a = map[k] ?? 'fold'
+          const c = ACT[a]
+          const isHi = k === highlight
+          return (
+            <div key={`${i}-${j}`} className="relative flex items-center justify-center rounded-[2px]"
+              style={{
+                aspectRatio: '1', fontSize: 7.5, fontWeight: 800,
+                background: revealed ? c.color : '#0b1322',
+                color: revealed ? c.fg : 'transparent',
+                transition: 'background 350ms ease, color 350ms ease',
+                transitionDelay: revealed ? `${(i + j) * 14}ms` : '0ms',
+                zIndex: isHi ? 2 : 1,
+              }}>
+              {revealed && k.replace('s', '').replace('o', '')}
+              {isHi && revealed && (
+                <motion.span className="absolute -inset-[2px] rounded-[3px] pointer-events-none"
+                  initial={{ opacity: 0, scale: 1.4 }}
+                  animate={{ opacity: [0, 1, 0.95], scale: [1.4, 1, 1], boxShadow: ['0 0 0px #ff2d55', '0 0 16px 4px #ff2d55', '0 0 10px 2px #ff2d55'] }}
+                  transition={{ duration: 0.6, delay: 0.45 }}
+                  style={{ border: '2px solid #ff2d55' }} />
+              )}
+            </div>
+          )
+        }))}
+      </div>
+
+      {/* mystery overlay before reveal */}
+      <AnimatePresence>
+        {!revealed && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 flex items-center justify-center rounded-lg backdrop-blur-[2px]"
+            style={{ background: 'rgba(8,12,24,0.5)' }}>
+            <div className="text-center">
+              <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2, repeat: Infinity }} className="text-2xl mb-1">🔒</motion.div>
+              <p className="text-[9px] uppercase tracking-widest text-white/55 font-bold">Range masquée</p>
+              <p className="text-[8px] text-white/30">Réponds pour la révéler</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* red laser sweep on reveal */}
+      <AnimatePresence>
+        {revealed && (
+          <motion.div key="sweep" className="pointer-events-none absolute inset-y-0 w-14"
+            initial={{ left: '-20%', opacity: 0 }} animate={{ left: '110%', opacity: [0, 0.8, 0] }}
+            transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,45,85,0.55), transparent)', filter: 'blur(4px)' }} />
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// Animated, stimulating background for the quiz (pulsing glows + a faint moving grid).
+function QuizBackground({ reveal, correct }: { reveal: boolean; correct: boolean | null }) {
+  const tint = correct === null ? '#00d4ff' : correct ? '#22c55e' : '#ff2d55'
+  return (
+    <div className="pointer-events-none absolute -inset-10 overflow-hidden">
+      <motion.div className="absolute top-[-20%] left-[10%] w-[420px] h-[420px] rounded-full"
+        animate={{ opacity: [0.12, 0.22, 0.12], scale: [1, 1.15, 1] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ background: `radial-gradient(circle, ${tint}, transparent 70%)`, transition: 'background 500ms' }} />
+      <motion.div className="absolute bottom-[-25%] right-[5%] w-[480px] h-[480px] rounded-full"
+        animate={{ opacity: [0.08, 0.18, 0.08], scale: [1.1, 1, 1.1] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+        style={{ background: 'radial-gradient(circle, #c9a227, transparent 70%)' }} />
+      <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      {reveal && (
+        <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: [0, 0.12, 0] }} transition={{ duration: 0.6 }}
+          style={{ background: `radial-gradient(60% 60% at 50% 50%, ${tint}, transparent 70%)` }} />
+      )}
     </div>
   )
 }
