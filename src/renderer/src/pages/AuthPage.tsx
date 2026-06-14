@@ -197,8 +197,9 @@ export default function AuthPage(): JSX.Element {
     e.preventDefault()
     setError(null)
 
-    // ── Local admin bypass (dev/test): "admin" / "admin" → direct access ──
-    if (identifier.trim().toLowerCase() === 'admin' && password === 'admin') {
+    // ── Local admin bypass — DEV ONLY (never on the production web build, else anyone
+    //    gets full access for free). In prod this branch is dead-code-eliminated. ──
+    if (import.meta.env.DEV && identifier.trim().toLowerCase() === 'admin' && password === 'admin') {
       const adminUser = {
         id: 'admin-local', aud: 'authenticated', role: 'authenticated',
         email: 'admin@local', created_at: new Date().toISOString(),
@@ -276,8 +277,27 @@ export default function AuthPage(): JSX.Element {
           ))}
         </div>
 
-        {/* ── LEFT VISUAL — Chips & Cards ── */}
+        {/* ── LEFT VISUAL — value proposition + Chips & Cards ── */}
         <div className="absolute left-0 top-0 bottom-0 w-[46%] flex items-center justify-center pointer-events-none select-none">
+
+          {/* Value proposition — sells the app to a cold visitor */}
+          <div className="absolute top-10 left-10 right-10 z-20">
+            <motion.h2 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+              className="text-2xl font-black leading-tight text-white">
+              Arrête de deviner. <span style={{ background: 'linear-gradient(90deg,#f0d060,#c9a227)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Joue +EV.</span>
+            </motion.h2>
+            <div className="mt-4 space-y-2">
+              {[
+                '🎯 Un coach IA t’explique chaque décision en temps réel',
+                '🔮 Range Vision : vois la main adverse se resserrer',
+                '📈 EV prouvée par simulation sur des milliers de mains',
+              ].map((t, i) => (
+                <motion.p key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
+                  className="text-[12px] text-white/55 leading-snug">{t}</motion.p>
+              ))}
+            </div>
+          </div>
+
 
           {/* Scattered background chips */}
           <motion.div className="absolute" style={{ left: '6%', top: '12%', opacity: 0.45 }}
@@ -476,8 +496,8 @@ export default function AuthPage(): JSX.Element {
                   </motion.p>
                 )}
 
-                {/* Dev shortcut — login only */}
-                {mode === 'login' && (
+                {/* Dev shortcut — DEV builds only */}
+                {import.meta.env.DEV && mode === 'login' && (
                   <button type="button" onClick={() => { setIdentifier('admin'); setPassword('admin') }}
                     className="text-[10px] text-poker-gold/70 hover:text-poker-gold transition-colors text-center uppercase tracking-wider w-full">
                     Accès dev : admin / admin

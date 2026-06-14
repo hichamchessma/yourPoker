@@ -18,7 +18,9 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   user: null,
-  loading: false,
+  // Start in loading: the app shows a spinner until Supabase restores the session,
+  // so a logged-in user never flashes the landing/login before redirecting.
+  loading: true,
   passwordRecovery: false,
   setSession: (session) => set({ session, user: session?.user ?? null, loading: false }),
   setLoading: (loading) => set({ loading }),

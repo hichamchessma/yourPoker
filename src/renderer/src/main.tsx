@@ -17,6 +17,9 @@ supabase.auth.onAuthStateChange((event, session) => {
   useAuthStore.getState().setSession(session)
 })
 
+// Safety: never get stuck on the loading spinner if no auth event ever arrives.
+setTimeout(() => useAuthStore.getState().setLoading(false), 2500)
+
 // ── Web auth callback (OAuth / magic link / password recovery) ──────────────────
 // In a HashRouter SPA, Supabase's automatic detectSessionInUrl can race with the router
 // rewriting the URL and silently miss the code. So on web we DISABLE it (see supabase.ts)

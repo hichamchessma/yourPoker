@@ -172,15 +172,21 @@ function ChipStack() {
 // ── Feature shortcut card (navigates to a trainer) ──────────────────────
 function ShortcutCard({ icon, title, desc, accent, onClick }: { icon: React.ReactNode; title: string; desc: string; accent: string; onClick: () => void }) {
   return (
-    <button onClick={onClick}
-      className="group text-left rounded-2xl border border-white/10 bg-white/[0.02] p-3.5 hover:bg-white/[0.04] hover:border-white/20 transition-all">
-      <div className="flex items-center gap-2.5 mb-1.5">
-        <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: accent + '1f', color: accent }}>{icon}</span>
-        <span className="text-[12px] font-bold text-white/85">{title}</span>
-        <ArrowRight size={13} className="ml-auto text-white/20 group-hover:text-white/60 group-hover:translate-x-0.5 transition-all" />
+    <motion.button onClick={onClick}
+      whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+      className="group relative text-left rounded-2xl border border-white/10 bg-white/[0.02] p-3.5 overflow-hidden transition-colors"
+      style={{ ['--accent' as string]: accent }}>
+      {/* accent glow on hover */}
+      <span className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        style={{ background: `radial-gradient(120% 80% at 0% 0%, ${accent}22, transparent 60%)`, boxShadow: `inset 0 0 0 1px ${accent}55` }} />
+      <div className="relative flex items-center gap-2.5 mb-1.5">
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform" style={{ background: accent + '1f', color: accent }}>{icon}</span>
+        <span className="text-[12px] font-bold text-white/85 group-hover:text-white transition-colors">{title}</span>
+        <ArrowRight size={13} className="ml-auto text-white/20 group-hover:text-[color:var(--accent)] group-hover:translate-x-0.5 transition-all" />
       </div>
-      <p className="text-[10.5px] text-white/40 leading-snug">{desc}</p>
-    </button>
+      <p className="relative text-[10.5px] text-white/40 leading-snug">{desc}</p>
+    </motion.button>
   )
 }
 
