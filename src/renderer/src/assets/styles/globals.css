@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaderboard "recent wins" ticker — the content is duplicated, so -50% loops seamlessly. */
+@keyframes scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 @layer base {
   * {
     box-sizing: border-box;

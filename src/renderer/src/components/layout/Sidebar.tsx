@@ -10,6 +10,7 @@ import {
   User,
   History,
   FlaskConical,
+  Trophy,
   LogOut,
   ChevronRight
 } from 'lucide-react'
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'tournament', label: 'Entraînement Tournoi', icon: <Medal size={20} />, path: '/tournament' },
   { id: 'simulation', label: 'Simulation (banc de test)', icon: <FlaskConical size={20} />, path: '/simulation' },
   { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup' },
+  { id: 'leaderboard', label: 'Classement', icon: <Trophy size={20} />, path: '/leaderboard' },
   { id: 'profile', label: 'Profil', icon: <User size={20} />, path: '/profile' },
   { id: 'history', label: 'Historique', icon: <History size={20} />, path: '/history' },
 ]

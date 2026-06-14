@@ -8,6 +8,7 @@ import TrainingSetupPage from './pages/TrainingSetupPage'
 import TournamentSetupPage from './pages/TournamentSetupPage'
 import SetupPositionPage from './pages/SetupPositionPage'
 import SimulationPage from './pages/SimulationPage'
+import LeaderboardPage from './pages/LeaderboardPage'
 import GamePage from './pages/GamePage'
 import AppLayout from './layouts/AppLayout'
 import { useAuthStore } from './store/authStore'
@@ -42,6 +43,7 @@ function App(): JSX.Element {
         <Route path="training" element={<TrainingSetupPage />} />
         <Route path="tournament" element={<TournamentSetupPage />} />
         <Route path="simulation" element={<SimulationPage />} />
+        <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="setup" element={<SetupPositionPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="history" element={<HistoryPage />} />
