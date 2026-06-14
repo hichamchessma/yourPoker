@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { computePlayerStats } from '../lib/playerStats'
+import { getRoster, playersOnline } from '../lib/leaderboard'
 import WindowControls from '../components/layout/WindowControls'
 import SoundToggle from '../components/SoundToggle'
 
@@ -206,6 +207,11 @@ export default function LobbyPage(): JSX.Element {
   const [rechargeAmt, setRechargeAmt] = useState(5000)
   useEffect(() => { localStorage.setItem('pokerBalance', String(balance)) }, [balance])
 
+  // Lively community signals
+  const topPlayers = useMemo(() => getRoster().slice(0, 3), [])
+  const [online, setOnline] = useState(() => playersOnline())
+  useEffect(() => { const t = setInterval(() => setOnline(playersOnline()), 4000); return () => clearInterval(t) }, [])
+
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Joueur'
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null
 
@@ -228,6 +234,12 @@ export default function LobbyPage(): JSX.Element {
         </div>
 
         <div className="flex-1" />
+
+        {/* Players online — social proof */}
+        <div className="hidden sm:flex items-center gap-2 mr-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+          <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" /></span>
+          <span className="text-[11px] text-white/70"><b className="text-emerald-400 font-mono">{online.toLocaleString('fr-FR')}</b> en ligne</span>
+        </div>
 
         <SoundToggle />
 
@@ -440,6 +452,24 @@ export default function LobbyPage(): JSX.Element {
             </div>
 
           </div>
+
+          {/* Top classement — social proof + CTA */}
+          <button onClick={() => navigate('/leaderboard')} className="glass-card p-4 text-left hover:bg-white/[0.04] transition-colors group">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy size={13} className="text-[#c9a227]" />
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Classement</p>
+              <ArrowRight size={13} className="ml-auto text-white/20 group-hover:text-white/60 group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              {topPlayers.map((p, i) => (
+                <div key={p.id} className="flex items-center gap-2">
+                  <span className="font-mono font-black text-[11px] w-4" style={{ color: i === 0 ? '#f0d060' : i === 1 ? '#c0c8d4' : '#cd8a54' }}>{i + 1}</span>
+                  <span className="text-[11px] text-white/75 truncate flex-1">{p.flag} {p.name}</span>
+                  <span className="text-[10px] font-mono font-bold" style={{ color: p.tierColor }}>{p.rating}</span>
+                </div>
+              ))}
+            </div>
+          </button>
 
           {/* Tes stats — real, derived from history */}
           <div className="glass-card p-4">
