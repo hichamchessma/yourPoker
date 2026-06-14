@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '../store/authStore'
 import { loadSessions } from '../lib/historyStore'
 import { computePlayerStats } from '../lib/playerStats'
+import { useIsPro } from '../lib/entitlements'
 
 const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR')
 
@@ -27,8 +28,10 @@ export default function ProfilePage() {
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null
   const email = user?.email || 'joueur@poker.elite'
 
+  const isPro = useIsPro()
   const stats = useMemo(() => computePlayerStats(6), [])
   const tier = [...TIERS].reverse().find(t => stats.totalHands >= t.min) ?? TIERS[0]
+  const ringColor = isPro ? '#f0d060' : tier.color
 
   // Real cumulative profit curve (cash BB if any, otherwise tournament $), chronological.
   const { curve, curveLabel } = useMemo(() => {
@@ -70,9 +73,16 @@ export default function ProfilePage() {
           style={{ background: 'linear-gradient(120deg, rgba(201,162,39,0.08), rgba(0,212,255,0.05) 60%, transparent)' }}>
           <div className="absolute inset-0" style={{ background: 'radial-gradient(60% 120% at 15% 0%, rgba(201,162,39,0.16), transparent 70%)' }} />
           <div className="relative flex flex-col md:flex-row items-center gap-6 p-6">
-            {/* avatar with tier ring */}
+            {/* avatar with tier (or gold Pro) ring */}
             <div className="relative shrink-0">
-              <div className="w-28 h-28 rounded-full p-[3px]" style={{ background: `conic-gradient(${tier.color}, #00d4ff, ${tier.color})` }}>
+              {isPro && (
+                <motion.div initial={{ y: 6, opacity: 0, scale: 0.7 }} animate={{ y: 0, opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+                  className="absolute -top-5 left-1/2 -translate-x-1/2 z-10">
+                  <Crown size={30} className="text-[#f0d060] drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]" fill="#f0d060" />
+                </motion.div>
+              )}
+              <div className="w-28 h-28 rounded-full p-[3px]"
+                style={{ background: isPro ? 'conic-gradient(#f0d060,#c9a227,#fff3c0,#c9a227,#f0d060)' : `conic-gradient(${tier.color}, #00d4ff, ${tier.color})`, boxShadow: isPro ? '0 0 22px rgba(201,162,39,0.55)' : undefined }}>
                 <div className="w-full h-full rounded-full overflow-hidden bg-[#0a1120] flex items-center justify-center">
                   {avatarUrl
                     ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -80,12 +90,19 @@ export default function ProfilePage() {
                 </div>
               </div>
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border"
-                style={{ background: '#0a1120', color: tier.color, borderColor: tier.color }}>{tier.name}</span>
+                style={{ background: '#0a1120', color: ringColor, borderColor: ringColor }}>{tier.name}</span>
             </div>
 
             {/* identity */}
             <div className="flex-1 text-center md:text-left">
-              <h1 className="text-2xl font-black text-white tracking-wide">{displayName}</h1>
+              <div className="flex items-center justify-center md:justify-start gap-2.5">
+                <h1 className="text-2xl font-black text-white tracking-wide">{displayName}</h1>
+                {isPro && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest text-[#1a1206]" style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)' }}>
+                    <Crown size={11} fill="#1a1206" /> Pro
+                  </span>
+                )}
+              </div>
               <p className="text-[12px] text-white/40 mt-0.5">{email}</p>
               <div className="flex items-center justify-center md:justify-start gap-3 mt-3">
                 <span className="flex items-center gap-1.5 text-[12px] text-white/60"><Sparkles size={13} className="text-[#c9a227]" /> Palier <b className="text-[#c9a227]">{tier.name}</b></span>

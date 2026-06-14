@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '../store/authStore'
 import { computePlayerStats } from '../lib/playerStats'
 import { getRoster, playersOnline } from '../lib/leaderboard'
+import { useIsPro } from '../lib/entitlements'
 import WindowControls from '../components/layout/WindowControls'
 import SoundToggle from '../components/SoundToggle'
 
@@ -197,6 +198,7 @@ function StatTile({ icon, label, value, accent = '#ffffff' }: { icon: React.Reac
 export default function LobbyPage(): JSX.Element {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const isPro = useIsPro()
   const stats = useMemo(() => computePlayerStats(4), [])
 
   // Play-money balance (persisted locally).
@@ -246,17 +248,29 @@ export default function LobbyPage(): JSX.Element {
         {/* User — click to open profile */}
         <button onClick={() => navigate('/profile')}
           className="flex items-center gap-2 pl-2 border-l border-white/10 group">
-          <div className="w-8 h-8 rounded-full overflow-hidden border border-poker-gold/30 flex-shrink-0">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-poker-gold/20 flex items-center justify-center">
-                <span className="text-poker-gold font-bold text-sm">{displayName[0].toUpperCase()}</span>
-              </div>
+          <div className="relative flex-shrink-0">
+            {isPro && (
+              <motion.div initial={{ y: 2, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10">
+                <Crown size={13} className="text-[#f0d060] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" fill="#f0d060" />
+              </motion.div>
             )}
+            <div className={`w-8 h-8 rounded-full overflow-hidden ${isPro ? 'border-2 border-[#c9a227]' : 'border border-poker-gold/30'}`}
+              style={isPro ? { boxShadow: '0 0 10px rgba(201,162,39,0.55)' } : undefined}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-poker-gold/20 flex items-center justify-center">
+                  <span className="text-poker-gold font-bold text-sm">{displayName[0].toUpperCase()}</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="hidden sm:block text-left">
-            <p className="text-xs font-bold text-white/90 leading-tight group-hover:text-white transition-colors">{displayName}</p>
+            <p className="text-xs font-bold text-white/90 leading-tight group-hover:text-white transition-colors flex items-center gap-1">
+              {displayName}
+              {isPro && <span className="text-[7px] font-black uppercase tracking-wider px-1 py-0.5 rounded text-[#1a1206]" style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)' }}>Pro</span>}
+            </p>
             <p className="text-[9px] text-white/35 group-hover:text-poker-teal transition-colors">Voir mon profil</p>
           </div>
         </button>
