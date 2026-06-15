@@ -1022,6 +1022,9 @@
     "cashScenario": "Custom scenario",
     "cashTitle": "Cash {{n}}-max {{sb}}/{{bb}}",
     "cashSubtitle_one": "{{sign}}{{bb}} BB in {{count}} hand",
-    "cashSubtitle_other": "{{sign}}{{bb}} BB in {{count}} hands"
+    "cashSubtitle_other": "{{sign}}{{bb}} BB in {{count}} hands",
+    "replayHint": "· ↻ auto-replay (0.5s/step, loops) · ←/→ navigate · Space judge · Esc close",
+    "yourResult": "Your result",
+    "youRepRange": "You (represented range)"
   }
 }

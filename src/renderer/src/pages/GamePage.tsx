@@ -822,6 +822,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
   onClose: () => void
   onRevive?: (record: HandHistoryRecord, stepIdx: number) => void
 }) {
+  const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<number|null>(records.length > 0 ? records[records.length-1].id : null)
   const [stepIdx, setStepIdx] = useState<number>(0)
   const [critique, setCritique] = useState<MoveCritique | null>(null)
@@ -930,7 +931,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
             <span className="text-sm font-bold text-white/70 uppercase tracking-widest">Historique des mains</span>
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
             <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
-            <span className="text-[10px] text-white/30 hidden lg:inline">· ↻ replay auto (0,5s/coup, boucle) · ←/→ naviguer · Espace juger · Échap fermer</span>
+            <span className="text-[10px] text-white/30 hidden lg:inline">{t('sess.replayHint')}</span>
           </div>
           <div className="flex items-center gap-2.5">
             {/* Revive: re-create THIS exact spot as a playable sandbox. Opponents'
@@ -1163,7 +1164,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                     <p className="text-sm font-bold text-white/70">${record.finalPot}</p>
                   </div>
                   <div>
-                    <span className="text-[10px] text-white/40 uppercase tracking-wide">Votre résultat</span>
+                    <span className="text-[10px] text-white/40 uppercase tracking-wide">{t('sess.yourResult')}</span>
                     <p className={`text-sm font-bold ${record.heroProfit>0?'text-emerald-400':record.heroProfit<0?'text-red-400':'text-white/50'}`}>
                       {record.heroProfit>0?'+':''}{record.heroProfit} BB
                     </p>
@@ -1234,7 +1235,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
         return (
           <div className="fixed z-[60] pointer-events-none" style={{ left: x, top: y }}>
             <RangeHeatmap view={view} move={meta.move} effect={meta.effect}
-              name={pl.isHero ? 'Toi (range représentée)' : pl.name} heroKey={heroKey}/>
+              name={pl.isHero ? t('sess.youRepRange') : pl.name} heroKey={heroKey}/>
           </div>
         )
       })()}
