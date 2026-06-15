@@ -1168,5 +1168,31 @@
     "hintPinned": "📌 pinned — ✕ or Esc to close · click a cell for the WHY",
     "hintUnpinned": "⏸ click or Space to pin · click a cell for the WHY",
     "updateError": "Error while updating"
+  },
+  "simw": {
+    "mode": "Watch 1 tournament",
+    "title": "Watch the coach play",
+    "desc": "The coach takes on your bots over a full tournament. You see the result + every hand where there was action, replayable with its analysis (equity, range, reasoning).",
+    "coach": "Coach",
+    "config": "Tournament setup",
+    "run": "Start the tournament",
+    "rerun": "Re-simulate a tournament",
+    "running": "The coach is playing the tournament…",
+    "winner": "🏆 Winner!",
+    "statPlace": "Place",
+    "statProfit": "Profit (chips)",
+    "statHands": "Hands played",
+    "statAction": "Action hands",
+    "timeline": "Coach stack over time",
+    "handsTitle": "Hands to review",
+    "handsSub": "{{n}} action hands (folds excluded) — click to replay with the coach's analysis",
+    "noHands": "No action hands in this tournament — run another one.",
+    "analyze": "Review",
+    "hand": "Hand",
+    "pot": "pot",
+    "won": "+{{n}}",
+    "lost": "{{n}}",
+    "preflop": "preflop (all-in)",
+    "reportTitle": "Tournament report"
   }
 }

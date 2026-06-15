@@ -817,13 +817,15 @@ function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number)
   return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
 }
 
-export function HandHistoryModal({ records, onClose, onRevive }: {
+export function HandHistoryModal({ records, onClose, onRevive, initialId, titleKey }: {
   records: HandHistoryRecord[]
   onClose: () => void
   onRevive?: (record: HandHistoryRecord, stepIdx: number) => void
+  initialId?: number          // open directly on this hand (defaults to the most recent)
+  titleKey?: string           // override the panel title (e.g. the sim report)
 }) {
   const { t } = useTranslation()
-  const [selectedId, setSelectedId] = useState<number|null>(records.length > 0 ? records[records.length-1].id : null)
+  const [selectedId, setSelectedId] = useState<number|null>(initialId ?? (records.length > 0 ? records[records.length-1].id : null))
   const [stepIdx, setStepIdx] = useState<number>(0)
   const [critique, setCritique] = useState<MoveCritique | null>(null)
   // Auto-replay: on open, the last hand plays from the start (0.5s/step); at the end
@@ -928,7 +930,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-white/70 uppercase tracking-widest">{t('sess.handHistory')}</span>
+            <span className="text-sm font-bold text-white/70 uppercase tracking-widest">{t(titleKey ?? 'sess.handHistory')}</span>
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
             <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
             <span className="text-[10px] text-white/30 hidden lg:inline">{t('sess.replayHint')}</span>

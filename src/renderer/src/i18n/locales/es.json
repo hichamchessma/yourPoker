@@ -1168,5 +1168,31 @@
     "hintPinned": "📌 fijado — ✕ o Esc para cerrar · clic en una casilla para el PORQUÉ",
     "hintUnpinned": "⏸ clic o Espacio para fijar · clic en una casilla para el PORQUÉ",
     "updateError": "Error al actualizar"
+  },
+  "simw": {
+    "mode": "Ver 1 torneo",
+    "title": "Mira jugar al coach",
+    "desc": "El coach se enfrenta a tus bots en un torneo completo. Ves el resultado + cada mano con acción, repetible con su análisis (equity, rango, razonamiento).",
+    "coach": "Coach",
+    "config": "Configuración del torneo",
+    "run": "Empezar el torneo",
+    "rerun": "Re-simular un torneo",
+    "running": "El coach está jugando el torneo…",
+    "winner": "🏆 ¡Ganador!",
+    "statPlace": "Puesto",
+    "statProfit": "Beneficio (fichas)",
+    "statHands": "Manos jugadas",
+    "statAction": "Manos con acción",
+    "timeline": "Evolución del stack del coach",
+    "handsTitle": "Manos para analizar",
+    "handsSub": "{{n}} manos con acción (folds excluidos) — haz clic para repetir con el análisis del coach",
+    "noHands": "Ninguna mano con acción en este torneo — lanza otro.",
+    "analyze": "Analizar",
+    "hand": "Mano",
+    "pot": "bote",
+    "won": "+{{n}}",
+    "lost": "{{n}}",
+    "preflop": "preflop (all-in)",
+    "reportTitle": "Informe del torneo"
   }
 }

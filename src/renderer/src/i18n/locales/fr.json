@@ -1168,5 +1168,31 @@
     "hintPinned": "📌 épinglé — ✕ ou Échap pour fermer · clique une case pour le POURQUOI",
     "hintUnpinned": "⏸ clic ou Espace pour épingler · clique une case pour le POURQUOI",
     "updateError": "Erreur lors de la mise à jour"
+  },
+  "simw": {
+    "mode": "Regarder 1 tournoi",
+    "title": "Regarde le coach jouer",
+    "desc": "Le coach affronte tes bots sur un tournoi complet. Tu vois le résultat + toutes les mains où il y a eu de l'action, rejouables avec son analyse (équité, range, raisonnement).",
+    "coach": "Coach",
+    "config": "Configuration du tournoi",
+    "run": "Lancer le tournoi",
+    "rerun": "Resimuler un tournoi",
+    "running": "Le coach joue le tournoi…",
+    "winner": "🏆 Vainqueur !",
+    "statPlace": "Place",
+    "statProfit": "Profit (jetons)",
+    "statHands": "Mains jouées",
+    "statAction": "Mains avec action",
+    "timeline": "Évolution du tapis du coach",
+    "handsTitle": "Mains à analyser",
+    "handsSub": "{{n}} mains avec action (folds exclus) — clique pour rejouer avec l'analyse du coach",
+    "noHands": "Aucune main avec action dans ce tournoi — relances-en un autre.",
+    "analyze": "Analyser",
+    "hand": "Main",
+    "pot": "pot",
+    "won": "+{{n}}",
+    "lost": "{{n}}",
+    "preflop": "préflop (tapis)",
+    "reportTitle": "Compte-rendu du tournoi"
   }
 }

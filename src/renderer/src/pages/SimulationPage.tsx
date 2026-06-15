@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FlaskConical, Play, Square, Trophy, TrendingUp, TrendingDown, Coins, Users, Layers } from 'lucide-react'
+import type { TFunction } from 'i18next'
+import { FlaskConical, Play, Square, Trophy, TrendingUp, TrendingDown, Coins, Users, Layers, Eye, Search } from 'lucide-react'
 import { playTournament, playMTT, type BlindLevel, type TourConfig, type MTTConfig, type SimSeat } from '../lib/simEngine'
 import { makeSimDecider } from '../lib/simDeciders'
 import { fieldRemaining, placesPaid, payoutTable, prizeForPlace } from '../lib/tournament'
+import { simulateTournament, isInterestingHand, type SimTourResult } from '../lib/simReplay'
+import { HandHistoryModal, type HandHistoryRecord } from './GamePage'
 
 function genLevels(startStack: number): BlindLevel[] {
   const lv: BlindLevel[] = []
@@ -12,7 +15,7 @@ function genLevels(startStack: number): BlindLevel[] {
   return lv
 }
 type Curve = 'standard' | 'topheavy' | 'flat'
-type Mode = 'sng' | 'mtt'
+type Mode = 'sng' | 'mtt' | 'watch'
 
 interface Stats { done: number; wins: number; cashes: number; ft: number; profit: number; hands: number; places: number[]; field: number }
 const blank = (field: number): Stats => ({ done: 0, wins: 0, cashes: 0, ft: 0, profit: 0, hands: 0, places: [], field })
@@ -132,8 +135,8 @@ export default function SimulationPage(): JSX.Element {
       <p className="text-white/45 text-sm mb-5 max-w-3xl">{t('sim.desc')}</p>
 
       {/* Mode */}
-      <div className="flex gap-2 mb-4">
-        {([['sng', t('sim.modeSng'), <Users size={15} />], ['mtt', t('sim.modeMtt'), <Layers size={15} />]] as const).map(([m, lbl, ic]) => (
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {([['watch', t('simw.mode'), <Eye size={15} />], ['sng', t('sim.modeSng'), <Users size={15} />], ['mtt', t('sim.modeMtt'), <Layers size={15} />]] as const).map(([m, lbl, ic]) => (
           <button key={m} disabled={running} onClick={() => setMode(m)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 ${mode === m ? 'bg-[#c9a227]/15 border border-[#c9a227]/50 text-[#c9a227]' : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10'}`}>
             {ic} {lbl}
@@ -141,7 +144,11 @@ export default function SimulationPage(): JSX.Element {
         ))}
       </div>
 
+      {mode === 'watch' && <WatchMode t={t} />}
+
       {/* Config */}
+      {mode !== 'watch' && (<>
+
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 mb-4">
         <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold mb-4">{mode === 'mtt' ? t('sim.configField', { n: field }) : t('sim.config')}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -228,6 +235,7 @@ export default function SimulationPage(): JSX.Element {
           )}
         </div>
       )}
+      </>)}
     </div>
   )
 }
@@ -255,6 +263,156 @@ function PlaceChart({ stats, field, buckets, paid, seats }: { stats: Stats; fiel
         </div>
       ))}
     </div>
+  )
+}
+
+// ── "Watch 1 tournament" — coach vs your bots, full hand-by-hand report ──────────
+function WNum({ label, value, set, min, max, step = 1, suffix }: { label: string; value: number; set: (n: number) => void; min: number; max: number; step?: number; suffix?: string }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+        onChange={e => set(Math.max(min, Math.min(max, Number(e.target.value) || min)))}
+        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-[#c9a227]/50" />
+      {suffix && <span className="text-[9px] text-white/30">{suffix}</span>}
+    </label>
+  )
+}
+const SUIT_RED = (s: string) => s === '♥' || s === '♦'
+function MiniCards({ cards }: { cards: ({ rank: string; suit: string } | null)[] }) {
+  const shown = cards.filter(Boolean) as { rank: string; suit: string }[]
+  if (shown.length === 0) return null
+  return (
+    <span className="inline-flex gap-0.5">
+      {shown.map((c, i) => (
+        <span key={i} className="inline-flex items-center justify-center rounded-[3px] bg-white font-black leading-none"
+          style={{ width: 17, height: 22, fontSize: 10, color: SUIT_RED(c.suit) ? '#d11' : '#111', border: '1px solid rgba(0,0,0,0.25)' }}>
+          {c.rank}{c.suit}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function WatchMode({ t }: { t: TFunction }) {
+  const [seats, setSeats] = useState(6)
+  const [startStack, setStartStack] = useState(5000)
+  const [handsPerLevel, setHandsPerLevel] = useState(10)
+  const [botTier, setBotTier] = useState(2)
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<SimTourResult | null>(null)
+  const [modal, setModal] = useState<{ records: HandHistoryRecord[]; id: number } | null>(null)
+
+  function run() {
+    setBusy(true); setRes(null)
+    setTimeout(() => {
+      const levels = genLevels(startStack)
+      const players = Array.from({ length: seats }, (_, i): { kind: 'coach' | 'bot'; tier: number } => ({ kind: i === 0 ? 'coach' : 'bot', tier: botTier }))
+      const r = simulateTournament({ players, startStack, levels, handsPerLevel, maxHands: 8000, coachName: t('simw.coach') })
+      setRes(r); setBusy(false)
+    }, 40)
+  }
+
+  const interesting = res ? res.records.filter(isInterestingHand) : []
+
+  return (
+    <>
+      <p className="text-white/45 text-sm mb-4 max-w-3xl">{t('simw.desc')}</p>
+
+      {/* Config */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 mb-4">
+        <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold mb-4">{t('simw.config')}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <WNum label={t('sim.numSeats')} value={seats} set={setSeats} min={2} max={9} suffix={`1 ${t('simw.coach')} + ${seats - 1} bots`} />
+          <WNum label={t('sim.numStack')} value={startStack} set={setStartStack} min={500} max={100000} step={500} suffix={t('sim.suffixChips')} />
+          <WNum label={t('sim.numHands')} value={handsPerLevel} set={setHandsPerLevel} min={3} max={40} suffix={t('sim.suffixTurbo')} />
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">{t('sim.botLevel')}</span>
+            <select value={botTier} disabled={busy} onChange={e => setBotTier(Number(e.target.value))}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none disabled:opacity-50">
+              <option value={1} className="bg-[#0a0e1a]">{t('sim.botAmateur')}</option>
+              <option value={2} className="bg-[#0a0e1a]">{t('sim.botPro')}</option>
+              <option value={3} className="bg-[#0a0e1a]">{t('sim.botExpert')}</option>
+            </select>
+          </label>
+        </div>
+        <button onClick={run} disabled={busy} className="mt-5 flex items-center gap-2 px-6 py-2.5 rounded-xl font-black uppercase tracking-widest text-sm transition-all hover:scale-[1.02] disabled:opacity-50"
+          style={{ background: 'linear-gradient(135deg,#a78bff,#6d4ed6)', color: '#0a0716' }}>
+          {busy ? <><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> {t('simw.running')}</> : <><Play size={16} /> {res ? t('simw.rerun') : t('simw.run')}</>}
+        </button>
+      </div>
+
+      {/* Report */}
+      {res && (
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-[#a78bff]/30 p-5" style={{ background: 'linear-gradient(160deg, rgba(167,139,255,0.10), transparent)' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <Trophy className="text-[#c9a227]" size={22} />
+              <h2 className="text-lg font-black">{res.place === 1 ? t('simw.winner') : t('simw.reportTitle')}</h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Stat icon={<Trophy size={18} />} label={t('simw.statPlace')} value={`${res.place} / ${res.totalPlayers}`} good={res.place === 1 ? true : res.place <= Math.ceil(res.totalPlayers / 3) ? undefined : false} big />
+              <Stat icon={<Coins size={18} />} label={t('simw.statProfit')} value={`${res.coachProfit >= 0 ? '+' : ''}${res.coachProfit.toLocaleString()}`} good={res.coachProfit >= 0} big />
+              <Stat icon={<Layers size={18} />} label={t('simw.statHands')} value={`${res.hands}`} />
+              <Stat icon={<Search size={18} />} label={t('simw.statAction')} value={`${interesting.length}`} />
+            </div>
+            {res.stackTimeline.length > 1 && (
+              <div className="mt-4">
+                <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold mb-1">{t('simw.timeline')}</p>
+                <Sparkline data={res.stackTimeline} start={startStack} />
+              </div>
+            )}
+          </div>
+
+          {/* Hands list */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <p className="text-[11px] uppercase tracking-widest text-[#a78bff] font-bold">{t('simw.handsTitle')}</p>
+            <p className="text-[11px] text-white/35 mb-3">{t('simw.handsSub', { n: interesting.length })}</p>
+            {interesting.length === 0 ? (
+              <p className="text-[12px] text-white/40 py-3 text-center">{t('simw.noHands')}</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {interesting.map(rec => {
+                  const coach = rec.players.find(p => p.isHero)
+                  const won = rec.heroProfit > 0
+                  const board = rec.board.filter(Boolean)
+                  return (
+                    <button key={rec.id} onClick={() => setModal({ records: interesting, id: rec.id })}
+                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-left hover:border-[#a78bff]/50 hover:bg-[#a78bff]/[0.06] transition-all">
+                      <span className="text-[10px] font-bold text-white/40 w-12 shrink-0">{t('simw.hand')} #{rec.handNum}</span>
+                      <MiniCards cards={coach?.holeCards ?? []} />
+                      <span className="text-white/20 text-[10px]">→</span>
+                      {board.length ? <MiniCards cards={board} /> : <span className="text-[9px] text-white/30 italic">{t('simw.preflop')}</span>}
+                      <span className="ml-auto text-[11px] font-black tabular-nums" style={{ color: won ? '#34d399' : rec.heroProfit < 0 ? '#f0796b' : 'rgba(255,255,255,0.4)' }}>
+                        {won ? t('simw.won', { n: rec.heroProfit.toLocaleString() }) : t('simw.lost', { n: rec.heroProfit.toLocaleString() })}
+                      </span>
+                      <span className="text-[8px] text-white/30 shrink-0">{t('simw.pot')} {rec.finalPot.toLocaleString()}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {modal && <HandHistoryModal records={modal.records} initialId={modal.id} titleKey="simw.reportTitle" onClose={() => setModal(null)} />}
+    </>
+  )
+}
+
+function Sparkline({ data, start }: { data: number[]; start: number }) {
+  const w = 600, h = 48
+  const max = Math.max(start, ...data), min = Math.min(start, ...data, 0)
+  const range = Math.max(1, max - min)
+  const pts = data.map((v, i) => `${(i / Math.max(1, data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ')
+  const y0 = h - ((start - min) / range) * h
+  const end = data[data.length - 1]
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full" style={{ height: 48 }}>
+      <line x1={0} y1={y0} x2={w} y2={y0} stroke="rgba(255,255,255,0.15)" strokeWidth={1} strokeDasharray="4 4" />
+      <polyline points={pts} fill="none" stroke={end >= start ? '#34d399' : '#f0796b'} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+    </svg>
   )
 }
 
