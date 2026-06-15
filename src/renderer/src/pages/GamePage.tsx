@@ -434,6 +434,26 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
 
 
 // ─── Hand History Modal ───────────────────────────────────────────────────────
+// Smoothly animates a number from → to (ease-out cubic). Used to "count up" the
+// winner's stack as the pot chips land on their seat, like a real poker client.
+function CountUp({ from, to, dur = 800, delay = 450 }: { from: number; to: number; dur?: number; delay?: number }): JSX.Element {
+  const [v, setV] = useState(from)
+  useEffect(() => {
+    if (from === to) { setV(to); return }
+    setV(from)
+    let raf = 0; const t0 = performance.now() + delay
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+    const tick = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - t0) / dur))
+      setV(Math.round(from + (to - from) * ease(t)))
+      if (t < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [from, to, dur, delay])
+  return <>{v.toLocaleString()}</>
+}
+
 function computeStepState(record: HandHistoryRecord, stepIdx: number): {
   players: Array<HandHistoryRecord['players'][number] & { stack: number }>
   board: (Card|null)[]
@@ -1035,14 +1055,19 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                         {pl.isHero ? t('sess.youShort') : pl.name}
                         {pl.position && <span className="text-[8px] font-black px-1 rounded bg-[#c9a227]/15 text-[#c9a227]/90 border border-[#c9a227]/25 uppercase tracking-wider">{pl.position}</span>}
                       </div>
-                      <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">${stack}</div>
-                      {isWinner && <div className="text-lg">🏆</div>}
+                      <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">
+                        ${isEnd && isWinner
+                          ? <CountUp from={stepPl?.stack ?? pl.startStack} to={pl.endStack} />
+                          : stack.toLocaleString()}
+                      </div>
+                      {isWinner && <motion.div initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: 0.5, type: 'spring', stiffness: 300, damping: 14 }} className="text-lg">🏆</motion.div>}
                     </div>
                   )
                 })}
 
-                {/* Live bets in front of players (re-enacted street by street) */}
-                {record.players.map((pl, i) => {
+                {/* Live bets in front of players (re-enacted street by street). Hidden
+                    at the end — the chips have been swept into the pot → winner. */}
+                {!isEnd && record.players.map((pl, i) => {
                   const amt = stepState.streetBets[pl.idx] ?? 0
                   if (amt <= 0) return null
                   const pos = getPlayerPos(i)
@@ -1087,10 +1112,10 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                     const to = getPlayerPos(w.i)
                     return (
                       <motion.div key={`win-${w.pl.idx}`} className="absolute pointer-events-none"
-                        initial={{ left: '50%', top: '59%', opacity: 0, scale: 0.5 }}
-                        animate={{ left: `${to.x}%`, top: `${to.y}%`, opacity: [0, 1, 1, 0], scale: [0.5, 1, 1, 0.85] }}
-                        transition={{ duration: 1, delay: 0.25, ease: 'easeInOut', times: [0, 0.18, 0.72, 1] }}
-                        style={{ transform: 'translate(-50%,-50%)', zIndex: 30 }}>
+                        initial={{ left: '50%', top: '59%', opacity: 0, scale: 0.45 }}
+                        animate={{ left: `${to.x}%`, top: `${to.y}%`, opacity: [0, 1, 1, 0], scale: [0.45, 1.05, 1, 0.7] }}
+                        transition={{ duration: 0.95, delay: 0.2, ease: [0.4, 0, 0.2, 1], times: [0, 0.2, 0.8, 1] }}
+                        style={{ transform: 'translate(-50%,-50%)', zIndex: 30, filter: 'drop-shadow(0 4px 10px rgba(201,162,39,0.5))' }}>
                         <FlyingStack amount={share} sz={20} />
                       </motion.div>
                     )
