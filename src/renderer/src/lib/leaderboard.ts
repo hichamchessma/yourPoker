@@ -31,12 +31,14 @@ export interface RosterPlayer {
   online: boolean
 }
 
+// `name` holds an i18n key; the leaderboard page resolves it at render so the
+// tier badge follows the active language (the roster itself is cached once).
 const TIERS = [
-  { name: 'Crusher', color: '#e0457b', min: 2100 },
-  { name: 'Requin', color: '#c9a227', min: 1850 },
-  { name: 'Grinder', color: '#38bdf8', min: 1550 },
-  { name: 'Régulier', color: '#22c55e', min: 1250 },
-  { name: 'Amateur', color: '#9aa4b2', min: 0 },
+  { name: 'lb.tierCrusher', color: '#e0457b', min: 2100 },
+  { name: 'lb.tierRequin', color: '#c9a227', min: 1850 },
+  { name: 'lb.tierGrinder', color: '#38bdf8', min: 1550 },
+  { name: 'lb.tierRegulier', color: '#22c55e', min: 1250 },
+  { name: 'lb.tierAmateur', color: '#9aa4b2', min: 0 },
 ]
 function tierFor(rating: number) { return TIERS.find(t => rating >= t.min) ?? TIERS[TIERS.length - 1] }
 

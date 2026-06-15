@@ -79,7 +79,7 @@ export default function LeaderboardPage() {
                 style={{ borderColor: medal + '55', background: `linear-gradient(180deg, ${medal}14, transparent)` }}>
                 <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-2 text-lg font-black" style={{ background: medal + '22', color: medal, border: `2px solid ${medal}` }}>{idx + 1}</div>
                 <p className="text-[13px] font-black text-white/90 truncate">{p.flag} {p.name}</p>
-                <p className="text-[10px] uppercase tracking-widest font-bold mt-0.5" style={{ color: p.tierColor }}>{p.tier}</p>
+                <p className="text-[10px] uppercase tracking-widest font-bold mt-0.5" style={{ color: p.tierColor }}>{t(p.tier)}</p>
                 <p className="text-[15px] font-black font-mono mt-1" style={{ color: medal }}>{fmt(p.rating)}</p>
                 <p className="text-[9px] text-white/35">{t('lb.podiumSub', { roi: p.roi, hands: fmt(p.hands) })}</p>
               </motion.div>
@@ -119,7 +119,7 @@ export default function LeaderboardPage() {
                 <span className="flex items-center gap-2 min-w-0">
                   {isOnline(p.id, bucket) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title={t('lb.online')} />}
                   <span className="text-[12px] text-white/80 truncate">{p.flag} {p.name}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex-shrink-0" style={{ background: p.tierColor + '1f', color: p.tierColor }}>{p.tier}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex-shrink-0" style={{ background: p.tierColor + '1f', color: p.tierColor }}>{t(p.tier)}</span>
                 </span>
                 <span className="text-right font-mono text-[12px] text-white/70">{fmt(p.rating)}</span>
                 <span className="text-right font-mono text-[12px] text-white/55">{p.itm}%</span>

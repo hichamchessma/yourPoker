@@ -100,9 +100,7 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
           </div>
 
           <p className="text-center text-white/30" style={{ fontSize: f(7.5), marginTop: f(6) }}>
-            {pinned
-              ? '📌 épinglé — ✕ ou Échap pour fermer · clique une case pour le POURQUOI'
-              : '⏸ clic ou Espace pour épingler · clique une case pour le POURQUOI'}
+            {pinned ? t('xtra.hintPinned') : t('xtra.hintUnpinned')}
           </p>
         </div>
       )}

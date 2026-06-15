@@ -12,7 +12,7 @@ import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
-import { getPostflopAdvice, buildEquityReasoning, type EquityReasoning } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
@@ -115,7 +115,6 @@ const LGRAD: Record<number,[string,string]> = {
   0:['#0d2235','#00d4ff'], 1:['#0d2a0d','#22aa44'], 2:['#2a2008','#c9a227'], 3:['#300818','#cc3366'],
 }
 const HUMAN_GRAD: [string,string] = ['#1a0830','#9933dd']
-const HNAMES = ['Haute carte','Paire','Double paire','Brelan','Suite','Couleur','Full','Carré','Quinte flush']
 const PHASE_LABEL: Record<Phase, string> = {
   idle:'Prêt', dealing:'Distribution', preflop:'Pré-flop',
   flop:'Flop', turn:'Turn', river:'River', showdown:'Showdown',
@@ -238,11 +237,11 @@ function bestHand(cards: Card[]): { score:number; name:string } {
   if (valid.length < 2) return { score:0, name:'—' }
   if (valid.length < 5) {
     const pad = [...valid, ...Array(5-valid.length).fill({rank:'2',suit:'♠'})]
-    const s = evalFive(pad); return { score:s, name:HNAMES[Math.floor(s/15**5)]??'Haute carte' }
+    const s = evalFive(pad); return { score:s, name:handCatLabel(Math.floor(s/15**5)) }
   }
   let best=0
   for (const c of combos5(valid)) { const s=evalFive(c); if(s>best) best=s }
-  return { score:best, name:HNAMES[Math.floor(best/15**5)]??'Haute carte' }
+  return { score:best, name:handCatLabel(Math.floor(best/15**5)) }
 }
 // Realistic 0..1 made-hand strength (category-based, with pair refinement) so
 // bots actually value-bet strong hands instead of checking down monsters.
@@ -812,7 +811,7 @@ function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number)
     if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') raises++
     if (a.seatIdx === idx && a.actionType !== 'SB' && a.actionType !== 'BB') last = a
   }
-  if (!last) return { move: '—', effect: 'pas encore parlé ce coup' }
+  if (!last) return { move: '—', effect: i18n.t('xtra.notSpokenYet') as string }
   const cat: ActCat = last.actionType === 'FOLD' ? 'fold' : last.actionType === 'CHECK' ? 'check' : last.actionType === 'CALL' ? 'call' : 'aggr'
   return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
 }
@@ -1186,7 +1185,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                     return (
                       <div key={i} className={`text-center py-1.5 ${isCurrentStep?'text-[#c9a227]':'text-white/30'}`}>
                         <span className="text-[10px] font-bold uppercase tracking-widest border-t border-b border-current px-2">
-                          — {PHASE_LABEL[a.phase] ?? a.phase} —
+                          — {t('phase.' + a.phase)} —
                         </span>
                       </div>
                     )
@@ -1989,9 +1988,9 @@ export default function GamePage(): JSX.Element {
     if (winner) {
       winner.stack += potTotal
       winner.isWinner = true
-      winner.handStrength = 'Tous foldé'
+      winner.handStrength = i18n.t('xtra.allFolded') as string
     }
-    const log = [...state.log, `${winner?.name ?? '?'} remporte ${potTotal} (tous ont foldé)`]
+    const log = [...state.log, i18n.t('xtra.winAllFoldedLog', { name: winner?.name ?? '?', pot: potTotal }) as string]
     return { ...state, seats, pot: 0, currentBet: 0, winners: [seatIdx], phase: 'showdown', log, autoRunning: false }
   }
 
@@ -2239,7 +2238,7 @@ export default function GamePage(): JSX.Element {
     const winners = [...winnerSet]
     const winLog = winners.map(wi => {
       const s = finalSeats.find(x => x.idx === wi)
-      return `${s?.name ?? '?'} remporte ${payouts[wi] ?? 0} avec ${s?.handStrength ?? '?'}`
+      return i18n.t('xtra.winWithLog', { name: s?.name ?? '?', pay: payouts[wi] ?? 0, hand: s?.handStrength ?? '?' }) as string
     })
 
     const finalState: GState = {
@@ -2544,7 +2543,7 @@ export default function GamePage(): JSX.Element {
       seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack + s.bet })
       recordAction({ phase: 'preflop', seatIdx: sbIdx, name: seats[sbIdx].name, isHero: seats[sbIdx].isHero, actionType: 'SB', amount: sbPost }, pot)
       recordAction({ phase: 'preflop', seatIdx: bbIdx, name: seats[bbIdx].name, isHero: seats[bbIdx].isHero, actionType: 'BB', amount: bbPost }, pot)
-      const state: GState = { phase: 'preflop', deck, seats, community: [null, null, null, null, null], pot, currentBet: bbAmt, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: ['=== Scénario (préflop) ==='], winners: [], paused: false, autoRunning: live }
+      const state: GState = { phase: 'preflop', deck, seats, community: [null, null, null, null, null], pot, currentBet: bbAmt, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: [i18n.t('xtra.scenarioLog', { street: i18n.t('phase.preflop') }) as string], winners: [], paused: false, autoRunning: live }
       setGs(state); gsRef.current = state
       const firstToAct = (bbIdx + 1) % n
       setTimeout(() => startStreet(gsRef.current, firstToAct), 420)
@@ -2555,11 +2554,11 @@ export default function GamePage(): JSX.Element {
       const pot = share * n
       seats.forEach(s => { handStartStacksRef.current[s.idx] = s.stack + share })
       // Street markers so the coach / history see the right board context.
-      recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: 'Pré-flop', amount: 0 }, pot)
-      if (boardCount >= 3) recordAction({ phase: 'flop', seatIdx: -1, name: '', isHero: false, actionType: 'Flop', amount: 0 }, pot)
-      if (boardCount >= 4) recordAction({ phase: 'turn', seatIdx: -1, name: '', isHero: false, actionType: 'Turn', amount: 0 }, pot)
-      if (boardCount >= 5) recordAction({ phase: 'river', seatIdx: -1, name: '', isHero: false, actionType: 'River', amount: 0 }, pot)
-      const state: GState = { phase: sc.startStreet, deck, seats, community, pot, currentBet: 0, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: [`=== Scénario (${sc.startStreet}) ===`], winners: [], paused: false, autoRunning: live }
+      recordAction({ phase: 'preflop', seatIdx: -1, name: '', isHero: false, actionType: PHASE_LABEL.preflop, amount: 0 }, pot)
+      if (boardCount >= 3) recordAction({ phase: 'flop', seatIdx: -1, name: '', isHero: false, actionType: PHASE_LABEL.flop, amount: 0 }, pot)
+      if (boardCount >= 4) recordAction({ phase: 'turn', seatIdx: -1, name: '', isHero: false, actionType: PHASE_LABEL.turn, amount: 0 }, pot)
+      if (boardCount >= 5) recordAction({ phase: 'river', seatIdx: -1, name: '', isHero: false, actionType: PHASE_LABEL.river, amount: 0 }, pot)
+      const state: GState = { phase: sc.startStreet, deck, seats, community, pot, currentBet: 0, minRaise: bbAmt, actQueue: [], dealerIdx, handNum: 1, log: [i18n.t('xtra.scenarioLog', { street: i18n.t('phase.' + sc.startStreet) }) as string], winners: [], paused: false, autoRunning: live }
       setGs(state); gsRef.current = state
       const first = firstActivePostflop(seats, dealerIdx)
       setTimeout(() => startStreet(gsRef.current, first), 450)
@@ -2655,7 +2654,7 @@ export default function GamePage(): JSX.Element {
     const state: GState = {
       phase, deck, seats, community, pot: step.pot, currentBet, minRaise: bbAmt,
       actQueue: [], dealerIdx, handNum: record.handNum,
-      log: [`=== Simulation (${PHASE_LABEL[phase]}) ===`], winners: [],
+      log: [i18n.t('xtra.simLog', { phase: i18n.t('phase.' + phase) }) as string], winners: [],
       paused: false, autoRunning: true,
     }
     setGs(state); gsRef.current = state
@@ -3058,7 +3057,7 @@ export default function GamePage(): JSX.Element {
   // Hero's represented (perceived) range — shown postflop in the coach panel.
   const heroRepView = (coachOpen && hero && gs.community.filter(Boolean).length >= 3 && rangeRef.current[hero.idx])
     ? rangeView(rangeRef.current[hero.idx]) : null
-  const heroRepMeta = hero ? (rangeMetaRef.current[hero.idx] ?? { move: '—', effect: 'range de départ' }) : null
+  const heroRepMeta = hero ? (rangeMetaRef.current[hero.idx] ?? { move: '—', effect: t('xtra.startRange') }) : null
   const preCanCheck = !!hero && gs.currentBet <= hero.bet          // no bet to call → check
   const preCallAmt = hero ? Math.min(gs.currentBet - hero.bet, hero.stack) : 0
 
@@ -3467,7 +3466,7 @@ export default function GamePage(): JSX.Element {
           <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Main</span>
           <span className="text-[10px] font-bold text-[#c9a227]">#{gs.handNum}</span>
           <span className="text-[8px] px-2 py-0.5 rounded border border-white/10 text-white/40 font-bold uppercase tracking-widest">
-            {PHASE_LABEL[gs.phase]}
+            {t('phase.' + gs.phase)}
           </span>
         </div>
         <div className="h-4 w-px bg-white/10"/>
@@ -3497,7 +3496,7 @@ export default function GamePage(): JSX.Element {
               : fastFwd
               ? { borderColor: 'rgba(201,162,39,0.7)', background: 'rgba(201,162,39,0.22)', color: '#f2d375' }
               : { borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
-            <FastForward size={11}/> {turbo ? 'Turbo 🚀' : fastFwd ? 'Rapide ⚡' : 'Accélérer'}
+            <FastForward size={11}/> {turbo ? t('xtra.turbo') : fastFwd ? t('xtra.fast') : t('xtra.accel')}
           </button>
         )}
 
@@ -3518,7 +3517,7 @@ export default function GamePage(): JSX.Element {
         {/* Sit out / sit in — always applies on the next hand */}
         {gs.phase !== 'idle' && (
           <button onClick={toggleSitOut}
-            title={sitOut ? 'Revenir à la prochaine main' : 'Sortir à la prochaine main'}
+            title={sitOut ? t('xtra.sitInTip') : t('xtra.sitOutTip')}
             className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
               ${sitOut ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
             {sitOut ? 'Sit In' : 'Sit Out'}
@@ -3991,7 +3990,7 @@ export default function GamePage(): JSX.Element {
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"/>
                       <p className="text-[10px] text-amber-300/80 uppercase tracking-widest">
-                        {sitOut ? 'Vous êtes absent — cliquez sur Sit In pour revenir' : 'Vous reviendrez à la prochaine main'}
+                        {sitOut ? t('xtra.sitOutMsg') : t('xtra.sitInMsg')}
                       </p>
                     </div>
                     <button onClick={toggleSitOut}
@@ -4069,7 +4068,7 @@ export default function GamePage(): JSX.Element {
                     {seat.isHero ? 'Toi' : seat.name} <span className="text-[#c9a227]/70">{seat.position}</span> — action
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-white/45">{toCall > 0 ? `à payer $${toCall}` : 'aucune mise à payer'} · pot ${potNow}</span>
+                    <span className="text-[10px] text-white/45">{toCall > 0 ? t('xtra.toPay', { n: toCall }) : t('xtra.noBet')} · pot ${potNow}</span>
                     <button onClick={() => { setManualPanel(null); setManualBet('') }} className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white text-xs">✕</button>
                   </div>
                 </div>

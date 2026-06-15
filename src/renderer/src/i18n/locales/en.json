@@ -179,7 +179,12 @@
     "noPlayer": "No player found.",
     "players": "{{count}} players",
     "top100": "Top 100 shown",
-    "podiumSub": "ROI +{{roi}}% · {{hands}} hands"
+    "podiumSub": "ROI +{{roi}}% · {{hands}} hands",
+    "tierCrusher": "Crusher",
+    "tierRequin": "Shark",
+    "tierGrinder": "Grinder",
+    "tierRegulier": "Reg",
+    "tierAmateur": "Amateur"
   },
   "hist": {
     "title": "History",
@@ -1105,5 +1110,35 @@
     "streetFlop": "Flop",
     "streetTurn": "Turn",
     "streetRiver": "River"
+  },
+  "phase": {
+    "idle": "Ready",
+    "dealing": "Dealing",
+    "preflop": "Preflop",
+    "flop": "Flop",
+    "turn": "Turn",
+    "river": "River",
+    "showdown": "Showdown"
+  },
+  "xtra": {
+    "notSpokenYet": "hasn't acted this hand yet",
+    "startRange": "starting range",
+    "allFolded": "All folded",
+    "winAllFoldedLog": "{{name}} wins {{pot}} (everyone folded)",
+    "winWithLog": "{{name}} wins {{pay}} with {{hand}}",
+    "accel": "Speed up",
+    "turbo": "Turbo 🚀",
+    "fast": "Fast ⚡",
+    "sitOutTip": "Sit out next hand",
+    "sitInTip": "Sit in next hand",
+    "sitOutMsg": "You're away — click Sit In to return",
+    "sitInMsg": "You'll return next hand",
+    "toPay": "to call ${{n}}",
+    "noBet": "no bet to call",
+    "scenarioLog": "=== Scenario ({{street}}) ===",
+    "simLog": "=== Simulation ({{phase}}) ===",
+    "hintPinned": "📌 pinned — ✕ or Esc to close · click a cell for the WHY",
+    "hintUnpinned": "⏸ click or Space to pin · click a cell for the WHY",
+    "updateError": "Error while updating"
   }
 }

@@ -179,7 +179,12 @@
     "noPlayer": "Ningún jugador encontrado.",
     "players": "{{count}} jugadores",
     "top100": "Top 100 mostrado",
-    "podiumSub": "ROI +{{roi}}% · {{hands}} manos"
+    "podiumSub": "ROI +{{roi}}% · {{hands}} manos",
+    "tierCrusher": "Crusher",
+    "tierRequin": "Tiburón",
+    "tierGrinder": "Grinder",
+    "tierRegulier": "Regular",
+    "tierAmateur": "Amateur"
   },
   "hist": {
     "title": "Historial",
@@ -1105,5 +1110,35 @@
     "streetFlop": "Flop",
     "streetTurn": "Turn",
     "streetRiver": "River"
+  },
+  "phase": {
+    "idle": "Listo",
+    "dealing": "Repartiendo",
+    "preflop": "Preflop",
+    "flop": "Flop",
+    "turn": "Turn",
+    "river": "River",
+    "showdown": "Showdown"
+  },
+  "xtra": {
+    "notSpokenYet": "aún no ha actuado en esta mano",
+    "startRange": "rango inicial",
+    "allFolded": "Todos foldearon",
+    "winAllFoldedLog": "{{name}} gana {{pot}} (todos foldearon)",
+    "winWithLog": "{{name}} gana {{pay}} con {{hand}}",
+    "accel": "Acelerar",
+    "turbo": "Turbo 🚀",
+    "fast": "Rápido ⚡",
+    "sitOutTip": "Ausentarse en la próxima mano",
+    "sitInTip": "Volver en la próxima mano",
+    "sitOutMsg": "Estás ausente — pulsa Sit In para volver",
+    "sitInMsg": "Volverás en la próxima mano",
+    "toPay": "a pagar ${{n}}",
+    "noBet": "sin apuesta que pagar",
+    "scenarioLog": "=== Escenario ({{street}}) ===",
+    "simLog": "=== Simulación ({{phase}}) ===",
+    "hintPinned": "📌 fijado — ✕ o Esc para cerrar · clic en una casilla para el PORQUÉ",
+    "hintUnpinned": "⏸ clic o Espacio para fijar · clic en una casilla para el PORQUÉ",
+    "updateError": "Error al actualizar"
   }
 }

@@ -160,7 +160,7 @@ export default function AuthPage(): JSX.Element {
       setNotice(t('auth.noticeReset'))
       setMode('login')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour')
+      setError(err instanceof Error ? err.message : t('xtra.updateError'))
     } finally {
       setIsLoading(false)
     }
