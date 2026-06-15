@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   TrendingUp, Trophy, Target, Flame, Award, Crown, Shield,
   Spade, Star, BookMarked, Sparkles, GraduationCap, Medal,
@@ -10,18 +11,19 @@ import { loadSessions } from '../lib/historyStore'
 import { computePlayerStats } from '../lib/playerStats'
 import { useIsPro } from '../lib/entitlements'
 
-const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR')
+const fmt = (n: number) => Math.round(n).toLocaleString()
 
 // Tier derived from REAL recorded volume (highlight hands), not an invented rating.
 const TIERS = [
-  { name: 'Débutant', color: '#9aa4b2', min: 0 },
-  { name: 'Apprenti', color: '#22c55e', min: 200 },
-  { name: 'Régulier', color: '#38bdf8', min: 1000 },
-  { name: 'Grinder', color: '#c9a227', min: 4000 },
-  { name: 'Requin', color: '#e0457b', min: 12000 },
+  { key: 'tierDebutant', color: '#9aa4b2', min: 0 },
+  { key: 'tierApprenti', color: '#22c55e', min: 200 },
+  { key: 'tierRegulier', color: '#38bdf8', min: 1000 },
+  { key: 'tierGrinder', color: '#c9a227', min: 4000 },
+  { key: 'tierRequin', color: '#e0457b', min: 12000 },
 ]
 
 export default function ProfilePage() {
+  const { t } = useTranslation()
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Joueur'
@@ -30,7 +32,8 @@ export default function ProfilePage() {
 
   const isPro = useIsPro()
   const stats = useMemo(() => computePlayerStats(6), [])
-  const tier = [...TIERS].reverse().find(t => stats.totalHands >= t.min) ?? TIERS[0]
+  const tier = [...TIERS].reverse().find(tt => stats.totalHands >= tt.min) ?? TIERS[0]
+  const tierName = t(`prof.${tier.key}`)
   const ringColor = isPro ? '#f0d060' : tier.color
 
   // Real cumulative profit curve (cash BB if any, otherwise tournament $), chronological.
@@ -39,27 +42,27 @@ export default function ProfilePage() {
     const tour = [...loadSessions('tournament')].reverse()
     if (cash.length > 0) {
       let acc = 0; const pts = cash.map(s => (acc += s.resultBB))
-      return { curve: [0, ...pts], curveLabel: 'Profit cash cumulé (BB)' }
+      return { curve: [0, ...pts], curveLabel: t('prof.curveCash') }
     }
     if (tour.length > 0) {
       let acc = 0; const pts = tour.map(s => (acc += s.resultBB))
-      return { curve: [0, ...pts], curveLabel: 'Résultat tournois cumulé ($)' }
+      return { curve: [0, ...pts], curveLabel: t('prof.curveTour') }
     }
-    return { curve: [] as number[], curveLabel: 'Profit cumulé' }
-  }, [])
+    return { curve: [] as number[], curveLabel: t('prof.curveDefault') }
+  }, [t])
 
   const savedScenarios = (() => { try { return JSON.parse(localStorage.getItem('yourpoker_scenarios') || '[]').length } catch { return 0 } })()
   const customRanges = !!localStorage.getItem('yourpoker_handtrainer_ranges')
 
   const achievements = [
-    { icon: <GraduationCap size={18} />, name: 'Première session', got: stats.totalSessions >= 1 },
-    { icon: <Flame size={18} />, name: '500 mains jouées', got: stats.totalHands >= 500 },
-    { icon: <Medal size={18} />, name: 'Premier tournoi', got: stats.tourPlayed >= 1 },
-    { icon: <Crown size={18} />, name: 'Dans les places payées', got: stats.tourItmPct > 0 },
-    { icon: <Trophy size={18} />, name: 'Cash gagnant', got: stats.cashNetBB > 0 },
-    { icon: <Target size={18} />, name: 'Ranges personnalisées', got: customRanges },
-    { icon: <BookMarked size={18} />, name: 'Scénariste', got: savedScenarios > 0 },
-    { icon: <Shield size={18} />, name: 'Grinder (4k mains)', got: stats.totalHands >= 4000 },
+    { icon: <GraduationCap size={18} />, name: t('prof.ach1'), got: stats.totalSessions >= 1 },
+    { icon: <Flame size={18} />, name: t('prof.ach2'), got: stats.totalHands >= 500 },
+    { icon: <Medal size={18} />, name: t('prof.ach3'), got: stats.tourPlayed >= 1 },
+    { icon: <Crown size={18} />, name: t('prof.ach4'), got: stats.tourItmPct > 0 },
+    { icon: <Trophy size={18} />, name: t('prof.ach5'), got: stats.cashNetBB > 0 },
+    { icon: <Target size={18} />, name: t('prof.ach6'), got: customRanges },
+    { icon: <BookMarked size={18} />, name: t('prof.ach7'), got: savedScenarios > 0 },
+    { icon: <Shield size={18} />, name: t('prof.ach8'), got: stats.totalHands >= 4000 },
   ]
 
   return (
@@ -90,7 +93,7 @@ export default function ProfilePage() {
                 </div>
               </div>
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border"
-                style={{ background: '#0a1120', color: ringColor, borderColor: ringColor }}>{tier.name}</span>
+                style={{ background: '#0a1120', color: ringColor, borderColor: ringColor }}>{tierName}</span>
             </div>
 
             {/* identity */}
@@ -105,37 +108,37 @@ export default function ProfilePage() {
               </div>
               <p className="text-[12px] text-white/40 mt-0.5">{email}</p>
               <div className="flex items-center justify-center md:justify-start gap-3 mt-3">
-                <span className="flex items-center gap-1.5 text-[12px] text-white/60"><Sparkles size={13} className="text-[#c9a227]" /> Palier <b className="text-[#c9a227]">{tier.name}</b></span>
+                <span className="flex items-center gap-1.5 text-[12px] text-white/60"><Sparkles size={13} className="text-[#c9a227]" /> {t('prof.tierLabel')} <b className="text-[#c9a227]">{tierName}</b></span>
                 <span className="h-3 w-px bg-white/15" />
-                <span className="text-[12px] text-white/60">{fmt(stats.totalHands)} mains jouées</span>
+                <span className="text-[12px] text-white/60">{t('prof.handsPlayed', { count: fmt(stats.totalHands) })}</span>
               </div>
             </div>
 
             {/* headline — real cash net */}
             <div className="shrink-0 text-center px-5 py-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06]">
-              <p className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Net cash</p>
+              <p className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('prof.netCash')}</p>
               <p className={`text-3xl font-black font-mono ${stats.cashNetBB >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{stats.cashNetBB >= 0 ? '+' : ''}{fmt(stats.cashNetBB)} <span className="text-base">BB</span></p>
-              <p className="text-[10px] text-white/35 mt-0.5">sur {stats.cashPlayed} session{stats.cashPlayed > 1 ? 's' : ''}</p>
+              <p className="text-[10px] text-white/35 mt-0.5">{t('prof.onSessions', { count: stats.cashPlayed })}</p>
             </div>
           </div>
         </motion.div>
 
         {!stats.hasData && (
           <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5 text-center">
-            <p className="text-sm text-white/55">Tu n'as pas encore de session enregistrée.</p>
-            <p className="text-[12px] text-white/35 mt-1">Joue un tournoi ou une session cash — tes vraies stats s'afficheront ici.</p>
-            <button onClick={() => navigate('/lobby')} className="mt-3 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/25 transition-all">Aller au lobby</button>
+            <p className="text-sm text-white/55">{t('prof.emptyTitle')}</p>
+            <p className="text-[12px] text-white/35 mt-1">{t('prof.emptySub')}</p>
+            <button onClick={() => navigate('/lobby')} className="mt-3 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/25 transition-all">{t('prof.goLobby')}</button>
           </div>
         )}
 
         {/* ── KPI ROW (real) ── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-          <Kpi icon={<Spade size={15} />} label="Mains jouées" value={fmt(stats.totalHands)} />
-          <Kpi icon={<GraduationCap size={15} />} label="Sessions" value={fmt(stats.totalSessions)} />
-          <Kpi icon={<Medal size={15} />} label="Tournois" value={fmt(stats.tourPlayed)} />
-          <Kpi icon={<Crown size={15} />} label="ITM tournois" value={stats.tourPlayed ? `${stats.tourItmPct}%` : '—'} accent="#c9a227" />
-          <Kpi icon={<TrendingUp size={15} />} label="Net cash" value={`${stats.cashNetBB >= 0 ? '+' : ''}${fmt(stats.cashNetBB)} BB`} accent={stats.cashNetBB >= 0 ? '#4ade80' : '#f87171'} />
-          <Kpi icon={<Trophy size={15} />} label="Net tournois" value={`${stats.tourNet >= 0 ? '+' : ''}$${fmt(stats.tourNet)}`} accent={stats.tourNet >= 0 ? '#4ade80' : '#f87171'} />
+          <Kpi icon={<Spade size={15} />} label={t('prof.kpiHands')} value={fmt(stats.totalHands)} />
+          <Kpi icon={<GraduationCap size={15} />} label={t('prof.kpiSessions')} value={fmt(stats.totalSessions)} />
+          <Kpi icon={<Medal size={15} />} label={t('prof.kpiTournaments')} value={fmt(stats.tourPlayed)} />
+          <Kpi icon={<Crown size={15} />} label={t('prof.kpiItm')} value={stats.tourPlayed ? `${stats.tourItmPct}%` : '—'} accent="#c9a227" />
+          <Kpi icon={<TrendingUp size={15} />} label={t('prof.kpiNetCash')} value={`${stats.cashNetBB >= 0 ? '+' : ''}${fmt(stats.cashNetBB)} BB`} accent={stats.cashNetBB >= 0 ? '#4ade80' : '#f87171'} />
+          <Kpi icon={<Trophy size={15} />} label={t('prof.kpiNetTour')} value={`${stats.tourNet >= 0 ? '+' : ''}$${fmt(stats.tourNet)}`} accent={stats.tourNet >= 0 ? '#4ade80' : '#f87171'} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5">
@@ -145,17 +148,17 @@ export default function ProfilePage() {
               <>
                 <ProfitChart pts={curve} />
                 <div className="flex items-center justify-between mt-2 text-[10px] text-white/40">
-                  <span>Meilleure session : <b className="text-emerald-400">+{fmt(Math.max(stats.bestCashBB, 0))} BB</b></span>
-                  <span>Sur {fmt(stats.totalHands)} mains</span>
+                  <span>{t('prof.bestSession')} <b className="text-emerald-400">+{fmt(Math.max(stats.bestCashBB, 0))} BB</b></span>
+                  <span>{t('prof.onHands', { hands: fmt(stats.totalHands) })}</span>
                 </div>
               </>
             ) : (
-              <div className="h-[150px] flex items-center justify-center text-[12px] text-white/30">Pas encore assez de sessions pour tracer une courbe.</div>
+              <div className="h-[150px] flex items-center justify-center text-[12px] text-white/30">{t('prof.notEnough')}</div>
             )}
           </Panel>
 
           {/* ── RECENT SESSIONS (real) ── */}
-          <Panel title="Dernières sessions" icon={<Star size={14} />}>
+          <Panel title={t('lobby.recentSessions')} icon={<Star size={14} />}>
             {stats.recent.length > 0 ? (
               <div className="space-y-1.5">
                 {stats.recent.map(s => (
@@ -176,23 +179,23 @@ export default function ProfilePage() {
                 ))}
               </div>
             ) : (
-              <div className="h-[120px] flex items-center justify-center text-[12px] text-white/30">Aucune session terminée pour l'instant.</div>
+              <div className="h-[120px] flex items-center justify-center text-[12px] text-white/30">{t('prof.noFinished')}</div>
             )}
           </Panel>
         </div>
 
         {/* ── FORMAT SPLIT (real) ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 my-5">
-          <FormatCard title="Cash Game" accent="#00d4ff" rows={[
-            ['Sessions', fmt(stats.cashPlayed)], ['Net', `${stats.cashNetBB >= 0 ? '+' : ''}${fmt(stats.cashNetBB)} BB`], ['Meilleure', `+${fmt(Math.max(stats.bestCashBB, 0))} BB`],
+          <FormatCard title={t('prof.cashGame')} accent="#00d4ff" rows={[
+            [t('prof.kpiSessions'), fmt(stats.cashPlayed)], [t('prof.rowNet'), `${stats.cashNetBB >= 0 ? '+' : ''}${fmt(stats.cashNetBB)} BB`], [t('prof.rowBest'), `+${fmt(Math.max(stats.bestCashBB, 0))} BB`],
           ]} />
-          <FormatCard title="Tournois (MTT)" accent="#c9a227" rows={[
-            ['Tournois', fmt(stats.tourPlayed)], ['ITM', stats.tourPlayed ? `${stats.tourItmPct}%` : '—'], ['Net', `${stats.tourNet >= 0 ? '+' : ''}$${fmt(stats.tourNet)}`],
+          <FormatCard title={t('prof.tournamentsMtt')} accent="#c9a227" rows={[
+            [t('prof.kpiTournaments'), fmt(stats.tourPlayed)], ['ITM', stats.tourPlayed ? `${stats.tourItmPct}%` : '—'], [t('prof.rowNet'), `${stats.tourNet >= 0 ? '+' : ''}$${fmt(stats.tourNet)}`],
           ]} />
         </div>
 
         {/* ── ACHIEVEMENTS (real thresholds) ── */}
-        <Panel title="Succès" icon={<Award size={14} />}>
+        <Panel title={t('prof.achievements')} icon={<Award size={14} />}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-1">
             {achievements.map((a, i) => (
               <motion.div key={i} initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
