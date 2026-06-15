@@ -1069,13 +1069,33 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                   </div>
                 </div>
 
-                {/* Pot */}
-                <div className="absolute left-1/2 top-[59%] -translate-x-1/2 -translate-y-1/2">
-                  <div className="flex items-center gap-2 bg-black/65 border border-[#c9a227]/30 rounded-lg px-4 py-1.5">
-                    <span className="text-[11px] text-white/45 uppercase tracking-wide">Pot</span>
-                    <span className="text-base font-bold text-[#c9a227] font-mono">${stepState.pot}</span>
+                {/* Pot — hidden once the hand ends (the chips sweep to the winner instead) */}
+                {!isEnd && (
+                  <div className="absolute left-1/2 top-[59%] -translate-x-1/2 -translate-y-1/2">
+                    <div className="flex items-center gap-2 bg-black/65 border border-[#c9a227]/30 rounded-lg px-4 py-1.5">
+                      <span className="text-[11px] text-white/45 uppercase tracking-wide">Pot</span>
+                      <span className="text-base font-bold text-[#c9a227] font-mono">${stepState.pot}</span>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* End of hand: sweep the pot chips to the winner(s), like the live table */}
+                {isEnd && record.players.some(p => p.isWinner) && (() => {
+                  const winners = record.players.map((pl, i) => ({ pl, i })).filter(w => w.pl.isWinner)
+                  const share = Math.max(1, Math.round(record.finalPot / winners.length))
+                  return winners.map(w => {
+                    const to = getPlayerPos(w.i)
+                    return (
+                      <motion.div key={`win-${w.pl.idx}`} className="absolute pointer-events-none"
+                        initial={{ left: '50%', top: '59%', opacity: 0, scale: 0.5 }}
+                        animate={{ left: `${to.x}%`, top: `${to.y}%`, opacity: [0, 1, 1, 0], scale: [0.5, 1, 1, 0.85] }}
+                        transition={{ duration: 1, delay: 0.25, ease: 'easeInOut', times: [0, 0.18, 0.72, 1] }}
+                        style={{ transform: 'translate(-50%,-50%)', zIndex: 30 }}>
+                        <FlyingStack amount={share} sz={20} />
+                      </motion.div>
+                    )
+                  })
+                })()}
               </div>
 
               {/* Step controls */}
