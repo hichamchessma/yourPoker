@@ -3589,17 +3589,17 @@ export default function GamePage(): JSX.Element {
           return (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10"
               style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
-              <Cell label="Niveau" value={`${tourLevelIdx + 1}`} accent />
-              <Cell label="Blindes" value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
-              <Cell label="↑ niveau dans" value={coachOpen ? '⏸ pause' : `${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
-              <Cell label="Joueurs" value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
-              <Cell label="Stack moy." value={`${Math.round(avgStack / curLevel.bb)} BB`} />
-              <Cell label="Ton stack" value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
-              <Cell label="Place" value={`${rank.toLocaleString()}e`} />
+              <Cell label={t('game.hudLevel')} value={`${tourLevelIdx + 1}`} accent />
+              <Cell label={t('game.hudBlinds')} value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
+              <Cell label={t('game.hudNextLevel')} value={coachOpen ? t('game.hudPause') : `${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
+              <Cell label={t('game.hudPlayers')} value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
+              <Cell label={t('game.hudAvgStack')} value={`${Math.round(avgStack / curLevel.bb)} BB`} />
+              <Cell label={t('game.hudYourStack')} value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
+              <Cell label={t('game.hudPlace')} value={t('tour.placeN', { n: rank.toLocaleString() })} />
               <div className="flex flex-col items-center px-3">
-                <span className="text-[7px] uppercase tracking-widest text-white/35 font-bold">Statut</span>
+                <span className="text-[7px] uppercase tracking-widest text-white/35 font-bold">{t('game.hudStatus')}</span>
                 <span className={`text-[11px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/60'}`}>
-                  {itm ? `ITM ($${prizeForPlace(rank, tourPayouts()).toLocaleString()})` : toBubble <= 5 ? `Bulle (${toBubble})` : `${places} payés`}
+                  {itm ? t('game.hudItm', { prize: prizeForPlace(rank, tourPayouts()).toLocaleString() }) : toBubble <= 5 ? t('game.hudBubble', { n: toBubble }) : t('game.hudPaid', { n: places })}
                 </span>
               </div>
             </div>
@@ -3618,12 +3618,12 @@ export default function GamePage(): JSX.Element {
                 <h2 className="font-display font-bold text-2xl tracking-[0.3em] uppercase text-white/80">
                   Poker Elite
                 </h2>
-                <p className="text-white/40 text-sm">Appuyez sur Démarrer pour commencer</p>
+                <p className="text-white/40 text-sm">{t('game.idleStart')}</p>
                 <button
                   onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), 0, 0)}
                   className="mt-2 px-8 py-3 rounded-xl font-bold text-sm tracking-widest uppercase transition-all"
                   style={{background:'linear-gradient(135deg,#f0d060,#c9a227,#8B6810)',color:'#0a0a0a',boxShadow:'0 0 30px rgba(201,162,39,0.4)'}}>
-                  ✦ Démarrer la partie ✦
+                  {t('game.startGame')}
                 </button>
               </motion.div>
             </motion.div>

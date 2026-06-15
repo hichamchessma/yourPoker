@@ -591,6 +591,20 @@
     "prize": "Prize: ${{amount}} 🎉",
     "noPrize": "Out of the money",
     "restartTitle": "Start a new tournament with the same configuration",
-    "youWin": " — you win 🎉"
+    "youWin": " — you win 🎉",
+    "hudLevel": "Level",
+    "hudBlinds": "Blinds",
+    "hudNextLevel": "↑ level in",
+    "hudPause": "⏸ pause",
+    "hudPlayers": "Players",
+    "hudAvgStack": "Avg stack",
+    "hudYourStack": "Your stack",
+    "hudPlace": "Place",
+    "hudStatus": "Status",
+    "hudItm": "ITM (${{prize}})",
+    "hudBubble": "Bubble ({{n}})",
+    "hudPaid": "{{n}} paid",
+    "idleStart": "Press Start to begin",
+    "startGame": "✦ Start the game ✦"
   }
 }

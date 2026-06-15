@@ -591,6 +591,20 @@
     "prize": "Gain : ${{amount}} 🎉",
     "noPrize": "Hors des places payées",
     "restartTitle": "Lance un nouveau tournoi avec la même configuration",
-    "youWin": " — tu gagnes 🎉"
+    "youWin": " — tu gagnes 🎉",
+    "hudLevel": "Niveau",
+    "hudBlinds": "Blindes",
+    "hudNextLevel": "↑ niveau dans",
+    "hudPause": "⏸ pause",
+    "hudPlayers": "Joueurs",
+    "hudAvgStack": "Stack moy.",
+    "hudYourStack": "Ton stack",
+    "hudPlace": "Place",
+    "hudStatus": "Statut",
+    "hudItm": "ITM (${{prize}})",
+    "hudBubble": "Bulle ({{n}})",
+    "hudPaid": "{{n}} payés",
+    "idleStart": "Appuyez sur Démarrer pour commencer",
+    "startGame": "✦ Démarrer la partie ✦"
   }
 }
