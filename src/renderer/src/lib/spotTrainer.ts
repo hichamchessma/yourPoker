@@ -310,24 +310,24 @@ export const DECISION_LABEL: Record<AdviceAction, string> = {
 }
 export interface DecisionReveal { correctLabel: string; lesson: string; twoQuestions: string; sizingTell?: string; reasons: string[]; equity: number; bucket: HandBucket }
 export function decisionReveal(spot: DecisionSpot): DecisionReveal {
+  const t = i18n.t.bind(i18n)
   const a = spot.advice, b = spot.diag.bucket, pct = (x: number) => `${Math.round(x * 100)}%`
   let correctLabel = DECISION_LABEL[a.action], lesson = '', twoQuestions = ''
-  if (a.action === 'FOLD') { lesson = `Pas assez d'équité (${pct(a.equity)}) ou main dominée → fold.`; twoQuestions = 'Tu ne bats ni sa value ni assez ses bluffs pour payer → tu abandonnes.' }
+  if (a.action === 'FOLD') { lesson = t('decq.lessonFold', { eq: pct(a.equity) }); twoQuestions = t('decq.twoFold') }
   else if (a.action === 'CALL') {
-    correctLabel = b === 'bluffcatch' ? 'CALL (bluff-catch)' : b === 'draw' ? 'CALL (tirage)' : 'CALL'
-    lesson = b === 'bluffcatch' ? `Bluff-catch : tu bats ses bluffs, tu perds vs sa value, et tu n'améliores pas → tu PAIES, tu ne relances pas.` : b === 'draw' ? `Tirage : la cote + les cotes implicites rendent le call rentable.` : `Ton équité (${pct(a.equity)}) bat la cote → call.`
-    twoQuestions = b === 'bluffcatch' ? '« Des pires paient ? » Non → tu ne mises/relances pas. Mais tu bats ses bluffs → tu paies.' : 'Tu continues par la cote.'
-  } else if (a.action === 'RAISE') { correctLabel = 'RAISE (value)'; lesson = `Tu domines sa range de call → relance pour te faire payer par PIRE.`; twoQuestions = '« Des pires paient ? » OUI → tu relances pour la valeur.' }
+    correctLabel = 'CALL' + (b === 'bluffcatch' ? t('decq.suffixBluffcatch') : b === 'draw' ? t('decq.suffixDraw') : '')
+    lesson = b === 'bluffcatch' ? t('decq.lessonCallBc') : b === 'draw' ? t('decq.lessonCallDraw') : t('decq.lessonCall', { eq: pct(a.equity) })
+    twoQuestions = b === 'bluffcatch' ? t('decq.twoCallBc') : t('decq.twoCall')
+  } else if (a.action === 'RAISE') { correctLabel = 'RAISE' + t('decq.suffixValue'); lesson = t('decq.lessonRaise'); twoQuestions = t('decq.twoRaise') }
   else if (a.action === 'BET') {
     const isBluff = a.equity < 0.35
-    correctLabel = isBluff ? 'BET (bluff)' : 'BET (value)'
-    lesson = isBluff ? `Pas de showdown value, mais le board/la passivité te permettent de représenter le nuts → bluff (des meilleures foldent).` : `Main forte : des pires mains paient → tu mises pour la valeur${b === 'value' ? '/protection' : ''}.`
-    twoQuestions = isBluff ? '« Des meilleures foldent ? » OUI → bluff rentable.' : '« Des pires paient ? » OUI → value bet.'
-  } else { lesson = `Ni value claire (des pires ne paient pas) ni bluff rentable → check (contrôle / showdown).`; twoQuestions = '« Des pires paient ? » Non. « Des meilleures foldent ? » Non. → check.' }
+    correctLabel = 'BET' + (isBluff ? t('decq.suffixBluff') : t('decq.suffixValue'))
+    lesson = isBluff ? t('decq.lessonBetBluff') : t('decq.lessonBetValue', { prot: b === 'value' ? t('decq.protection') : '' })
+    twoQuestions = isBluff ? t('decq.twoBetBluff') : t('decq.twoBetValue')
+  } else { lesson = t('decq.lessonCheck'); twoQuestions = t('decq.twoCheck') }
   let sizingTell: string | undefined
-  if (spot.facingBet) sizingTell = spot.betFrac <= 0.4
-    ? `Tell de sizing : il mise PETIT (~${Math.round(spot.betFrac * 100)}% pot) → sa range penche faible (capée) → tu peux continuer/attaquer plus large.`
-    : spot.betFrac >= 1 ? `Tell de sizing : grosse mise (~pot+) → range polarisée (très forte OU bluff) → prudence, c'est rarement du medium.`
-    : `Tell de sizing : mise moyenne (~${Math.round(spot.betFrac * 100)}% pot) → range équilibrée.`
+  if (spot.facingBet) sizingTell = spot.betFrac <= 0.4 ? t('decq.sizeSmall', { pct: Math.round(spot.betFrac * 100) })
+    : spot.betFrac >= 1 ? t('decq.sizeBig')
+    : t('decq.sizeMid', { pct: Math.round(spot.betFrac * 100) })
   return { correctLabel, lesson, twoQuestions, sizingTell, reasons: a.reasons.slice(1, 3), equity: a.equity, bucket: b }
 }
