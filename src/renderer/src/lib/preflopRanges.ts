@@ -295,11 +295,7 @@ export function cellKey(i: number, j: number): string {
 export const ACTION_LABEL: Record<RangeAction, string> = {
   raise: 'OPEN / RAISE', '3bet': '3-BET', '4bet': '4-BET', call: 'CALL', fold: 'FOLD',
 }
+// i18n keys (resolved with t() at the call site — this lib stays UI-framework-free).
 export const SCENARIO_LABEL: Record<Scenario, string> = {
-  rfi: 'Ouverture (personne n’a relancé)',
-  iso: 'Iso-raise (des limpers devant)',
-  vsopen: 'Face à une relance',
-  squeeze: 'Squeeze (relance + suiveur)',
-  vs3bet: 'Face à un 3-bet',
-  vs4bet: 'Face à un 4-bet',
+  rfi: 'scen.rfi', iso: 'scen.iso', vsopen: 'scen.vsopen', squeeze: 'scen.squeeze', vs3bet: 'scen.vs3bet', vs4bet: 'scen.vs4bet',
 }

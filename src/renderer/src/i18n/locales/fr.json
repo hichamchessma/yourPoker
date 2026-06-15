@@ -648,5 +648,13 @@
     "reshoveLabel": "TAPIS (RE-SHOVE)",
     "footerPreflop": "Range adaptée au nombre de joueurs en jeu + équité estimée par simulation. Conseil d'entraînement, pas un solveur.",
     "footerPostflop": "Équité estimée par simulation (Monte-Carlo) vs mains aléatoires. Conseil heuristique d'entraînement, pas un solveur."
+  },
+  "scen": {
+    "rfi": "Ouverture (personne n'a relancé)",
+    "iso": "Iso-raise (des limpers devant)",
+    "vsopen": "Face à une relance",
+    "squeeze": "Squeeze (relance + suiveur)",
+    "vs3bet": "Face à un 3-bet",
+    "vs4bet": "Face à un 4-bet"
   }
 }

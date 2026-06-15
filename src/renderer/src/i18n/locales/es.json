@@ -648,5 +648,13 @@
     "reshoveLabel": "ALL-IN (RE-SHOVE)",
     "footerPreflop": "Rango adaptado al número de jugadores en la mano + equidad estimada por simulación. Consejo de entrenamiento, no un solver.",
     "footerPostflop": "Equidad estimada por simulación (Monte-Carlo) vs manos aleatorias. Consejo heurístico de entrenamiento, no un solver."
+  },
+  "scen": {
+    "rfi": "Apertura (nadie subió)",
+    "iso": "Iso-raise (limpers delante)",
+    "vsopen": "Frente a una subida",
+    "squeeze": "Squeeze (subida + pagador)",
+    "vs3bet": "Frente a un 3-bet",
+    "vs4bet": "Frente a un 4-bet"
   }
 }

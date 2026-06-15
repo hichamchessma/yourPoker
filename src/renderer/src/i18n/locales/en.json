@@ -648,5 +648,13 @@
     "reshoveLabel": "SHOVE (RE-SHOVE)",
     "footerPreflop": "Range adapted to the number of players in the hand + equity estimated by simulation. Training advice, not a solver.",
     "footerPostflop": "Equity estimated by simulation (Monte-Carlo) vs random hands. Heuristic training advice, not a solver."
+  },
+  "scen": {
+    "rfi": "Open (no one raised)",
+    "iso": "Iso-raise (limpers ahead)",
+    "vsopen": "Facing a raise",
+    "squeeze": "Squeeze (raise + caller)",
+    "vs3bet": "Facing a 3-bet",
+    "vs4bet": "Facing a 4-bet"
   }
 }

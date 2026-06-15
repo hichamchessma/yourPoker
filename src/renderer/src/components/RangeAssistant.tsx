@@ -121,7 +121,7 @@ export default function RangeAssistant({
         : shortStack ? 'TAPIS (all-in)' : 'ouvre / relance (≈ 2.5–3 BB)'
       const situationLabel = vsJam
         ? `face à ${numAllIn} tapis (all-in)`
-        : SCENARIO_LABEL[scenario as Scenario].toLowerCase()
+        : t(SCENARIO_LABEL[scenario as Scenario]).toLowerCase()
       const reasons = vsJam ? [
         `Face à ${numAllIn} tapis (all-in), tu ne peux que PAYER ou te COUCHER — pas de flat${numAllIn > 1 ? ', et la range de call-off se resserre fort à plusieurs tapis' : ''}.`,
         `Décision d'équité : ${heroKey} a ≈ ${pct(equity)} d'équité, il faut ${pct(potOdds)} pour payer → ${equity >= potOdds ? 'CALL rentable.' : 'FOLD (sous la cote).'}`,
@@ -246,7 +246,7 @@ export default function RangeAssistant({
               {/* Situation + recommendation banner */}
               {isPreflop && (
                 <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">
-                  {t('coach.situation')} <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? t('coach.vsJam', { n: numAllIn }) : SCENARIO_LABEL[scenario as Scenario]}
+                  {t('coach.situation')} <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? t('coach.vsJam', { n: numAllIn }) : t(SCENARIO_LABEL[scenario as Scenario])}
                 </p>
               )}
               {isPreflop && icmPressure > 0.3 && (
