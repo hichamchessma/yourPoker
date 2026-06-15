@@ -411,11 +411,14 @@ export function getPostflopAdvice(input: {
   // (strong hands would usually keep betting). Key signal for turning air into a bluff.
   const villainGaveUp = toCall <= 0 && aggression > 0
   const reasons: string[] = []
-  reasons.push(`Ton équité réelle ≈ ${pct(eq)}${villainGaveUp ? ' — l’adversaire a misé puis checké : son range est plafonné/faible' : aggression > 0 ? ` face à une range ${barrels >= 2 ? 'forte (plusieurs mises)' : 'resserrée'}` : ` face à ${opponents} adversaire${opponents > 1 ? 's' : ''}`}.`)
-  if (toCall > 0) reasons.push(`Cote du pot : il te faut ${pct(potOdds)} d'équité pour payer ${toCall}.`)
-  if (input.cappedRange && toCall > 0) reasons.push('Range PLAFONNÉE : l’adversaire a checké une rue plus tôt — il aurait misé ses mains fortes avant. Son bet retardé est donc rarement le nuts (plus de bluffs / mains moyennes) → tu peux bluff-catcher plus large.')
-  if (input.donkLead && !input.facingRaise && toCall > 0) reasons.push('LEAD adverse : ce n’est PAS le relanceur préflop qui mise — un joueur qui flatte puis MÈNE/barrele (souvent hors de position dans le champ) le fait rarement avec de l’air. Sa range est value-lourde (top paire+/overpaire/sets) → ta paire marginale est dominée plus souvent, sois prudent (fold plus tôt qu’un bluff-catch classique).')
-  if (input.facingRaise && toCall > 0) reasons.push('Tu fais face à une RELANCE : c’est le signal le plus FORT du poker. On ne relance presque jamais une simple top paire — sa range est concentrée sur deux paires / brelans / nuts (+ quelques tirages). Ta paire (même top paire) est souvent DERRIÈRE → ne stack pas off une seule paire face à une relance, fold sauf si tu as une vraie main forte ou la cote pour un tirage.')
+  const eqSuffix = villainGaveUp ? tt('cadv.eqVsCapped')
+    : aggression > 0 ? tt('cadv.eqVsRange', { q: barrels >= 2 ? tt('cadv.eqRangeStrong') : tt('cadv.eqRangeTight') })
+    : tt('cadv.eqVsOpp', { count: opponents })
+  reasons.push(tt('cadv.equityReal', { eq: pct(eq), suffix: eqSuffix }))
+  if (toCall > 0) reasons.push(tt('cadv.potOdds', { odds: pct(potOdds), toCall }))
+  if (input.cappedRange && toCall > 0) reasons.push(tt('cadv.capped'))
+  if (input.donkLead && !input.facingRaise && toCall > 0) reasons.push(tt('cadv.donkLead'))
+  if (input.facingRaise && toCall > 0) reasons.push(tt('cadv.facingRaise'))
   // "Playing the board" is strictly a RIVER concept (5 community cards) where your
   // hole cards add nothing. Pre-river you always hold at least high-card / a draw,
   // so we never mislabel it (and we avoid padding the board with fake cards).
@@ -483,14 +486,15 @@ export function getPostflopAdvice(input: {
   // come), almost none on the turn (one card, little room to get paid).
   const impliedBuf = board.length <= 3 ? 0.05 : 0.01
 
+  const drawsTxt = draws.length ? ' + ' + draws.join(' + ') : ''
   reasons.push((playsBoard || boardOnlyPair)
-    ? `Ta main : ${boardOnlyPair ? 'tu joues la paire du board' : `tu joues le board (${name})`} — pas de main à toi${draws.length ? ', seulement ' + draws.join(' + ') : ''}.`
+    ? tt('cadv.handBoard', { what: boardOnlyPair ? tt('cadv.playBoardPair') : tt('cadv.playBoard', { name }), draws: draws.length ? tt('cadv.onlyDraws', { draws: draws.join(' + ') }) : '' })
     : boardLeanTwoPair
-    ? `Ta main : top paire (${effPair === 'overpair' ? 'overpaire' : effPair === 'top' ? 'top paire' : effPair === 'second' ? '2e paire' : 'paire faible'}) — ta « double paire » s'appuie sur la paire du board (partagée par tous), joue-la comme UNE paire.`
-    : `Ta main : ${name}${effPair !== 'none' ? ` (${effPair === 'overpair' ? 'overpaire' : effPair === 'top' ? 'top paire' : effPair === 'second' ? '2e paire' : 'paire faible'})` : ''}${draws.length ? ' + ' + draws.join(' + ') : ''}.`)
-  reasons.push(inPosition ? 'Tu es en position (tu parles après).' : 'Tu es hors de position : sois plus prudent.')
-  if (effCat === 0 && !playsBoard && !drawIsOnlyEquity && toCall > 0) reasons.push('Ta « carte haute » n’est pas rien : ton équité vient de tes surcartes (tu peux toucher la paire), de tirages de secours, et tu bats ses mains ratées/bluffs au showdown.')
-  if (pot > 0 && spr < 4) reasons.push(`SPR ≈ ${spr.toFixed(1)} (tapis/pot) : ${spr <= 1.5 ? 'engagé — avec une main forte, joue all-in.' : 'assez bas, prêt à investir gros avec une main forte.'}`)
+    ? tt('cadv.handLeanTwoPair', { pair: pairLabel(effPair) })
+    : tt('cadv.handMade', { name, pair: effPair !== 'none' ? tt('cadv.pairParen', { pair: pairLabel(effPair) }) : '', draws: drawsTxt }))
+  reasons.push(inPosition ? tt('cadv.inPos') : tt('cadv.oop'))
+  if (effCat === 0 && !playsBoard && !drawIsOnlyEquity && toCall > 0) reasons.push(tt('cadv.highCardValue'))
+  if (pot > 0 && spr < 4) reasons.push(tt('cadv.spr', { spr: spr.toFixed(1), txt: spr <= 1.5 ? tt('cadv.sprCommitted') : tt('cadv.sprLow') }))
 
   // Multiway, called-down: a LONE overpair/one pair is often beaten when several
   // players have called multiple streets (their range is value-heavy two-pair+/sets).
@@ -498,7 +502,7 @@ export function getPostflopAdvice(input: {
   const beatenMultiway = (input.callPressure ?? 0) >= 0.45 && Math.max(1, opponents) >= 2 && effCat <= 1 && eq < 0.52
   const isStrongValue = !playsBoard && (effCat >= 2 || effPair === 'overpair') && !beatenMultiway // two pair+, sets, overpair
   const isOnePair = !playsBoard && effCat === 1
-  if (beatenMultiway) reasons.push(`⚠️ Multiway, et plusieurs adversaires ont PAYÉ plusieurs rues : caller autant en multiway = de la FORCE (top paire+/deux paires/sets), pas de l'air. Ta paire (${pct(eq)}) est souvent DERRIÈRE au moins un d'eux → contrôle le pot, ne survalorise pas / ne stack pas off une seule paire.`)
+  if (beatenMultiway) reasons.push(tt('cadv.beatenMultiway', { eq: pct(eq) }))
   const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
   const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
   // DANGER board for a RAISE: a STRAIGHT or FLUSH is possible that the hero does NOT
@@ -524,32 +528,32 @@ export function getPostflopAdvice(input: {
     // odds — only raise (strong value) or call/fold around the price. ──
     if (isStrongValue && eq >= 0.55 && !raiseGetsOnlyValue) {
       // Strong made hand with the edge → value raise.
-      if (spr <= 1.5) { action = 'RAISE'; sizingText = `relance ALL-IN (SPR bas)`; jam = true }
-      else { action = 'RAISE'; sizingText = `relance pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, +$${valueRaiseSize})`; betFrac = wet > 0.4 ? 0.85 : 0.66 }
-      reasons.push('Main forte : tu domines une bonne partie de sa range → relance pour la valeur.')
+      if (spr <= 1.5) { action = 'RAISE'; sizingText = tt('cadv.szRaiseAllinLowSpr'); jam = true }
+      else { action = 'RAISE'; sizingText = tt('cadv.szValueRaise', { frac: wet > 0.4 ? '¾' : '⅔', amt: valueRaiseSize }); betFrac = wet > 0.4 ? 0.85 : 0.66 }
+      reasons.push(tt('cadv.valueRaise'))
       confidence = eq >= 0.7 ? 'haute' : 'moyenne'
     } else if (eq >= potOdds + callMargin) {
       // Profitable continue, given the required margin (implied odds lower it for clean
       // draws, reverse implied odds raise it for vulnerable ones). Frame by hand type.
       action = 'CALL'
-      if (raiseGetsOnlyValue) { sizingText = `paie $${toCall} (bluff-catch)`; reasons.push(`⚠️ Board à ${straightPossibleB ? 'quinte' : 'couleur'} possible que tu n'as PAS : ta ${name.toLowerCase()} est un BLUFF-CATCHER ici. Relancer ferait fuir ses bluffs (que tu bats) et ne serait payé QUE par ses ${straightPossibleB ? 'quintes' : 'couleurs'}/mains qui te battent → tu PAIES (tu bats ses bluffs), tu ne relances pas.`); confidence = 'moyenne' }
-      else if (isStrongValue) { sizingText = `paie $${toCall}`; reasons.push('Main de valeur, mais relancer te ferait payer surtout par mieux : call.'); confidence = 'moyenne' }
+      if (raiseGetsOnlyValue) { sizingText = tt('cadv.szBluffCatch', { toCall }); reasons.push(tt('cadv.bluffCatchBoard', { tex: straightPossibleB ? tt('cadv.straightWord') : tt('cadv.flushWord'), name: name.toLowerCase(), tex2: straightPossibleB ? tt('cadv.straightsWord') : tt('cadv.flushesWord') })); confidence = 'moyenne' }
+      else if (isStrongValue) { sizingText = tt('cadv.szCall', { toCall }); reasons.push(tt('cadv.strongValueCall')); confidence = 'moyenne' }
       else if (drawIsOnlyEquity) {
-        sizingText = `paie $${toCall} (tirage)`
+        sizingText = tt('cadv.szDrawCall', { toCall })
         reasons.push(callMargin < 0
-          ? `Tirage : ${pct(eq)} d'équité + gains implicites (tu gagnes plus en touchant) → call rentable.`
-          : `Tirage : ${pct(eq)} ≥ ${pct(potOdds + callMargin)} requis → call, mais serré.`)
-        if (vulnerableDraw) reasons.push('⚠️ Tirage vulnérable (couleur basse ou board pairé) : reverse implied odds — tu peux toucher et perdre quand même, joue prudemment.')
+          ? tt('cadv.drawCallImplied', { eq: pct(eq) })
+          : tt('cadv.drawCallTight', { eq: pct(eq), req: pct(potOdds + callMargin) }))
+        if (vulnerableDraw) reasons.push(tt('cadv.vulnDraw'))
         confidence = 'basse'
       }
-      else if (isOnePair) { sizingText = `paie $${toCall} (bluffcatch)`; reasons.push(`Bluffcatcher : ton équité (${pct(eq)}) dépasse la cote (${pct(potOdds)}) → tu paies pour battre ses bluffs, mais ne relance pas.`); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
-      else { sizingText = `paie $${toCall}`; reasons.push(`Ton équité (${pct(eq)}) dépasse la cote du pot (${pct(potOdds)}) → call rentable, même sans grosse main.`); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
+      else if (isOnePair) { sizingText = tt('cadv.szBluffcatch', { toCall }); reasons.push(tt('cadv.bluffcatch', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
+      else { sizingText = tt('cadv.szCall', { toCall }); reasons.push(tt('cadv.callProfit', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
     } else {
-      action = 'FOLD'; sizingText = 'couche-toi'
-      if (vulnerableDraw) reasons.push(`Tirage vulnérable trop cher : ${pct(eq)} d'équité, mais reverse implied odds (couleur basse / board pairé, face à l'agression) → tu touches parfois pour perdre. Il te faudrait ${pct(potOdds + callMargin)}. Fold.`)
-      else if (strongDraw) reasons.push(`Tirage trop cher : ${pct(eq)} d'équité contre ${pct(potOdds)} requis${board.length >= 4 ? ' — et une seule carte à venir (peu de gains implicites)' : ''}. Fold.`)
-      else if (eq >= potOdds) reasons.push(`Tu as tout juste la cote brute (${pct(eq)} vs ${pct(potOdds)}), MAIS ${effCat === 1 ? 'ta paire est dominable' : 'ta main est trop marginale'}${Math.max(1, opponents) >= 2 ? ' en multiway' : ''}${aggression > 0 ? ' face à l’agression' : ''}${!inPosition ? ' et tu ne fermes pas l’action (hors de position)' : ''} : il te faut une marge de sécurité (~${pct(potOdds + callMargin)}) contre les reverse implied odds → fold marginal.`)
-      else reasons.push(`Équité (${pct(eq)}) sous la cote (${pct(potOdds)}) et pas de tirage : se coucher est le plus rentable.`)
+      action = 'FOLD'; sizingText = tt('cadv.szFold')
+      if (vulnerableDraw) reasons.push(tt('cadv.foldVulnDraw', { eq: pct(eq), req: pct(potOdds + callMargin) }))
+      else if (strongDraw) reasons.push(tt('cadv.foldDraw', { eq: pct(eq), odds: pct(potOdds), turn: board.length >= 4 ? tt('cadv.oneCardLeft') : '' }))
+      else if (eq >= potOdds) reasons.push(tt('cadv.foldMarginal', { eq: pct(eq), odds: pct(potOdds), dom: effCat === 1 ? tt('cadv.domPair') : tt('cadv.domMarginal'), multi: Math.max(1, opponents) >= 2 ? tt('cadv.multiwaySuffix') : '', aggr: aggression > 0 ? tt('cadv.vsAggrSuffix') : '', oop: !inPosition ? tt('cadv.oopSuffix') : '', req: pct(potOdds + callMargin) }))
+      else reasons.push(tt('cadv.foldNoOdds', { eq: pct(eq), odds: pct(potOdds) }))
       confidence = eq < potOdds - 0.08 ? 'haute' : 'moyenne'
     }
   } else {
@@ -582,26 +586,26 @@ export function getPostflopAdvice(input: {
     if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw) {
       action = 'BET'
       if (protectionBet) {
-        sizingText = `bet de protection (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
-        reasons.push('Bet de PROTECTION / déni d’équité : face à une range plafonnée tu es la main la plus probable DEVANT, mais elle est VULNÉRABLE (sous-paires → brelan, surcartes → paire). Tu mises pour FINIR le coup et empêcher un outdraw gratuit — pas pour te faire payer.')
+        sizingText = tt('cadv.szProtectionHalf', { amt: round(pot * 0.5) }); betFrac = 0.5
+        reasons.push(tt('cadv.protectionBet'))
       } else if (protectVsDraw) {
-        sizingText = `bet de protection (~⅔ pot, $${round(pot * 0.66)})`; betFrac = 0.66
-        reasons.push('Bet de PROTECTION : board à TIRAGE (couleur/quinte possible) et tu es très probablement DEVANT. Mise ~⅔ pot pour faire payer les tirages et leur refuser une carte gratuite — checker ta main forte ici laisse la couleur/quinte se compléter pour rien (c’est exactement comme ça qu’on se fait remonter).')
+        sizingText = tt('cadv.szProtectionTwoThird', { amt: round(pot * 0.66) }); betFrac = 0.66
+        reasons.push(tt('cadv.protectVsDraw'))
       } else if (thinValueVsCapped && eq < 0.8) {
-        sizingText = `value fine (~⅓ pot, $${round(pot * 0.4)})`; betFrac = 0.4
-        reasons.push('Range adverse PLAFONNÉE (checks répétés) : ta paire bat la plupart de ses mains → value FINE. Mise PETIT (~⅓ pot) pour te faire payer par les pires paires — un gros bet les ferait coucher.')
+        sizingText = tt('cadv.szThinValue', { amt: round(pot * 0.4) }); betFrac = 0.4
+        reasons.push(tt('cadv.thinValue'))
       } else {
-        sizingText = `mise pour la valeur (~${wet > 0.4 ? '¾' : '⅔'} pot, $${valueBetSize})`; betFrac = wet > 0.4 ? 0.75 : 0.6
-        reasons.push('Main forte : mise pour la valeur et fais payer les tirages.')
+        sizingText = tt('cadv.szValueBet', { frac: wet > 0.4 ? '¾' : '⅔', amt: valueBetSize }); betFrac = wet > 0.4 ? 0.75 : 0.6
+        reasons.push(tt('cadv.valueBet'))
       }
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
     } else if (strongDraw) {
-      action = 'BET'; sizingText = `semi-bluff (~½ pot, $${round(pot * 0.5)})`; betFrac = 0.5
-      reasons.push('Tirage fort : un semi-bluff gagne le pot tout de suite ou en touchant.')
+      action = 'BET'; sizingText = tt('cadv.szSemiBluff', { amt: round(pot * 0.5) }); betFrac = 0.5
+      reasons.push(tt('cadv.semiBluff'))
       confidence = 'basse'
     } else if (isOnePair) {
-      action = 'CHECK'; sizingText = 'checke (contrôle du pot)'
-      reasons.push('Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.')
+      action = 'CHECK'; sizingText = tt('cadv.szCheckPotControl')
+      reasons.push(tt('cadv.onePairCheck'))
       confidence = 'moyenne'
     } else {
       // Weak hand, ~no showdown value. If the villain showed weakness (barreled then
@@ -621,15 +625,13 @@ export function getPostflopAdvice(input: {
       if (lateStreet && noSDV && villainGaveUp && repValue && inPosition) {
         action = 'BET'
         jam = spr <= 1.2; betFrac = 0.9
-        sizingText = jam ? 'bluff ALL-IN (SPR bas)' : `bluff polarisé (~pot, $${round(pot * 0.9)})`
-        reasons.push(`Tu n’as aucune showdown value (${pct(eq)}) → checker abandonne presque toujours le pot.`)
-        reasons.push(`L’adversaire a misé puis checké (range plafonné) et le board ${wet >= 0.5 ? 'à couleur/quinte complétée' : 'connecté'} favorise TON range de caller en position : tu rep le nuts → grosse fold equity. C’est un bluff, pas de la sur-agressivité.`)
+        sizingText = jam ? tt('cadv.szBluffAllin') : tt('cadv.szBluffPolarized', { amt: round(pot * 0.9) })
+        reasons.push(tt('cadv.bluffNoSdv', { eq: pct(eq) }))
+        reasons.push(tt('cadv.bluffRepNuts', { tex: wet >= 0.5 ? tt('cadv.texCompleted') : tt('cadv.texConnected') }))
         confidence = 'moyenne'
       } else {
-        action = 'CHECK'; sizingText = 'checke'
-        reasons.push(noSDV
-          ? 'Main sans showdown value, mais ici un bluff serait spéculatif (board peu crédible, adversaire non plafonné ou hors de position) → checke.'
-          : 'Main faible : checke (un bluff n’est rentable que sur les bons board et adversaires).')
+        action = 'CHECK'; sizingText = tt('cadv.szCheck')
+        reasons.push(noSDV ? tt('cadv.checkSpeculative') : tt('cadv.checkWeak'))
         confidence = 'moyenne'
       }
     }
@@ -643,12 +645,13 @@ export function getPostflopAdvice(input: {
   // we'd CHECK, BET or CALL (i.e. the action isn't already a fold/raise).
   let facePlan: FacePlanRow[] | undefined
   if (action === 'CHECK' || action === 'BET' || action === 'CALL') {
+    const potW = tt('cadv.potWord')
     const sizes: { label: string; fracTxt: string; reqTxt: string; frac?: number; allin?: boolean; pen: number }[] = [
-      { label: '⅓ pot', fracTxt: '⅓·pot', reqTxt: '1/5', frac: 1 / 3, pen: 0.00 },
-      { label: '½ pot', fracTxt: '½·pot', reqTxt: '1/4', frac: 1 / 2, pen: 0.02 },
-      { label: '⅔ pot', fracTxt: '⅔·pot', reqTxt: '2/7', frac: 2 / 3, pen: 0.03 },
-      { label: 'pot', fracTxt: 'pot', reqTxt: '1/3', frac: 1, pen: 0.06 },
-      { label: 'all-in', fracTxt: 'tapis', reqTxt: '', allin: true, pen: 0.10 },
+      { label: `⅓ ${potW}`, fracTxt: `⅓·${potW}`, reqTxt: '1/5', frac: 1 / 3, pen: 0.00 },
+      { label: `½ ${potW}`, fracTxt: `½·${potW}`, reqTxt: '1/4', frac: 1 / 2, pen: 0.02 },
+      { label: `⅔ ${potW}`, fracTxt: `⅔·${potW}`, reqTxt: '2/7', frac: 2 / 3, pen: 0.03 },
+      { label: potW, fracTxt: potW, reqTxt: '1/3', frac: 1, pen: 0.06 },
+      { label: tt('cadv.allinWord'), fracTxt: tt('cadv.tapisWord'), reqTxt: '', allin: true, pen: 0.10 },
     ]
     facePlan = sizes.map(s => {
       const B = s.allin ? Math.max(effStack, pot) : pot * (s.frac as number)
@@ -656,21 +659,21 @@ export function getPostflopAdvice(input: {
       const effEq = Math.max(0, eq - s.pen)
       const small = !s.allin && (s.frac as number) <= 0.5
       const equation = s.allin
-        ? `B = tapis ($${round(B)}) ; req = B/(pot+2B) = ${round(B)}/(${round(pot)}+2·${round(B)}) ≈ ${pct(reqEq)}`
+        ? `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${round(B)}/(${round(pot)}+2·${round(B)}) ≈ ${pct(reqEq)}`
         : `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${s.reqTxt} ≈ ${pct(reqEq)}`
       let act: string, why: string
       if (isStrongValue) {
-        if (s.allin || spr <= 1.5) { act = 'CALL / ALL-IN (valeur)'; why = `main forte (équité ${pct(eq)}) → tu encaisses.` }
-        else { act = 'RE-RAISE / 4-BET (valeur)'; why = `tu domines sa range${small ? ' — petit sizing = re-raise pour la valeur' : ''}.` }
+        if (s.allin || spr <= 1.5) { act = tt('cadv.fpCallAllinValue'); why = tt('cadv.fpWhyStrong', { eq: pct(eq) }) }
+        else { act = tt('cadv.fpReraiseValue'); why = tt('cadv.fpWhyDominate', { small: small ? tt('cadv.fpSmallReraise') : '' }) }
       } else if (strongDraw && small) {
-        act = 'RE-RAISE (semi-bluff)'; why = `petit sizing + ton tirage → fold equity + outs si payé.`
+        act = tt('cadv.fpReraiseSemi'); why = tt('cadv.fpWhySemi')
       } else if (effEq >= reqEq) {
-        act = isOnePair ? 'CALL (bluffcatch)' : 'CALL'
-        why = `équité ${pct(eq)} ≥ ${pct(reqEq)} requis → rentable.`
+        act = isOnePair ? tt('cadv.fpCallBluffcatch') : tt('cadv.fpCall')
+        why = tt('cadv.fpWhyCall', { eq: pct(eq), req: pct(reqEq) })
       } else if (strongDraw && effEq >= reqEq - impliedBuf) {
-        act = 'CALL (tirage)'; why = `${pct(eq)} ≈ ${pct(reqEq)} requis + gains implicites.`
+        act = tt('cadv.fpCallDraw'); why = tt('cadv.fpWhyDraw', { eq: pct(eq), req: pct(reqEq) })
       } else {
-        act = 'FOLD'; why = `équité ${pct(eq)} < ${pct(reqEq)} requis${s.allin || (s.frac as number) >= 1 ? ' (grosse mise = range forte)' : ''}.`
+        act = tt('cadv.fpFold'); why = tt('cadv.fpWhyFold', { eq: pct(eq), req: pct(reqEq), big: s.allin || (s.frac as number) >= 1 ? tt('cadv.fpBigBet') : '' })
       }
       return { label: s.label, reqEq, equation, action: act, why }
     })
