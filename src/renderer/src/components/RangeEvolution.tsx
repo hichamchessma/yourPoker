@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { RotateCcw, ChevronLeft, ChevronRight, Play, Pause, X } from 'lucide-react'
 import RangeHeatmap from './RangeHeatmap'
 import { explainHandStep, comboCount, type RangeView, type ActionCtx, type ActCat, type Card } from '../lib/rangeEstimator'
@@ -14,10 +15,10 @@ export type RangeStep = {
 
 const EMPTY: RangeStep = { view: { cells: {}, totalCombos: 0, pctOfHands: 0 }, move: '—', effect: '', caption: '' }
 
-function colorVerdict(intensity: number): { label: string; color: string } {
-  if (intensity < 0.04) return { label: 'GRISÉE — éliminée de la range', color: '#9aa3ad' }
-  if (intensity > 0.55) return { label: 'JAUNE VIF — cœur de range', color: '#e8c547' }
-  return { label: 'OR PÂLE — encore là, mais réduite (jouée en mixte)', color: '#c9a227' }
+function colorVerdict(intensity: number): { labelKey: string; color: string } {
+  if (intensity < 0.04) return { labelKey: 'rev.vGreyed', color: '#9aa3ad' }
+  if (intensity > 0.55) return { labelKey: 'rev.vBright', color: '#e8c547' }
+  return { labelKey: 'rev.vPale', color: '#c9a227' }
 }
 
 export default function RangeEvolution({ history, name, width = 462, onClose, pinned, side = 'right', deadCards }: {
@@ -29,6 +30,7 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
   side?: 'left' | 'right'        // which side to pop the per-hand explanation
   deadCards?: Card[]             // hero's hole cards (blockers for the combo count)
 }) {
+  const { t } = useTranslation()
   const steps = history && history.length ? history : []
   const last = Math.max(0, steps.length - 1)
   const multi = steps.length > 1
@@ -64,10 +66,10 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
           onCellClick={setSelKey} selectedKey={selKey} />
         {pinned && (
           <span className="absolute top-1.5 left-1.5 rounded-md bg-[#c9a227]/20 border border-[#c9a227]/40 text-[#c9a227] font-bold"
-            style={{ fontSize: f(8.5), padding: `${f(2)}px ${f(6)}px` }}>📌 épinglé</span>
+            style={{ fontSize: f(8.5), padding: `${f(2)}px ${f(6)}px` }}>{t('rev.pinned')}</span>
         )}
         {onClose && (
-          <button onClick={onClose} title="Fermer (Échap)"
+          <button onClick={onClose} title={t('rev.close')}
             className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-md bg-black/40 border border-white/15 text-white/60 hover:text-white hover:bg-black/60 transition-all"
             style={{ width: f(20), height: f(20) }}><X size={f(12)} /></button>
         )}
@@ -76,7 +78,7 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
       {multi && (
         <div className="rounded-xl border border-[#c9a227]/30" style={{ background: 'rgba(7,13,26,0.97)', marginTop: f(5), padding: f(8) }}>
           <div className="flex items-center justify-between" style={{ marginBottom: f(6) }}>
-            <span className="text-[#c9a227]/90 font-bold truncate" style={{ fontSize: f(9.5) }}>▸ {cur.caption || 'Évolution de la range'}</span>
+            <span className="text-[#c9a227]/90 font-bold truncate" style={{ fontSize: f(9.5) }}>▸ {cur.caption || t('rev.evoTitle')}</span>
             <span className="text-white/40 shrink-0" style={{ fontSize: f(8.5), marginLeft: f(6) }}>{step + 1}/{steps.length}</span>
           </div>
 
@@ -90,11 +92,11 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
 
           <div className="flex items-center justify-center" style={{ gap: f(6) }}>
             <Ctl f={f} onClick={() => goto(step - 1)} disabled={step <= 0}><ChevronLeft size={f(13)} /></Ctl>
-            <Ctl f={f} onClick={() => { if (step >= last) { setStep(0); setPlaying(true) } else setPlaying(p => !p) }} title={playing ? 'Pause' : 'Lecture'}>
+            <Ctl f={f} onClick={() => { if (step >= last) { setStep(0); setPlaying(true) } else setPlaying(p => !p) }} title={playing ? t('rev.pause') : t('rev.play')}>
               {playing ? <Pause size={f(13)} /> : <Play size={f(13)} />}
             </Ctl>
             <Ctl f={f} onClick={() => goto(step + 1)} disabled={step >= last}><ChevronRight size={f(13)} /></Ctl>
-            <Ctl f={f} onClick={() => { setStep(0); setPlaying(true) }} title="Rejouer le film depuis le début"><RotateCcw size={f(12)} /></Ctl>
+            <Ctl f={f} onClick={() => { setStep(0); setPlaying(true) }} title={t('rev.replay')}><RotateCcw size={f(12)} /></Ctl>
           </div>
 
           <p className="text-center text-white/30" style={{ fontSize: f(7.5), marginTop: f(6) }}>
@@ -122,6 +124,7 @@ export default function RangeEvolution({ history, name, width = 462, onClose, pi
 function HandExplain({ selKey, steps, step, f, deadCards, onClear }: {
   selKey: string; steps: RangeStep[]; step: number; f: (px: number) => number; deadCards?: Card[]; onClear: () => void
 }) {
+  const { t } = useTranslation()
   const intensity = steps[Math.min(step, steps.length - 1)]?.view.cells[selKey] ?? 0
   const verdict = colorVerdict(intensity)
   // Trace: replay each of this seat's actions up to the current step on THIS hand.
@@ -142,23 +145,23 @@ function HandExplain({ selKey, steps, step, f, deadCards, onClear }: {
   return (
     <div className="rounded-xl border" style={{ marginTop: f(5), padding: f(9), background: 'rgba(10,14,24,0.98)', borderColor: 'rgba(255,255,255,0.12)' }}>
       <div className="flex items-center justify-between" style={{ marginBottom: f(6) }}>
-        <span className="font-black text-white" style={{ fontSize: f(13) }}>Pourquoi <span style={{ color: '#e8c547' }}>{selKey}</span> ?</span>
+        <span className="font-black text-white" style={{ fontSize: f(13) }}>{t('rev.whyPre')}<span style={{ color: '#e8c547' }}>{selKey}</span>{t('rev.whySuf')}</span>
         <button onClick={onClear} className="text-white/40 hover:text-white" style={{ fontSize: f(11) }}>✕</button>
       </div>
       <div className="rounded-lg" style={{ padding: `${f(4)}px ${f(7)}px`, marginBottom: f(7), background: 'rgba(255,255,255,0.04)' }}>
-        <span style={{ fontSize: f(10.5), fontWeight: 800, color: verdict.color }}>{verdict.label}</span>
+        <span style={{ fontSize: f(10.5), fontWeight: 800, color: verdict.color }}>{t(verdict.labelKey)}</span>
         <div className="text-white/45" style={{ fontSize: f(8.5), marginTop: f(1) }}>
-          Départ : {combos} combos{blocked ? ' (réduit — tu bloques une de ses cartes)' : ''} · survie estimée ≈ {Math.round(survive * 100)}% de ses combos
+          {t('rev.startLine', { combos, blocked: blocked ? t('rev.blocked') : '', pct: Math.round(survive * 100) })}
         </div>
       </div>
 
       {lines.length === 0 ? (
-        <p className="text-white/55" style={{ fontSize: f(10) }}>Aucune action de ce joueur pour l'instant : range de départ complète. Avance le film ▶ pour voir l'effet de chaque action sur {selKey}.</p>
+        <p className="text-white/55" style={{ fontSize: f(10) }}>{t('rev.emptyMsg', { key: selKey })}</p>
       ) : (
         <div className="space-y-1.5">
           {lines.map((l, i) => {
             const col = l.prob >= 0.66 ? '#34d399' : l.prob <= 0.12 ? '#f0796b' : '#e8c547'
-            const tag = l.prob >= 0.66 ? 'gardée' : l.prob <= 0.12 ? 'éliminée' : 'réduite'
+            const tag = l.prob >= 0.66 ? t('rev.tagKept') : l.prob <= 0.12 ? t('rev.tagCut') : t('rev.tagReduced')
             return (
               <div key={i} className="flex items-start gap-1.5">
                 <span className="shrink-0 rounded font-bold uppercase tracking-wide" style={{ fontSize: f(8), padding: `${f(1)}px ${f(4)}px`, color: '#0a0a12', background: col, marginTop: f(1) }}>{tag}</span>

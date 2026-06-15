@@ -1078,7 +1078,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
               <div className="flex items-center gap-2 flex-shrink-0">
                 {/* Auto-replay toggle: relance le coup depuis le début / stoppe */}
                 <button onClick={() => { if (autoPlay) setAutoPlay(false); else { setStepIdx(0); setAutoPlay(true) } }}
-                  title={autoPlay ? 'Stopper le replay auto' : 'Rejouer le coup depuis le début'}
+                  title={autoPlay ? t('sess.replayStop') : t('sess.replayStart')}
                   className="px-3 py-1.5 rounded border text-sm font-bold transition-all"
                   style={autoPlay
                     ? { background: 'rgba(201,162,39,0.18)', borderColor: 'rgba(201,162,39,0.6)', color: '#f0d98a' }
@@ -1585,8 +1585,8 @@ export default function GamePage(): JSX.Element {
     if (!tournament || savedSessionRef.current) return
     savedSessionRef.current = true
     saveSession('tournament',
-      { title: `MTT $${tournament.buyIn} · ${tournament.field} joueurs`,
-        subtitle: `${place === 1 ? '🏆 Vainqueur' : `Éliminé ${place}e`} · ${prize > 0 ? `+$${prize.toLocaleString()}` : 'hors paiement'}`,
+      { title: t('sess.tourTitle', { buyIn: tournament.buyIn, n: tournament.field }),
+        subtitle: `${place === 1 ? t('sess.tourWinner') : t('sess.tourElim', { place })} · ${prize > 0 ? `+$${prize.toLocaleString()}` : t('sess.tourNoPrize')}`,
         resultBB: prize - tournament.buyIn },
       handHistoryRef.current)
   }
@@ -1595,8 +1595,8 @@ export default function GamePage(): JSX.Element {
     savedSessionRef.current = true
     const netBB = Math.round(handHistoryRef.current.reduce((s, h) => s + (h.heroProfit || 0), 0) * 10) / 10
     saveSession('cash',
-      { title: isScenario ? 'Scénario sur mesure' : `Cash ${numPlayers}-max ${cfg.sb}/${cfg.bb}`,
-        subtitle: `${netBB > 0 ? '+' : ''}${netBB} BB en ${handHistoryRef.current.length} mains`,
+      { title: isScenario ? t('sess.cashScenario') : t('sess.cashTitle', { n: numPlayers, sb: cfg.sb, bb: cfg.bb }),
+        subtitle: t('sess.cashSubtitle', { sign: netBB > 0 ? '+' : '', bb: netBB, count: handHistoryRef.current.length }),
         resultBB: netBB },
       handHistoryRef.current)
   }
@@ -1835,8 +1835,8 @@ export default function GamePage(): JSX.Element {
     // HISTORY, not rangeRef (which may be pre-seeded with initRange at hand start).
     if (!rangeHistoryRef.current[seatIdx]) {
       rangeHistoryRef.current[seatIdx] = [{
-        view: rangeView(rangeRef.current[seatIdx]), move: 'DÉPART',
-        effect: 'toutes les mains, pondérées par combos', caption: 'Range de départ (toutes mains)',
+        view: rangeView(rangeRef.current[seatIdx]), move: t('rev.startMove'),
+        effect: t('rev.startEffect'), caption: t('rev.startCaption'),
       }]
     }
     // Build the action context ONCE and reuse it for the range update AND the
@@ -1853,11 +1853,12 @@ export default function GamePage(): JSX.Element {
     const meta = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })
     rangeMetaRef.current[seatIdx] = meta
     // Append this action's snapshot to the film (for the animated hover popup).
-    const phaseLabel = preflop ? 'Préflop' : board.length === 3 ? 'Flop' : board.length === 4 ? 'Turn' : 'River'
-    const actLabel = action === 'FOLD' ? 'se couche' : action === 'CHECK' ? 'check'
-      : action === 'CALL' ? `call${amount ? ' $' + Math.round(amount) : ''}`
-      : action === 'ALL-IN' ? `tapis$${amount ? ' ' + Math.round(amount) : ''}`
-      : `${action === 'BET' ? 'mise' : 'relance'}${amount ? ' $' + Math.round(amount) : ''}`
+    const phaseLabel = t(preflop ? 'crit.phasePreflop' : board.length === 3 ? 'crit.phaseFlop' : board.length === 4 ? 'crit.phaseTurn' : 'crit.phaseRiver')
+    const amt = amount ? ` $${Math.round(amount)}` : ''
+    const actLabel = action === 'FOLD' ? t('rev.actFold') : action === 'CHECK' ? t('rev.actCheck')
+      : action === 'CALL' ? t('rev.actCall') + amt
+      : action === 'ALL-IN' ? t('rev.actAllin') + amt
+      : (action === 'BET' ? t('rev.actBet') : t('rev.actRaise')) + amt
     ;(rangeHistoryRef.current[seatIdx] ??= []).push({
       view: rangeView(rangeRef.current[seatIdx]), move: meta.move, effect: meta.effect,
       caption: `${phaseLabel} · ${actLabel}`, ctx, observed: cat,
@@ -3488,7 +3489,7 @@ export default function GamePage(): JSX.Element {
               const cur = gsRef.current
               if (nf && !cur.paused && !manualModeRef.current && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20)
             }}
-            title={turbo ? 'TURBO — auto-folde et saute uniquement les mains où le coach te couche ; s’arrête sur tout le reste (check inclus). Clic → Normal' : fastFwd ? 'Accéléré — bots instantanés, s’arrête à ta décision. Clic → Turbo' : 'Accélérer — bots instantanés. Clic → Accéléré'}
+            title={turbo ? t('sess.turboTip') : fastFwd ? t('sess.fastTip') : t('sess.accelTip')}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
             style={turbo
               ? { borderColor: 'rgba(168,139,255,0.75)', background: 'rgba(124,78,214,0.28)', color: '#c9b8ff' }
@@ -4199,7 +4200,7 @@ export default function GamePage(): JSX.Element {
         // Prefer the recorded film; fall back to a single static frame (revive/restore).
         const history: RangeStep[] = rangeHistoryRef.current[hoverSeat]?.length
           ? rangeHistoryRef.current[hoverSeat]
-          : [{ view: rangeView(rangeRef.current[hoverSeat]), ...(rangeMetaRef.current[hoverSeat] ?? { move: '—', effect: 'aucune action encore' }), caption: 'Range actuelle' }]
+          : [{ view: rangeView(rangeRef.current[hoverSeat]), ...(rangeMetaRef.current[hoverSeat] ?? { move: '—', effect: t('rev.noActionYet') }), caption: t('rev.currentRange') }]
         const W = 482, H = 660
         let x = hoverPos.x + 22, y = hoverPos.y - H / 2
         if (x + W > window.innerWidth - 8) x = hoverPos.x - W - 22
