@@ -1030,7 +1030,12 @@
     "cashSubtitle_other": "{{sign}}{{bb}} BB in {{count}} hands",
     "replayHint": "· ↻ auto-replay (0.5s/step, loops) · ←/→ navigate · Space judge · Esc close",
     "yourResult": "Your result",
-    "youRepRange": "You (represented range)"
+    "youRepRange": "You (represented range)",
+    "noHistory": "No history available",
+    "closeBtn": "Close",
+    "handHistory": "Hand history",
+    "actionLog": "Action log",
+    "outOfChips": "Out of chips"
   },
   "htr": {
     "settings": "Exercise settings",

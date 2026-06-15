@@ -1030,7 +1030,12 @@
     "cashSubtitle_other": "{{sign}}{{bb}} BB en {{count}} manos",
     "replayHint": "· ↻ replay automático (0,5s/paso, en bucle) · ←/→ navegar · Espacio juzgar · Esc cerrar",
     "yourResult": "Tu resultado",
-    "youRepRange": "Tú (rango representado)"
+    "youRepRange": "Tú (rango representado)",
+    "noHistory": "No hay historial disponible",
+    "closeBtn": "Cerrar",
+    "handHistory": "Historial de manos",
+    "actionLog": "Registro de acciones",
+    "outOfChips": "Sin fichas"
   },
   "htr": {
     "settings": "Ajustes del ejercicio",

@@ -891,8 +891,8 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:'rgba(0,0,0,0.85)'}}>
         <div className="bg-[#070d1a] border border-white/10 rounded-2xl p-8 text-center">
-          <p className="text-white/60 mb-4">Aucun historique disponible</p>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-white/10 text-white/70 hover:bg-white/15">Fermer</button>
+          <p className="text-white/60 mb-4">{t('sess.noHistory')}</p>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-white/10 text-white/70 hover:bg-white/15">{t('sess.closeBtn')}</button>
         </div>
       </div>
     )
@@ -927,7 +927,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-white/70 uppercase tracking-widest">Historique des mains</span>
+            <span className="text-sm font-bold text-white/70 uppercase tracking-widest">{t('sess.handHistory')}</span>
             <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
             <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
             <span className="text-[10px] text-white/30 hidden lg:inline">{t('sess.replayHint')}</span>
@@ -1175,7 +1175,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
             {/* Action log */}
             <div className="w-72 flex-shrink-0 border-l border-white/8 flex flex-col min-h-0">
               <div className="px-4 py-3 border-b border-white/8 flex-shrink-0">
-                <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Journal des actions</span>
+                <span className="text-xs font-bold text-white/50 uppercase tracking-widest">{t('sess.actionLog')}</span>
               </div>
               <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-1">
                 {visibleActions.map((a, i) => {
@@ -3852,7 +3852,7 @@ export default function GamePage(): JSX.Element {
             ) : heroBusted ? (
               <div className="flex-1 flex items-center justify-center gap-4">
                 <div className="text-center">
-                  <p className="text-[10px] text-red-400/80 uppercase tracking-widest font-bold">Plus de jetons</p>
+                  <p className="text-[10px] text-red-400/80 uppercase tracking-widest font-bold">{t('sess.outOfChips')}</p>
                   <p className="text-[9px] text-white/40">{t('game.rechargeTapis')}</p>
                 </div>
                 <div className="flex items-center rounded-lg border border-[#c9a227]/40 bg-black/45 overflow-hidden">
