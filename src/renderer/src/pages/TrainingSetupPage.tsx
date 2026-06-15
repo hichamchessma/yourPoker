@@ -1,19 +1,19 @@
 import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Minus, Plus, Star, Zap, Crown, Shield, RotateCcw } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import WindowControls from '../components/layout/WindowControls'
-import { Bell, Search, ChevronDown } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────
 type SlotType = 'bot' | 'human' | 'empty'
 interface Slot { type: SlotType; level: number }
 
 const BOT_LEVELS = [
-  { level: 1, name: 'Amateur', color: '#22cc44', desc: 'Récréatif : appelle trop, passif, bluffe rarement' },
-  { level: 2, name: 'Pro',     color: '#f0d060', desc: 'Solide & agressif : value-bet, c-bet, respecte les ranges' },
-  { level: 3, name: 'Expert',  color: '#ff4444', desc: 'Très agressif, bluffs équilibrés, redoutable' },
+  { level: 1, nameKey: 'train.botAmateur', color: '#22cc44', descKey: 'train.descAmateur' },
+  { level: 2, nameKey: 'train.botPro',     color: '#f0d060', descKey: 'train.descPro' },
+  { level: 3, nameKey: 'train.botExpert',  color: '#ff4444', descKey: 'train.descExpert' },
 ]
 
 const POS_LABELS: Record<number, string[]> = {
@@ -28,12 +28,12 @@ const POS_LABELS: Record<number, string[]> = {
 }
 
 const PRESETS = [
-  { icon: '💵', name: 'Cash Game',       players: 6, stack: 100, sb: 1,  bb: 2,  bots: [2,2,2,2,2], desc: 'Setup 6-max standard' },
-  { icon: '🏆', name: 'Final Table',     players: 9, stack: 50,  sb: 5,  bb: 10, bots: [2,2,2,3,3,2,2,3], desc: '9 joueurs tournoi' },
-  { icon: '⚔️', name: 'Heads-Up',        players: 2, stack: 200, sb: 1,  bb: 2,  bots: [3], desc: 'Duel vs Expert' },
-  { icon: '🔥', name: 'Battle Zone',     players: 6, stack: 50,  sb: 2,  bb: 4,  bots: [3,3,3,3,3], desc: 'Défi ultime vs Experts' },
-  { icon: '🎓', name: 'École du Poker',  players: 6, stack: 100, sb: 1,  bb: 2,  bots: [1,1,2,2,3], desc: 'Bots mixtes pour s\'exercer' },
-  { icon: '🤠', name: 'Wild West',       players: 9, stack: 30,  sb: 1,  bb: 2,  bots: [1,1,2,2,3,3,1,2], desc: 'Tables chaotiques' },
+  { id: 'cash', icon: '💵', nameKey: 'train.presetCashName',   players: 6, stack: 100, sb: 1,  bb: 2,  bots: [2,2,2,2,2] },
+  { id: 'ft', icon: '🏆', nameKey: 'train.presetFtName',       players: 9, stack: 50,  sb: 5,  bb: 10, bots: [2,2,2,3,3,2,2,3] },
+  { id: 'hu', icon: '⚔️', nameKey: 'train.presetHuName',       players: 2, stack: 200, sb: 1,  bb: 2,  bots: [3] },
+  { id: 'battle', icon: '🔥', nameKey: 'train.presetBattleName', players: 6, stack: 50,  sb: 2,  bb: 4,  bots: [3,3,3,3,3] },
+  { id: 'school', icon: '🎓', nameKey: 'train.presetSchoolName', players: 6, stack: 100, sb: 1,  bb: 2,  bots: [1,1,2,2,3] },
+  { id: 'wild', icon: '🤠', nameKey: 'train.presetWildName',    players: 9, stack: 30,  sb: 1,  bb: 2,  bots: [1,1,2,2,3,3,1,2] },
 ]
 
 // ── Poker Table SVG ───────────────────────────────────────────────
@@ -139,6 +139,7 @@ function PokerTable({
 
 // ── Main Page ──────────────────────────────────────────────────────
 export default function TrainingSetupPage(): JSX.Element {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Joueur'
@@ -193,7 +194,7 @@ export default function TrainingSetupPage(): JSX.Element {
   const safeSelectedSeat = Math.min(selectedSeat, numPlayers - 1)
   const myPosition = labels[safeSelectedSeat] ?? 'BTN'
 
-  const TABS = ['JOUEURS', 'STACK & BLINDES', 'OPPOSANTS & BOT', 'RÉGLAGES']
+  const TABS = [t('train.tabPlayers'), t('train.tabStack'), t('train.tabBots'), t('train.tabSettings')]
 
   return (
     <div className="flex flex-col h-full bg-poker-darker overflow-hidden">
@@ -209,16 +210,8 @@ export default function TrainingSetupPage(): JSX.Element {
             <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Coach</span>
           </div>
         </div>
-        <div className="flex-1 max-w-sm relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30"/>
-          <input placeholder="Recherche au global" className="w-full bg-white/5 border border-white/8 rounded-lg pl-9 pr-4 py-2 text-xs text-white/70 placeholder-white/25 focus:outline-none focus:border-poker-teal/40"/>
-        </div>
         <div className="flex-1"/>
-        <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors">
-          <Bell size={18} className="text-white/50"/>
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"/>
-        </button>
-        <div className="flex items-center gap-2 pl-2 border-l border-white/10 cursor-pointer">
+        <div className="flex items-center gap-2 pl-2 border-l border-white/10">
           <div className="w-8 h-8 rounded-full overflow-hidden border border-poker-gold/30 flex-shrink-0">
             {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover"/> : (
               <div className="w-full h-full bg-poker-gold/20 flex items-center justify-center">
@@ -226,11 +219,7 @@ export default function TrainingSetupPage(): JSX.Element {
               </div>
             )}
           </div>
-          <div className="hidden sm:block">
-            <p className="text-xs font-bold text-white/90 leading-tight">{displayName}</p>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-poker-gold/20 text-poker-gold font-bold uppercase tracking-wide">PRO+</span>
-          </div>
-          <ChevronDown size={14} className="text-white/30"/>
+          <p className="hidden sm:block text-xs font-bold text-white/90 leading-tight">{displayName}</p>
         </div>
         <WindowControls/>
       </header>
@@ -244,7 +233,7 @@ export default function TrainingSetupPage(): JSX.Element {
           {/* Table */}
           <div className="flex-1 glass-card overflow-hidden relative flex flex-col min-h-0">
             <div className="p-3 border-b border-white/5 flex-shrink-0">
-              <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest text-center">Aperçu de votre table</p>
+              <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest text-center">{t('train.tablePreview')}</p>
             </div>
             <div className="flex-1 p-2 min-h-0">
               <PokerTable
@@ -255,21 +244,21 @@ export default function TrainingSetupPage(): JSX.Element {
               />
             </div>
             <div className="p-2 border-t border-white/5 flex items-center justify-between flex-shrink-0">
-              <span className="text-[10px] text-white/30 uppercase tracking-wide">Cliquez un siège pour vous placer</span>
+              <span className="text-[10px] text-white/30 uppercase tracking-wide">{t('train.clickSeat')}</span>
               <span className="text-[10px] font-bold text-poker-teal">{myPosition}</span>
             </div>
           </div>
 
           {/* Quick Presets */}
           <div className="glass-card p-3 flex-shrink-0">
-            <p className="text-[10px] font-bold text-poker-gold/70 uppercase tracking-widest mb-2">⚡ Quick Setup</p>
+            <p className="text-[10px] font-bold text-poker-gold/70 uppercase tracking-widest mb-2">{t('train.quickSetup')}</p>
             <div className="grid grid-cols-3 gap-1.5">
               {PRESETS.map(p => (
-                <motion.button key={p.name} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                <motion.button key={p.id} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                   onClick={() => applyPreset(p)}
                   className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/3 border border-white/8 hover:border-poker-gold/30 hover:bg-poker-gold/5 transition-all">
                   <span className="text-base">{p.icon}</span>
-                  <span className="text-[9px] font-bold text-white/60 leading-tight text-center">{p.name}</span>
+                  <span className="text-[9px] font-bold text-white/60 leading-tight text-center">{t(p.nameKey)}</span>
                 </motion.button>
               ))}
             </div>
@@ -282,9 +271,9 @@ export default function TrainingSetupPage(): JSX.Element {
           {/* Title */}
           <div className="text-center flex-shrink-0">
             <h1 className="font-display font-bold text-xl tracking-[0.2em] uppercase" style={{ color: '#c9a227', textShadow: '0 0 30px rgba(201,162,39,0.4)' }}>
-              Créer Votre Table de Rêve
+              {t('train.title')}
             </h1>
-            <p className="text-white/30 text-[10px] mt-0.5 tracking-wider uppercase">Configurez chaque détail pour une session sur mesure</p>
+            <p className="text-white/30 text-[10px] mt-0.5 tracking-wider uppercase">{t('train.subtitle')}</p>
           </div>
 
           {/* Tabs */}
@@ -308,7 +297,7 @@ export default function TrainingSetupPage(): JSX.Element {
                 {activeTab === 0 && (
                   <div className="space-y-5">
                     <div>
-                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">Nombre de joueurs</p>
+                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">{t('train.numPlayers')}</p>
                       <div className="flex items-center gap-3">
                         <motion.button whileTap={{ scale: 0.9 }} onClick={() => setNumPlayers(n => Math.max(2, n - 1))}
                           className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors">
@@ -331,12 +320,12 @@ export default function TrainingSetupPage(): JSX.Element {
                         </motion.button>
                       </div>
                       <div className="mt-2 text-center">
-                        <span className="text-[10px] text-white/30">{numPlayers === 2 ? 'Heads-Up' : numPlayers <= 3 ? 'Short-Handed' : numPlayers <= 6 ? '6-Max' : 'Full Ring'}</span>
+                        <span className="text-[10px] text-white/30">{numPlayers === 2 ? t('train.headsUp') : numPlayers <= 3 ? t('train.shortHanded') : numPlayers <= 6 ? t('train.sixMax') : t('train.fullRing')}</span>
                       </div>
                     </div>
 
                     <div>
-                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">Sélection de siège</p>
+                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">{t('train.seatSelect')}</p>
                       <div className="grid grid-cols-5 gap-2">
                         {Array.from({ length: numPlayers }, (_, i) => {
                           const lbl = (POS_LABELS[numPlayers] || POS_LABELS[6])[i]
@@ -354,7 +343,7 @@ export default function TrainingSetupPage(): JSX.Element {
                           )
                         })}
                       </div>
-                      <p className="text-[10px] text-white/30 mt-3 text-center">Ou cliquez directement sur la table à gauche</p>
+                      <p className="text-[10px] text-white/30 mt-3 text-center">{t('train.orClickTable')}</p>
                     </div>
 
                     <div className="bg-poker-teal/8 border border-poker-teal/20 rounded-xl p-3 flex items-center gap-3">
@@ -362,8 +351,8 @@ export default function TrainingSetupPage(): JSX.Element {
                         <span className="text-poker-teal text-sm">📍</span>
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-poker-teal">Votre position : {myPosition}</p>
-                        <p className="text-[10px] text-white/40 mt-0.5">Siège {safeSelectedSeat + 1} sur {numPlayers} joueurs</p>
+                        <p className="text-xs font-bold text-poker-teal">{t('train.yourPos', { pos: myPosition })}</p>
+                        <p className="text-[10px] text-white/40 mt-0.5">{t('train.seatOf', { seat: safeSelectedSeat + 1, total: numPlayers })}</p>
                       </div>
                     </div>
                   </div>
@@ -373,7 +362,7 @@ export default function TrainingSetupPage(): JSX.Element {
                 {activeTab === 1 && (
                   <div className="space-y-5">
                     <div>
-                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">Stack initial</p>
+                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">{t('train.stackInit')}</p>
                       <div className="grid grid-cols-5 gap-2 mb-3">
                         {[20, 50, 100, 200, 500].map(bb_cnt => (
                           <motion.button key={bb_cnt} whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
@@ -390,7 +379,7 @@ export default function TrainingSetupPage(): JSX.Element {
                       <div className="bg-white/4 rounded-xl p-4 flex items-center justify-between">
                         <div>
                           <p className="text-xl font-bold text-white">{stackChips.toLocaleString()}</p>
-                          <p className="text-[10px] text-white/40">chips ({stackBB} BB)</p>
+                          <p className="text-[10px] text-white/40">{t('train.chipsBB', { bb: stackBB })}</p>
                         </div>
                         <div className="flex flex-col gap-1">
                           <motion.button whileTap={{ scale: 0.9 }} onClick={() => setStackBB(n => Math.min(500, n + 10))}
@@ -407,9 +396,9 @@ export default function TrainingSetupPage(): JSX.Element {
 
                     <div className="grid grid-cols-3 gap-3">
                       {[
-                        { label: 'Small Blind', val: sb, set: setSb, step: 0.5 },
-                        { label: 'Big Blind', val: bb, set: setBb, step: 1 },
-                        { label: 'Ante', val: ante, set: setAnte, step: 0.5 },
+                        { label: t('train.smallBlind'), val: sb, set: setSb, step: 0.5 },
+                        { label: t('train.bigBlind'), val: bb, set: setBb, step: 1 },
+                        { label: t('train.ante'), val: ante, set: setAnte, step: 0.5 },
                       ].map(({ label, val, set, step }) => (
                         <div key={label} className="bg-white/4 rounded-xl p-3">
                           <p className="text-[9px] text-white/40 uppercase tracking-wide mb-2">{label}</p>
@@ -429,9 +418,9 @@ export default function TrainingSetupPage(): JSX.Element {
                     </div>
 
                     <div className="bg-poker-gold/6 border border-poker-gold/15 rounded-xl p-3 grid grid-cols-3 gap-3 text-center">
-                      <div><p className="text-[9px] text-white/35 uppercase tracking-wide">Stack</p><p className="text-sm font-bold text-poker-gold">{stackChips.toLocaleString()}</p></div>
+                      <div><p className="text-[9px] text-white/35 uppercase tracking-wide">{t('train.stackInit')}</p><p className="text-sm font-bold text-poker-gold">{stackChips.toLocaleString()}</p></div>
                       <div><p className="text-[9px] text-white/35 uppercase tracking-wide">BB</p><p className="text-sm font-bold text-white/70">{bb}</p></div>
-                      <div><p className="text-[9px] text-white/35 uppercase tracking-wide">Ratio</p><p className="text-sm font-bold text-white/70">{stackBB} BB</p></div>
+                      <div><p className="text-[9px] text-white/35 uppercase tracking-wide">{t('train.ratio')}</p><p className="text-sm font-bold text-white/70">{stackBB} BB</p></div>
                     </div>
                   </div>
                 )}
@@ -441,11 +430,11 @@ export default function TrainingSetupPage(): JSX.Element {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold">
-                        Configurez {numPlayers - 1} adversaire{numPlayers > 2 ? 's' : ''}
+                        {t('train.configOpp', { count: numPlayers - 1 })}
                       </p>
                       <button onClick={() => setSlots(prev => prev.map((s, i) => i < numPlayers - 1 ? { ...s, type: 'bot', level: 2 } : { type: 'empty', level: 2 }))}
                         className="flex items-center gap-1 text-[9px] text-white/30 hover:text-white/60 transition-colors">
-                        <RotateCcw size={10}/> Reset
+                        <RotateCcw size={10}/> {t('train.reset')}
                       </button>
                     </div>
 
@@ -464,22 +453,22 @@ export default function TrainingSetupPage(): JSX.Element {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex gap-1.5 mb-1.5">
-                              {(['bot','human','empty'] as SlotType[]).map(t => (
-                                <button key={t} onClick={() => updateSlot(i, { type: t })}
+                              {(['bot','human','empty'] as SlotType[]).map(st => (
+                                <button key={st} onClick={() => updateSlot(i, { type: st })}
                                   className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wide transition-all ${
-                                    slot.type === t
-                                      ? t === 'bot' ? 'bg-poker-gold/25 text-poker-gold border border-poker-gold/40'
-                                        : t === 'human' ? 'bg-blue-500/25 text-blue-300 border border-blue-500/40'
+                                    slot.type === st
+                                      ? st === 'bot' ? 'bg-poker-gold/25 text-poker-gold border border-poker-gold/40'
+                                        : st === 'human' ? 'bg-blue-500/25 text-blue-300 border border-blue-500/40'
                                         : 'bg-white/10 text-white/50 border border-white/20'
                                       : 'text-white/25 hover:text-white/50 border border-transparent'
                                   }`}>
-                                  {t === 'bot' ? '🤖 Bot' : t === 'human' ? '👤 Humain' : '— Vide'}
+                                  {st === 'bot' ? t('train.typeBot') : st === 'human' ? t('train.typeHuman') : t('train.typeEmpty')}
                                 </button>
                               ))}
                             </div>
                             {slot.type === 'bot' && (
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[9px] text-white/30">Niveau:</span>
+                                <span className="text-[9px] text-white/30">{t('train.level')}</span>
                                 {BOT_LEVELS.map(b => (
                                   <button key={b.level} onClick={() => updateSlot(i, { level: b.level })}
                                     className="w-5 h-5 rounded text-[9px] font-bold transition-all"
@@ -487,11 +476,11 @@ export default function TrainingSetupPage(): JSX.Element {
                                     {b.level}
                                   </button>
                                 ))}
-                                <span className="text-[9px] ml-1" style={{ color: botCfg?.color }}>{botCfg?.name}</span>
+                                <span className="text-[9px] ml-1" style={{ color: botCfg?.color }}>{botCfg ? t(botCfg.nameKey) : ''}</span>
                               </div>
                             )}
                             {slot.type === 'bot' && (
-                              <p className="text-[9px] text-white/25 mt-0.5">{botCfg?.desc}</p>
+                              <p className="text-[9px] text-white/25 mt-0.5">{botCfg ? t(botCfg.descKey) : ''}</p>
                             )}
                           </div>
                         </div>
@@ -505,7 +494,7 @@ export default function TrainingSetupPage(): JSX.Element {
                   <div className="space-y-5">
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold">Timer de décision</p>
+                        <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold">{t('train.decisionTimer')}</p>
                         <span className="text-sm font-bold text-poker-gold">{decisionTimer}s</span>
                       </div>
                       <input type="range" min="5" max="120" step="5" value={decisionTimer} onChange={e => setDecisionTimer(+e.target.value)}
@@ -515,7 +504,7 @@ export default function TrainingSetupPage(): JSX.Element {
                     </div>
 
                     <div>
-                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">Variante de jeu</p>
+                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">{t('train.gameVariant')}</p>
                       <div className="grid grid-cols-3 gap-2">
                         {(['NLH','PLO','PLO5'] as const).map(v => (
                           <motion.button key={v} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
@@ -524,28 +513,28 @@ export default function TrainingSetupPage(): JSX.Element {
                               gameVariant === v ? 'bg-poker-gold/20 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/10 text-white/40 hover:border-white/25'
                             }`}>
                             <p className="text-xs font-bold">{v}</p>
-                            <p className="text-[9px] mt-0.5 opacity-60">{v === 'NLH' ? 'No Limit Hold\'em' : v === 'PLO' ? 'Pot Limit Omaha' : 'PLO 5 cartes'}</p>
+                            <p className="text-[9px] mt-0.5 opacity-60">{v === 'NLH' ? t('train.nlhDesc') : v === 'PLO' ? t('train.ploDesc') : t('train.plo5Desc')}</p>
                           </motion.button>
                         ))}
                       </div>
                     </div>
 
                     <div>
-                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">Vitesse de jeu</p>
+                      <p className="text-[10px] text-white/50 uppercase tracking-widest font-bold mb-3">{t('train.gameSpeed')}</p>
                       <div className="grid grid-cols-3 gap-2">
-                        {([['slow','🐢 Lente'],['normal','🎯 Normale'],['fast','⚡ Rapide']] as const).map(([v, lbl]) => (
+                        {(['slow','normal','fast'] as const).map(v => (
                           <motion.button key={v} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                             onClick={() => setGameSpeed(v)}
                             className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${
                               gameSpeed === v ? 'bg-poker-teal/20 border-poker-teal text-poker-teal' : 'bg-white/4 border-white/10 text-white/40 hover:border-white/25'
-                            }`}>{lbl}</motion.button>
+                            }`}>{v === 'slow' ? t('train.speedSlow') : v === 'normal' ? t('train.speedNormal') : t('train.speedFast')}</motion.button>
                         ))}
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       {[
-                        { key: 'anon', label: 'Mode anonyme', sub: 'Les bots ne voient pas votre pseudo', val: anonymousMode, set: () => setAnonymousMode(v => !v) },
+                        { key: 'anon', label: t('train.anonMode'), sub: t('train.anonSub'), val: anonymousMode, set: () => setAnonymousMode(v => !v) },
                       ].map(opt => (
                         <div key={opt.key} className="flex items-center justify-between bg-white/3 border border-white/8 rounded-xl p-3">
                           <div>
@@ -574,7 +563,7 @@ export default function TrainingSetupPage(): JSX.Element {
             onClick={() => navigate('/game', { state: { numPlayers, selectedSeat, stackBB, sb, bb, ante, decisionTimer, gameVariant, gameSpeed, anonymousMode, slots, displayName } })}
             className="flex-shrink-0 py-4 rounded-2xl font-display font-bold text-base tracking-[0.3em] uppercase text-poker-darker transition-all"
             style={{ background: 'linear-gradient(135deg, #f0d060, #c9a227, #8B6810)', boxShadow: '0 0 25px rgba(201,162,39,0.35)' }}>
-            ✦ Confirmer & Commencer ✦
+            {t('train.confirm')}
           </motion.button>
         </div>
 
@@ -585,13 +574,13 @@ export default function TrainingSetupPage(): JSX.Element {
           <div className="glass-card p-3">
             <div className="flex items-center gap-2 mb-2">
               <Star size={11} className="text-poker-gold"/>
-              <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Coach's Corner</p>
+              <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">{t('train.coachCorner')}</p>
             </div>
             <div className="space-y-1.5">
               {[
-                `Position ${myPosition}: ${myPosition === 'BTN' ? 'Meilleure position, jouez large' : myPosition === 'BB' ? 'Position difficile, soyez sélectif' : 'Position moyenne, jouez TAG'}`,
-                `${stackBB} BB = ${stackBB >= 100 ? 'Stack profond, jeu de post-flop' : stackBB >= 50 ? 'Stack standard' : 'Short stack, push/fold'}`,
-                `${gameVariant === 'NLH' ? 'Hold\'em: maîtrisez le range contre les bots' : 'Omaha: les draws sont plus fréquents'}`,
+                myPosition === 'BTN' ? t('train.tipPosBtn', { pos: myPosition }) : myPosition === 'BB' ? t('train.tipPosBb', { pos: myPosition }) : t('train.tipPosMid', { pos: myPosition }),
+                stackBB >= 100 ? t('train.tipDeep', { bb: stackBB }) : stackBB >= 50 ? t('train.tipStd', { bb: stackBB }) : t('train.tipShort', { bb: stackBB }),
+                gameVariant === 'NLH' ? t('train.tipNlh') : t('train.tipOmaha'),
               ].map((tip, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <span className="text-poker-gold mt-0.5 flex-shrink-0 text-[10px]">+</span>
@@ -603,13 +592,13 @@ export default function TrainingSetupPage(): JSX.Element {
 
           {/* Recommandations */}
           <div className="glass-card p-3">
-            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-2">Recommandations de Setup</p>
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-2">{t('train.recos')}</p>
             <div className="space-y-1.5">
               {[
-                { icon: <Crown size={10}/>, text: `Hicham Amor f order Coach Lvl 1-5` },
-                { icon: <Shield size={10}/>, text: 'Essayez la position BTN pour commencer' },
-                { icon: <Zap size={10}/>, text: 'Bot niv 3 recommandé pour progresser' },
-                { icon: <Star size={10}/>, text: 'Hand Recalls: 17 décisions à revoir' },
+                { icon: <Shield size={10}/>, text: t('train.recoBtn') },
+                { icon: <Zap size={10}/>, text: t('train.recoBot3') },
+                { icon: <Crown size={10}/>, text: t('train.recoCoach') },
+                { icon: <Star size={10}/>, text: t('train.recoReview') },
               ].map((r, i) => (
                 <div key={i} className="flex items-start gap-1.5 text-white/35">
                   <span className="text-poker-gold mt-0.5 flex-shrink-0">{r.icon}</span>
@@ -621,16 +610,16 @@ export default function TrainingSetupPage(): JSX.Element {
 
           {/* Résumé du Setup */}
           <div className="glass-card p-3">
-            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-3">Résumé du Setup</p>
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-3">{t('train.setupSummary')}</p>
             <div className="space-y-2">
               {[
-                { label: 'STACK X INITIAL', val: `${stackChips.toLocaleString()}` },
-                { label: 'NOMBRE DE JOUEURS', val: `${numPlayers} Joueurs` },
-                { label: 'ACTIFS', val: `${activeCount} / ${numPlayers}` },
-                { label: 'VOTRE PLACE', val: `${myPosition} (Siège ${safeSelectedSeat + 1})` },
-                { label: 'STACK', val: `${stackChips.toLocaleString()} (${stackBB}BB)` },
-                { label: 'RÉGLAGES', val: `${gameVariant} · ${decisionTimer}s` },
-                { label: 'ANTE', val: ante > 0 ? `${ante}` : 'Aucun' },
+                { label: t('train.sumStack'), val: `${stackChips.toLocaleString()}` },
+                { label: t('train.sumPlayers'), val: t('train.playersWord', { n: numPlayers }) },
+                { label: t('train.sumActive'), val: `${activeCount} / ${numPlayers}` },
+                { label: t('train.sumYourSeat'), val: t('train.seatWord', { pos: myPosition, seat: safeSelectedSeat + 1 }) },
+                { label: 'Stack', val: `${stackChips.toLocaleString()} (${stackBB}BB)` },
+                { label: t('train.sumSettings'), val: `${gameVariant} · ${decisionTimer}s` },
+                { label: t('train.sumAnte'), val: ante > 0 ? `${ante}` : t('train.none') },
               ].map(row => (
                 <div key={row.label} className="flex items-center justify-between gap-2">
                   <span className="text-[9px] text-white/30 uppercase tracking-wide leading-tight">{row.label}</span>
@@ -642,7 +631,7 @@ export default function TrainingSetupPage(): JSX.Element {
 
           {/* Bot Legend */}
           <div className="glass-card p-3">
-            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-2">Niveaux de Bot</p>
+            <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-2">{t('train.botLevels')}</p>
             <div className="space-y-1">
               {BOT_LEVELS.map(b => (
                 <div key={b.level} className="flex items-center gap-2">
@@ -650,7 +639,7 @@ export default function TrainingSetupPage(): JSX.Element {
                     style={{ background: b.color + '22', color: b.color, border: `1px solid ${b.color}55` }}>
                     {b.level}
                   </span>
-                  <span className="text-[9px] font-semibold" style={{ color: b.color }}>{b.name}</span>
+                  <span className="text-[9px] font-semibold" style={{ color: b.color }}>{t(b.nameKey)}</span>
                 </div>
               ))}
             </div>
