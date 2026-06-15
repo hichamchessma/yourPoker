@@ -571,5 +571,26 @@
     "presetSchoolDesc": "Mixed bots to practice",
     "presetWildName": "Wild West",
     "presetWildDesc": "Chaotic tables"
+  },
+  "game": {
+    "distributing": "Dealing cards...",
+    "waiting": "Waiting for the other players...",
+    "paused": "Paused",
+    "handDonePrev": "Hand over — next hand…",
+    "handDone": "Hand over",
+    "quit": "Quit",
+    "quitSim": "Quit simulation",
+    "pause": "Pause",
+    "resume": "Resume",
+    "rejouer": "Replay",
+    "winner": "Winner",
+    "handHistory": "Hand history",
+    "rechargeTapis": "Top up your stack to continue",
+    "tourFinished": "Tournament over",
+    "youFinish": "You finish #{{place}} / {{field}}",
+    "prize": "Prize: ${{amount}} 🎉",
+    "noPrize": "Out of the money",
+    "restartTitle": "Start a new tournament with the same configuration",
+    "youWin": " — you win 🎉"
   }
 }

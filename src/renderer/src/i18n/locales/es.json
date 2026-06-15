@@ -571,5 +571,26 @@
     "presetSchoolDesc": "Bots mixtos para practicar",
     "presetWildName": "Wild West",
     "presetWildDesc": "Mesas caóticas"
+  },
+  "game": {
+    "distributing": "Repartiendo cartas...",
+    "waiting": "Esperando a los demás jugadores...",
+    "paused": "En pausa",
+    "handDonePrev": "Mano terminada — siguiente mano…",
+    "handDone": "Mano terminada",
+    "quit": "Salir",
+    "quitSim": "Salir de la simulación",
+    "pause": "Pausa",
+    "resume": "Reanudar",
+    "rejouer": "Repetir",
+    "winner": "Ganador",
+    "handHistory": "Historial de manos",
+    "rechargeTapis": "Recarga tu stack para continuar",
+    "tourFinished": "Torneo terminado",
+    "youFinish": "Terminas {{place}}º / {{field}}",
+    "prize": "Premio: ${{amount}} 🎉",
+    "noPrize": "Fuera de premios",
+    "restartTitle": "Lanza un nuevo torneo con la misma configuración",
+    "youWin": " — ganas 🎉"
   }
 }

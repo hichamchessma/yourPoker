@@ -1,4 +1,5 @@
 ﻿import { useState, useRef, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye, FastForward } from 'lucide-react'
@@ -1239,6 +1240,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
 
 // ─── Main GamePage Component ──────────────────────────────────────────────────
 export default function GamePage(): JSX.Element {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const cfg = (location.state ?? {}) as Partial<GameConfig>
@@ -3432,7 +3434,7 @@ export default function GamePage(): JSX.Element {
         <button onClick={() => (simMode ? exitSim() : navigate(tournament ? '/tournament' : isScenario ? '/setup' : '/training'))}
           className="app-drag-none flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors">
           <ArrowLeft size={15}/>
-          <span className="text-[10px] uppercase tracking-widest font-bold">{simMode ? 'Quitter la simulation' : 'Quitter'}</span>
+          <span className="text-[10px] uppercase tracking-widest font-bold">{simMode ? t('game.quitSim') : t('game.quit')}</span>
         </button>
         <div className="h-4 w-px bg-white/10"/>
         {simMode && (
@@ -3537,7 +3539,7 @@ export default function GamePage(): JSX.Element {
             <button onClick={togglePause}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 transition-all text-[9px] font-bold">
               {gs.paused ? <Play size={11}/> : <Pause size={11}/>}
-              {gs.paused ? 'Reprendre' : 'Pause'}
+              {gs.paused ? t('game.resume') : t('game.pause')}
             </button>
             <button onClick={stopGame}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-900/20 border border-red-700/30 text-red-400/70 hover:text-red-400 hover:bg-red-900/30 transition-all text-[9px] font-bold">
@@ -3846,7 +3848,7 @@ export default function GamePage(): JSX.Element {
               <div className="flex-1 flex items-center justify-center gap-4">
                 <div className="text-center">
                   <p className="text-[10px] text-red-400/80 uppercase tracking-widest font-bold">Plus de jetons</p>
-                  <p className="text-[9px] text-white/40">Rechargez votre tapis pour continuer</p>
+                  <p className="text-[9px] text-white/40">{t('game.rechargeTapis')}</p>
                 </div>
                 <div className="flex items-center rounded-lg border border-[#c9a227]/40 bg-black/45 overflow-hidden">
                   <span className="pl-2.5 text-[12px] text-white/40 font-mono">$</span>
@@ -4018,15 +4020,15 @@ export default function GamePage(): JSX.Element {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-[#c9a227] animate-pulse"/>
                     <p className="text-[10px] text-white/40 uppercase tracking-widest">
-                      {gs.paused ? 'En pause' : 'Main terminée — prochaine main…'}
+                      {gs.paused ? t('game.paused') : t('game.handDonePrev')}
                     </p>
                   </div>
                 ) : gs.phase === 'dealing' ? (
-                  <p className="text-[10px] text-white/30 uppercase tracking-widest animate-pulse">Distribution des cartes...</p>
+                  <p className="text-[10px] text-white/30 uppercase tracking-widest animate-pulse">{t('game.distributing')}</p>
                 ) : (
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-[#00d4ff] animate-ping opacity-60"/>
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest">En attente des autres joueurs...</p>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">{t('game.waiting')}</p>
                   </div>
                 )}
               </div>
@@ -4110,10 +4112,10 @@ export default function GamePage(): JSX.Element {
               className="rounded-2xl border p-8 text-center max-w-md"
               style={{ background: '#160f04', borderColor: 'rgba(240,192,96,0.4)', boxShadow: '0 0 60px rgba(200,140,40,0.35)' }}>
               <div className="text-5xl mb-2">{tourResult.prize > 0 ? '🏅' : '☠️'}</div>
-              <h2 className="text-lg font-black uppercase tracking-[0.18em] text-[#f0c060]">Tournoi terminé</h2>
-              <p className="text-[15px] text-white/80 mt-2">Tu finis <b className="text-white">{tourResult.place.toLocaleString()}e</b> / {tournament.field.toLocaleString()}</p>
+              <h2 className="text-lg font-black uppercase tracking-[0.18em] text-[#f0c060]">{t('game.tourFinished')}</h2>
+              <p className="text-[15px] text-white/80 mt-2">{t('game.youFinish', { place: tourResult.place.toLocaleString(), field: tournament.field.toLocaleString() })}</p>
               <p className={`text-[13px] mt-1 font-bold ${tourResult.prize > 0 ? 'text-emerald-400' : 'text-white/40'}`}>
-                {tourResult.prize > 0 ? `Gain : $${tourResult.prize.toLocaleString()} 🎉` : 'Hors des places payées'}
+                {tourResult.prize > 0 ? t('game.prize', { amount: tourResult.prize.toLocaleString() }) : t('game.noPrize')}
               </p>
               <div className="flex items-center justify-center gap-3 mt-6">
                 {tournament.reentry && (
@@ -4123,14 +4125,14 @@ export default function GamePage(): JSX.Element {
                     <RefreshCw size={14}/> Re-entry
                   </button>
                 )}
-                <button onClick={restartTournament} title="Lance un nouveau tournoi avec la même configuration"
+                <button onClick={restartTournament} title={t('game.restartTitle')}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-[0.16em] text-[12px] transition-all hover:scale-[1.03]"
                   style={{ background: 'linear-gradient(135deg,#5ad19a,#2e9e6b)', color: '#04140c' }}>
-                  <RefreshCw size={14}/> Rejouer
+                  <RefreshCw size={14}/> {t('game.rejouer')}
                 </button>
                 <button onClick={() => navigate('/tournament')}
                   className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
-                  Quitter
+                  {t('game.quit')}
                 </button>
               </div>
             </motion.div>
@@ -4158,11 +4160,11 @@ export default function GamePage(): JSX.Element {
               <div className="text-left">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">⚡</span>
-                  <h2 className="text-[12px] font-black uppercase tracking-[0.16em] text-[#c8b6ff]">Main terminée</h2>
+                  <h2 className="text-[12px] font-black uppercase tracking-[0.16em] text-[#c8b6ff]">{t('game.handDone')}</h2>
                 </div>
                 <p className="text-[11px] text-white/55 mt-0.5">
-                  {simResult.winners.map(wi => simResult.seats.find(s => s.idx === wi)?.name ?? '?').join(', ') || '—'} remporte
-                  {(() => { const h = simResult.seats.find(s => s.isHero); return h && simResult.winners.includes(h.idx) ? ' — tu gagnes 🎉' : '' })()}
+                  {simResult.winners.map(wi => simResult.seats.find(s => s.idx === wi)?.name ?? '?').join(', ') || '—'} {t('lb.winVerb')}
+                  {(() => { const h = simResult.seats.find(s => s.isHero); return h && simResult.winners.includes(h.idx) ? t('game.youWin') : '' })()}
                 </p>
                 <p className="text-[9.5px] text-white/35 mt-0.5">Analyse le coup — survole les cartes pour voir les ranges. Prends ton temps.</p>
               </div>
