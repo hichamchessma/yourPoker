@@ -22,7 +22,7 @@ const blank = (field: number): Stats => ({ done: 0, wins: 0, cashes: 0, ft: 0, p
 
 export default function SimulationPage(): JSX.Element {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<Mode>('mtt')
+  const [mode, setMode] = useState<Mode>('watch')
   const [tours, setTours] = useState(300)
   const [numTables, setNumTables] = useState(12)
   const [seats, setSeats] = useState(9)
@@ -66,8 +66,9 @@ export default function SimulationPage(): JSX.Element {
   }
 
   // Time estimate: calibrate on config change (debounced) by timing a few real runs.
+  // Skipped in 'watch' mode — it runs a single tournament on demand, no estimate needed.
   useEffect(() => {
-    if (running) return
+    if (running || mode === 'watch') return
     let alive = true
     setCalibrating(true); setEstMs(null)
     const id = setTimeout(async () => {
