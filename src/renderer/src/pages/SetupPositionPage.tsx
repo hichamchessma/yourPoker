@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Minus, Plus, Play, Save, Trash2, RotateCcw, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
@@ -39,15 +40,15 @@ const BOT_LEVELS = [
   { level: 3, name: 'Expert', color: '#ff4444' },
 ]
 const DISCIPLINES: { id: Discipline; label: string; hint: string; color: string }[] = [
-  { id: 'tight', label: 'Serré / maîtrisé', hint: 'respecte sa range', color: '#22cc44' },
-  { id: 'normal', label: 'Standard', hint: 'jeu équilibré', color: '#f0d060' },
-  { id: 'loose', label: 'Large / tilt', hint: 'déborde de sa range', color: '#ff4444' },
+  { id: 'tight', label: 'spos.discTight', hint: 'spos.discTightHint', color: '#22cc44' },
+  { id: 'normal', label: 'spos.discNormal', hint: 'spos.discNormalHint', color: '#f0d060' },
+  { id: 'loose', label: 'spos.discLoose', hint: 'spos.discLooseHint', color: '#ff4444' },
 ]
 const STREETS: { id: Street; label: string; need: number }[] = [
-  { id: 'preflop', label: 'Pré-flop', need: 0 },
-  { id: 'flop', label: 'Flop', need: 3 },
-  { id: 'turn', label: 'Turn', need: 4 },
-  { id: 'river', label: 'River', need: 5 },
+  { id: 'preflop', label: 'spos.streetPreflop', need: 0 },
+  { id: 'flop', label: 'spos.streetFlop', need: 3 },
+  { id: 'turn', label: 'spos.streetTurn', need: 4 },
+  { id: 'river', label: 'spos.streetRiver', need: 5 },
 ]
 const STORE_KEY = 'yourpoker_scenarios'
 
@@ -74,13 +75,14 @@ function CardSlot({ card, onClick, size = 'md', label }: { card: Card | null; on
 }
 
 function CardPicker({ used, onPick, onClose }: { used: Set<string>; onPick: (c: Card) => void; onClose: () => void }) {
+  const { t } = useTranslation()
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={onClose}>
       <motion.div initial={{ scale: 0.95, y: 12 }} animate={{ scale: 1, y: 0 }}
         className="rounded-2xl border border-[#c9a227]/30 p-4" style={{ background: '#070d1a' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[11px] font-bold text-[#c9a227] uppercase tracking-widest">Choisis une carte</span>
+          <span className="text-[11px] font-bold text-[#c9a227] uppercase tracking-widest">{t('spos.pickCard')}</span>
           <button onClick={onClose} className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white"><X size={14} /></button>
         </div>
         <div className="space-y-1">
@@ -108,6 +110,7 @@ function CardPicker({ used, onPick, onClose }: { used: Set<string>; onPick: (c: 
 
 // ── Page ───────────────────────────────────────────────────────────
 export default function SetupPositionPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Hero'
@@ -170,8 +173,8 @@ export default function SetupPositionPage() {
   }
 
   function validate(): string {
-    if (!heroCards[0] || !heroCards[1]) return 'Choisis tes 2 cartes (MA HAND).'
-    for (let i = 0; i < need; i++) if (!board[i]) return `Remplis les ${need} cartes du board pour démarrer au ${STREETS.find(s => s.id === startStreet)!.label}.`
+    if (!heroCards[0] || !heroCards[1]) return t('spos.valHand')
+    for (let i = 0; i < need; i++) if (!board[i]) return t('spos.valBoard', { need, street: t(STREETS.find(s => s.id === startStreet)!.label) })
     return ''
   }
 
@@ -191,7 +194,7 @@ export default function SetupPositionPage() {
   }
 
   function saveScenario() {
-    const name = saveName.trim() || `Scénario ${saved.length + 1}`
+    const name = saveName.trim() || t('spos.defaultScenario', { n: saved.length + 1 })
     const next = [...saved.filter(s => s.name !== name), { name, scenario: buildScenario() }]
     setSaved(next); setSaveName('')
     localStorage.setItem(STORE_KEY, JSON.stringify(next))
@@ -224,8 +227,8 @@ export default function SetupPositionPage() {
       {/* Header */}
       <div className="app-drag flex items-center justify-between px-6 py-3 border-b border-white/5">
         <div>
-          <h1 className="text-lg font-black text-[#c9a227] uppercase tracking-[0.2em]">Scénario sur mesure</h1>
-          <p className="text-[10px] text-white/35 uppercase tracking-widest">Configure chaque détail pour une session sur mesure</p>
+          <h1 className="text-lg font-black text-[#c9a227] uppercase tracking-[0.2em]">{t('spos.header')}</h1>
+          <p className="text-[10px] text-white/35 uppercase tracking-widest">{t('spos.headerSub')}</p>
         </div>
         <div className="app-drag-none"><WindowControls /></div>
       </div>
@@ -242,12 +245,12 @@ export default function SetupPositionPage() {
                 <button key={s.id} disabled={!reachable} onClick={() => setStartStreet(s.id)}
                   className={`flex-1 py-2 rounded-xl border text-[11px] font-bold uppercase tracking-widest transition-all
                     ${active ? 'bg-[#c9a227]/20 border-[#c9a227]/70 text-[#c9a227] shadow-[0_0_14px_rgba(201,162,39,0.3)]' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}>
-                  {s.label}
+                  {t(s.label)}
                 </button>
               )
             })}
           </div>
-          <p className="text-[10px] text-white/30 -mt-2">Remplis le board jusqu'à la rue choisie pour démarrer là (flop = 3 cartes, turn = 4, river = 5). Pré-flop = aucune carte.</p>
+          <p className="text-[10px] text-white/30 -mt-2">{t('spos.streetHint')}</p>
 
           {/* Table */}
           <div className="relative rounded-3xl border border-[#c9a227]/15 overflow-hidden" style={{ aspectRatio: '16/10', background: 'radial-gradient(80% 80% at 50% 45%, #0e5530 0%, #083d20 60%, #041a0e 100%)' }}>
@@ -265,7 +268,7 @@ export default function SetupPositionPage() {
                 <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center" style={{ left: `${p.x}%`, top: `${p.y}%` }}>
                   <div className={`rounded-xl px-2.5 py-1 border backdrop-blur-sm ${isHero ? 'border-[#00d4ff]/60 bg-[#00d4ff]/10' : 'border-white/15 bg-black/50'}`}>
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-[10px] font-bold ${isHero ? 'text-[#00d4ff]' : 'text-white/80'}`}>{isHero ? 'TOI' : `Bot ${i}`}</span>
+                      <span className={`text-[10px] font-bold ${isHero ? 'text-[#00d4ff]' : 'text-white/80'}`}>{isHero ? t('spos.you') : `Bot ${i}`}</span>
                       <span className="text-[8px] font-bold px-1 rounded text-[#c9a227] bg-[#c9a227]/15">{posLabel}</span>
                     </div>
                     {lv && <div className="text-[8px] font-bold" style={{ color: lv.color }}>{lv.name}</div>}
@@ -294,7 +297,7 @@ export default function SetupPositionPage() {
 
             {/* hero hand (bottom center) */}
             <div className="absolute left-1/2 bottom-3 -translate-x-1/2 flex flex-col items-center gap-1">
-              <span className="text-[8px] uppercase tracking-widest text-[#00d4ff]/70 font-bold">Ma main</span>
+              <span className="text-[8px] uppercase tracking-widest text-[#00d4ff]/70 font-bold">{t('spos.myHand')}</span>
               <div className="flex gap-1.5">
                 {[0, 1].map(i => (
                   <div key={i} className="relative">
@@ -308,11 +311,11 @@ export default function SetupPositionPage() {
 
           {/* players / stacks / blinds */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stepper label="Joueurs" value={numPlayers} min={2} max={9} onChange={setNumPlayers} />
-            <Stepper label="Stack (BB)" value={stackBB} min={10} max={500} step={5} onChange={setStackBB} />
-            <Stepper label="Pot départ (BB)" value={potBB} min={0} max={500} step={1} onChange={setPotBB} disabled={startStreet === 'preflop'} />
+            <Stepper label={t('spos.players')} value={numPlayers} min={2} max={9} onChange={setNumPlayers} />
+            <Stepper label={t('spos.stack')} value={stackBB} min={10} max={500} step={5} onChange={setStackBB} />
+            <Stepper label={t('spos.startPot')} value={potBB} min={0} max={500} step={1} onChange={setPotBB} disabled={startStreet === 'preflop'} />
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
-              <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Blindes</span>
+              <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('spos.blinds')}</span>
               <div className="flex items-center gap-1 mt-1">
                 <input type="number" value={sb} onChange={e => setSb(Math.max(0, +e.target.value))} className="w-12 bg-black/40 border border-white/10 rounded px-1 py-1 text-[12px] text-white text-center" />
                 <span className="text-white/30">/</span>
@@ -323,7 +326,7 @@ export default function SetupPositionPage() {
 
           {/* my position */}
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Ma position</span>
+            <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('spos.myPos')}</span>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {posOrder.map(p => (
                 <button key={p} onClick={() => setHeroPos(p)}
@@ -337,7 +340,7 @@ export default function SetupPositionPage() {
         <div className="flex flex-col gap-4">
           {/* opponents */}
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">Adversaires</span>
+            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">{t('spos.opponents')}</span>
             <div className="mt-2 space-y-2 max-h-[280px] overflow-y-auto pr-1">
               {opponents.map((o, i) => (
                 <div key={i} className="rounded-lg border border-white/8 bg-black/30 p-2">
@@ -354,38 +357,38 @@ export default function SetupPositionPage() {
                   <div className="flex gap-1">
                     {DISCIPLINES.map(d => (
                       <button key={d.id} onClick={() => setOpponents(prev => prev.map((x, j) => j === i ? { ...x, discipline: d.id } : x))}
-                        title={d.hint}
+                        title={t(d.hint)}
                         className="flex-1 px-1 py-0.5 rounded text-[8px] font-bold border transition-all"
-                        style={o.discipline === d.id ? { background: d.color + '22', color: d.color, borderColor: d.color + '88' } : { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>{d.label}</button>
+                        style={o.discipline === d.id ? { background: d.color + '22', color: d.color, borderColor: d.color + '88' } : { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>{t(d.label)}</button>
                     ))}
                   </div>
                   {/* Optional forced hole cards — leave empty for a random/range draw. */}
                   <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className="text-[8px] uppercase tracking-widest text-white/35 font-bold">Cartes</span>
+                    <span className="text-[8px] uppercase tracking-widest text-white/35 font-bold">{t('spos.cards')}</span>
                     {[0, 1].map(slot => (
                       <div key={slot} className="relative">
                         {o.cards[slot] && <button onClick={() => clearOppCard(i, slot)} className="absolute -top-1 -right-1 z-10 w-3.5 h-3.5 rounded-full bg-red-600 text-white flex items-center justify-center"><X size={7} /></button>}
                         <CardSlot card={o.cards[slot]} size="sm" onClick={() => setPicker({ target: 'opp', idx: i, slot })} />
                       </div>
                     ))}
-                    <span className="text-[8px] text-white/25 italic">{o.cards[0] || o.cards[1] ? 'imposées' : 'aléatoire'}</span>
+                    <span className="text-[8px] text-white/25 italic">{o.cards[0] || o.cards[1] ? t('spos.forced') : t('spos.random')}</span>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="text-[8.5px] text-white/30 mt-2 leading-relaxed">Laisse les cartes d'un bot vides = tirage aléatoire. Renseigne-les = main imposée pour simuler un spot précis.</p>
+            <p className="text-[8.5px] text-white/30 mt-2 leading-relaxed">{t('spos.oppHint')}</p>
           </div>
 
           {/* save / load */}
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">Mes scénarios</span>
+            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">{t('spos.myScenarios')}</span>
             <div className="flex gap-1.5 mt-2">
-              <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Nom du scénario…"
+              <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder={t('spos.scenarioName')}
                 className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] text-white placeholder-white/25 outline-none focus:border-[#c9a227]/50" />
               <button onClick={saveScenario} className="px-2.5 rounded-lg bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] flex items-center gap-1 text-[10px] font-bold hover:bg-[#c9a227]/25"><Save size={12} /></button>
             </div>
             <div className="mt-2 space-y-1 max-h-[120px] overflow-y-auto">
-              {saved.length === 0 && <p className="text-[10px] text-white/25 text-center py-2">Aucun scénario sauvegardé.</p>}
+              {saved.length === 0 && <p className="text-[10px] text-white/25 text-center py-2">{t('spos.noScenarios')}</p>}
               {saved.map(s => (
                 <div key={s.name} className="flex items-center gap-1.5 rounded-lg bg-black/30 border border-white/8 px-2 py-1.5">
                   <button onClick={() => loadScenario(s.scenario)} className="flex-1 text-left text-[11px] text-white/70 hover:text-[#c9a227] truncate">{s.name}</button>
@@ -398,24 +401,24 @@ export default function SetupPositionPage() {
 
           {/* in-room manual bet authoring */}
           <div className="rounded-2xl border border-[#c9a227]/20 bg-[#c9a227]/[0.04] p-3 text-center">
-            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">Édition des mises</span>
-            <p className="text-[9px] text-white/40 mt-1 leading-relaxed">Décoche <b className="text-white/60">« Jouer en live »</b> pour le <b className="text-white/60">mode manuel</b> : dans la salle, clique le joueur dont c'est le tour pour saisir son action (fold / check / call / mise). Le coach se met à jour à chaque mise.</p>
+            <span className="text-[10px] uppercase tracking-widest text-[#c9a227] font-bold">{t('spos.betEditing')}</span>
+            <p className="text-[9px] text-white/40 mt-1 leading-relaxed"><Trans i18nKey="spos.manualDesc" components={{ b: <b className="text-white/60" /> }} /></p>
           </div>
         </div>
       </div>
 
       {/* Footer actions */}
       <div className="border-t border-white/5 px-6 py-3 flex items-center gap-3">
-        <button onClick={reset} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white/50 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10"><RotateCcw size={13} /> Reset cartes</button>
-        <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 cursor-pointer" title={playLive ? 'Les bots jouent automatiquement' : 'Mode manuel : tu pilotes chaque mise au clic dans la salle'}>
+        <button onClick={reset} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white/50 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10"><RotateCcw size={13} /> {t('spos.resetCards')}</button>
+        <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 cursor-pointer" title={playLive ? t('spos.liveTip') : t('spos.manualTip')}>
           <input type="checkbox" checked={playLive} onChange={e => setPlayLive(e.target.checked)} className="accent-[#c9a227]" />
-          <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{playLive ? 'Jouer en live' : 'Mode manuel (édition mises)'}</span>
+          <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{playLive ? t('spos.playLive') : t('spos.manualMode')}</span>
         </label>
         {error && <span className="text-[11px] text-red-400 font-bold">{error}</span>}
         <button onClick={launch}
           className="ml-auto flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-[0.2em] text-sm transition-all hover:scale-[1.02]"
           style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227,#8B6810)', color: '#0a0a0a' }}>
-          <Play size={16} /> Confirmer & Commencer
+          <Play size={16} /> {t('spos.confirm')}
         </button>
       </div>
 
