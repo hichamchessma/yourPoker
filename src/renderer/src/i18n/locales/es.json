@@ -162,5 +162,35 @@
     "decision": "La jugada correcta",
     "decisionD": "Ante su apuesta: elige la jugada correcta (fold / call / raise / bet / check). Modo reflejo con cronómetro. La decisión + el porqué.",
     "choose": "Elegir"
+  },
+  "lb": {
+    "ranked": "{{count}} jugadores clasificados · temporada actual",
+    "winVerb": "gana",
+    "kindTournoi": "torneo",
+    "kindCash": "cash",
+    "yourRank": "Tu posición",
+    "rankSub": "de {{total}} · rating {{rating}}",
+    "search": "Buscar un jugador…",
+    "colPlayer": "Jugador",
+    "colRating": "Rating",
+    "colItm": "ITM",
+    "colRoi": "ROI",
+    "online": "En línea",
+    "noPlayer": "Ningún jugador encontrado.",
+    "players": "{{count}} jugadores",
+    "top100": "Top 100 mostrado",
+    "podiumSub": "ROI +{{roi}}% · {{hands}} manos"
+  },
+  "hist": {
+    "title": "Historial",
+    "subtitle": "Tus sesiones terminadas — solo se guardan las manos jugadas (highlights)",
+    "tabTournaments": "Torneos",
+    "tabCash": "Sesiones Cash Game",
+    "emptyTournament": "Ninguna sesión de torneo guardada.",
+    "emptyCash": "Ninguna sesión cash guardada.",
+    "hintTournament": "Termina un torneo (victoria o eliminación) para encontrarlo aquí.",
+    "hintCash": "Termina una sesión cash para encontrarla aquí.",
+    "replay": "Revisar",
+    "moves": "{{count}} manos"
   }
 }

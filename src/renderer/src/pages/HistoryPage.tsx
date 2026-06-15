@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { History, Medal, Coins, Trash2, Play, Calendar } from 'lucide-react'
 import { loadSessions, deleteSession, type SessionKind, type SavedSession } from '../lib/historyStore'
 import { HandHistoryModal } from './GamePage'
 
 export default function HistoryPage() {
+  const { t, i18n } = useTranslation()
   const [kind, setKind] = useState<SessionKind>('tournament')
   const [sessions, setSessions] = useState<SavedSession[]>(() => loadSessions('tournament'))
   const [open, setOpen] = useState<SavedSession | null>(null)
@@ -17,23 +19,23 @@ export default function HistoryPage() {
       <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3">
         <History className="text-[#c9a227]" size={22} />
         <div>
-          <h1 className="text-lg font-black text-[#c9a227] uppercase tracking-[0.2em]">Historique</h1>
-          <p className="text-[10px] text-white/35 uppercase tracking-widest">Tes sessions terminées — seuls les coups joués (highlights) sont gardés</p>
+          <h1 className="text-lg font-black text-[#c9a227] uppercase tracking-[0.2em]">{t('hist.title')}</h1>
+          <p className="text-[10px] text-white/35 uppercase tracking-widest">{t('hist.subtitle')}</p>
         </div>
       </div>
 
       {/* tabs */}
       <div className="px-6 pt-4 flex gap-2">
-        <Tab active={kind === 'tournament'} onClick={() => switchKind('tournament')} icon={<Medal size={14} />} label="Tournois" />
-        <Tab active={kind === 'cash'} onClick={() => switchKind('cash')} icon={<Coins size={14} />} label="Sessions Cash Game" />
+        <Tab active={kind === 'tournament'} onClick={() => switchKind('tournament')} icon={<Medal size={14} />} label={t('hist.tabTournaments')} />
+        <Tab active={kind === 'cash'} onClick={() => switchKind('cash')} icon={<Coins size={14} />} label={t('hist.tabCash')} />
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {sessions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-white/30">
             <History size={48} className="mb-3 opacity-40" />
-            <p className="text-sm">Aucune {kind === 'tournament' ? 'session de tournoi' : 'session cash'} enregistrée.</p>
-            <p className="text-[11px] mt-1">Termine {kind === 'tournament' ? 'un tournoi (victoire ou élimination)' : 'une session cash'} pour la retrouver ici.</p>
+            <p className="text-sm">{kind === 'tournament' ? t('hist.emptyTournament') : t('hist.emptyCash')}</p>
+            <p className="text-[11px] mt-1">{kind === 'tournament' ? t('hist.hintTournament') : t('hist.hintCash')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-4xl mx-auto">
@@ -50,9 +52,9 @@ export default function HistoryPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/5">
-                  <span className="flex items-center gap-1.5 text-[10px] text-white/35"><Calendar size={11} /> {new Date(s.date).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {s.hands.length} coups</span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-white/35"><Calendar size={11} /> {new Date(s.date).toLocaleString(i18n.language, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {t('hist.moves', { count: s.hands.length })}</span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setOpen(s)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/25"><Play size={11} /> Revoir</button>
+                    <button onClick={() => setOpen(s)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/25"><Play size={11} /> {t('hist.replay')}</button>
                     <button onClick={() => remove(s.id)} className="text-white/25 hover:text-red-400 transition-colors p-1"><Trash2 size={13} /></button>
                   </div>
                 </div>

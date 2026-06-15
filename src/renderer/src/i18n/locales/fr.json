@@ -162,5 +162,35 @@
     "decision": "Le bon coup",
     "decisionD": "Face à sa mise : choisis le bon coup (fold / call / raise / bet / check). Mode réflexe avec chrono. La décision + le pourquoi.",
     "choose": "Choisir"
+  },
+  "lb": {
+    "ranked": "{{count}} joueurs classés · saison en cours",
+    "winVerb": "remporte",
+    "kindTournoi": "tournoi",
+    "kindCash": "cash",
+    "yourRank": "Ton rang",
+    "rankSub": "sur {{total}} · rating {{rating}}",
+    "search": "Rechercher un joueur…",
+    "colPlayer": "Joueur",
+    "colRating": "Rating",
+    "colItm": "ITM",
+    "colRoi": "ROI",
+    "online": "En ligne",
+    "noPlayer": "Aucun joueur trouvé.",
+    "players": "{{count}} joueurs",
+    "top100": "Top 100 affiché",
+    "podiumSub": "ROI +{{roi}}% · {{hands}} mains"
+  },
+  "hist": {
+    "title": "Historique",
+    "subtitle": "Tes sessions terminées — seuls les coups joués (highlights) sont gardés",
+    "tabTournaments": "Tournois",
+    "tabCash": "Sessions Cash Game",
+    "emptyTournament": "Aucune session de tournoi enregistrée.",
+    "emptyCash": "Aucune session cash enregistrée.",
+    "hintTournament": "Termine un tournoi (victoire ou élimination) pour la retrouver ici.",
+    "hintCash": "Termine une session cash pour la retrouver ici.",
+    "replay": "Revoir",
+    "moves": "{{count}} coups"
   }
 }

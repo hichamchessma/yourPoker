@@ -162,5 +162,35 @@
     "decision": "The right move",
     "decisionD": "Facing a bet: pick the right move (fold / call / raise / bet / check). Reflex mode with a timer. The decision + the why.",
     "choose": "Choose"
+  },
+  "lb": {
+    "ranked": "{{count}} ranked players · current season",
+    "winVerb": "wins",
+    "kindTournoi": "tournament",
+    "kindCash": "cash",
+    "yourRank": "Your rank",
+    "rankSub": "of {{total}} · rating {{rating}}",
+    "search": "Search a player…",
+    "colPlayer": "Player",
+    "colRating": "Rating",
+    "colItm": "ITM",
+    "colRoi": "ROI",
+    "online": "Online",
+    "noPlayer": "No player found.",
+    "players": "{{count}} players",
+    "top100": "Top 100 shown",
+    "podiumSub": "ROI +{{roi}}% · {{hands}} hands"
+  },
+  "hist": {
+    "title": "History",
+    "subtitle": "Your finished sessions — only the hands you played (highlights) are kept",
+    "tabTournaments": "Tournaments",
+    "tabCash": "Cash Game Sessions",
+    "emptyTournament": "No tournament session saved.",
+    "emptyCash": "No cash session saved.",
+    "hintTournament": "Finish a tournament (win or bust) to find it here.",
+    "hintCash": "Finish a cash session to find it here.",
+    "replay": "Replay",
+    "moves": "{{count}} hands"
   }
 }
