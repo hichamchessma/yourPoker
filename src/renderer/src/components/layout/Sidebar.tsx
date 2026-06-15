@@ -86,7 +86,8 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
             <p className="text-poker-gold/70 text-[10px] tracking-[0.25em] uppercase">— Coach —</p>
           </div>
         </div>
-        <div className="mt-4 h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />
+        <div className="mt-3 flex justify-center"><LanguageSwitcher /></div>
+        <div className="mt-3 h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />
       </div>
 
       {/* Navigation */}
@@ -138,8 +139,6 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
             <Sparkles size={13} /> {t('nav.goPro')}
           </button>
         )}
-
-        <div className="flex justify-center"><LanguageSwitcher up /></div>
 
         <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 

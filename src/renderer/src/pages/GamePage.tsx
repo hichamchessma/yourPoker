@@ -12,6 +12,7 @@ import { getPostflopAdvice, buildEquityReasoning, type EquityReasoning } from '.
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 import EquityReasoningBlock from '../components/EquityReasoning'
 import {
   initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
@@ -3545,7 +3546,8 @@ export default function GamePage(): JSX.Element {
           </div>
         )}
 
-        {/* Sound mute + volume */}
+        {/* Language + sound */}
+        <LanguageSwitcher className="app-drag-none" />
         <SoundToggle className="app-drag-none" />
 
         {/* Window controls — desktop only (hidden on web) */}
