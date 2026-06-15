@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { diagnoseSpot, rangeEquity, getPostflopAdvice, type Card, type HandBucket, type SpotDiagnosis, type Advice, type AdviceAction } from './postflopAdvisor'
+import i18n from '../i18n'
 
 export type SpotContext = 'cash' | 'mtt'
 
@@ -129,9 +130,10 @@ function buildSeats(context: SpotContext, hero: { c1: Card; c2: Card }, heroIsPF
   })
   const opener = heroIsPFR ? 'Toi' : seats.find(s => !s.isHero)!.name
   const caller = heroIsPFR ? seats.find(s => !s.isHero)!.name : 'Toi'
+  const callers = seats.filter(s => !s.isHero).map(s => s.name + ' (' + s.pos + ')').join(' + ')
   const story = heroIsPFR
-    ? `Tu ouvres en ${heroPos}, ${seats.filter(s => !s.isHero).map(s => s.name + ' (' + s.pos + ')').join(' + ')} paie${opponents > 1 ? 'nt' : ''}.`
-    : `${opener} ouvre en ${seats.find(s => !s.isHero)!.pos}, tu paies en BB${opponents > 1 ? ' (multiway)' : ''}.`
+    ? i18n.t('spotq.storyOpen', { count: opponents, pos: heroPos, callers })
+    : i18n.t('spotq.storyDefend', { opener, pos: seats.find(s => !s.isHero)!.pos, multiway: opponents > 1 ? i18n.t('spotq.multiway') : '' })
   void caller
   return { seats, heroPos, story, pot: Math.round(pot) }
 }
@@ -171,56 +173,39 @@ export type QKind = 'texture' | 'rangehit' | 'equity' | 'bucket'
 export interface QOption { id: string; label: string; correct: boolean }
 export interface SpotQuestion { kind: QKind; title: string; prompt: string; options: QOption[]; explain: string }
 
-const TEXTURE_LABEL: Record<TextureKind, string> = {
-  dry: 'Sec — rainbow / déconnecté',
-  semi: 'Semi-humide — 2 d’une couleur ou un lien',
-  wet: 'Humide — tirages couleur/quinte présents',
-  paired: 'Pairé',
-}
-const FAVOR_LABEL: Record<Favor, string> = {
-  hero: 'Il frappe MA range',
-  villain: 'Il frappe SA range',
-  neutral: 'Plutôt neutre / partagé',
-}
-const BUCKET_LABEL: Record<HandBucket, string> = {
-  air: 'AIRE — rien (ni paire ni tirage)',
-  value: 'VALUE — je bats sa range de call',
-  bluffcatch: 'BLUFF-CATCH — je bats ses bluffs, pas sa value',
-  draw: 'TIRAGE — derrière, mais je peux toucher',
-}
+const TEXTURE_KEY: Record<TextureKind, string> = { dry: 'spotq.textureDry', semi: 'spotq.textureSemi', wet: 'spotq.textureWet', paired: 'spotq.texturePaired' }
+const FAVOR_KEY: Record<Favor, string> = { hero: 'spotq.favorHero', villain: 'spotq.favorVillain', neutral: 'spotq.favorNeutral' }
+const BUCKET_KEY: Record<HandBucket, string> = { air: 'spotq.bucketAir', value: 'spotq.bucketValue', bluffcatch: 'spotq.bucketBluffcatch', draw: 'spotq.bucketDraw' }
+const EQ_DETAIL: Record<HandBucket, string> = { value: 'spotq.equityValue', draw: 'spotq.equityDraw', bluffcatch: 'spotq.equityBluffcatch', air: 'spotq.equityAir' }
+const BUCKET_EXPLAIN: Record<HandBucket, string> = { value: 'spotq.bucketExplainValue', bluffcatch: 'spotq.bucketExplainBluffcatch', draw: 'spotq.bucketExplainDraw', air: 'spotq.bucketExplainAir' }
 
 export function buildQuestions(spot: TrainerSpot): SpotQuestion[] {
+  const t = i18n.t.bind(i18n)
   const b = spot.board.map(c => c.rank + c.suit).join(' ')
   const pct = (x: number) => `${Math.round(x * 100)}%`
 
   // 1 — Texture
   const texture: SpotQuestion = {
-    kind: 'texture', title: 'Texture du board',
-    prompt: `Comment qualifies-tu la texture du flop ${b} ?`,
-    options: (['dry', 'semi', 'wet', 'paired'] as TextureKind[]).map(t => ({ id: t, label: TEXTURE_LABEL[t], correct: t === spot.texture })),
-    explain: spot.texture === 'dry'
-      ? 'Board rainbow et déconnecté : peu de tirages possibles → les ranges ne se « connectent » pas beaucoup, l’équité est surtout dans les paires faites.'
-      : spot.texture === 'wet'
-        ? 'Deux d’une même couleur ET cartes liées : beaucoup de tirages couleur/quinte → les équités sont serrées, les mains faites doivent se protéger.'
-        : spot.texture === 'paired'
-          ? 'Board pairé : attention aux brelans/full, et les « deux paires » qui s’appuient sur la paire du board valent en réalité une seule paire.'
-          : 'Texture intermédiaire : un seul lien ou deux d’une couleur → quelques tirages, sans être trempé.',
+    kind: 'texture', title: t('spotq.titleTexture'),
+    prompt: t('spotq.promptTexture', { board: b }),
+    options: (['dry', 'semi', 'wet', 'paired'] as TextureKind[]).map(k => ({ id: k, label: t(TEXTURE_KEY[k]), correct: k === spot.texture })),
+    explain: t(`spotq.explainTexture${spot.texture.charAt(0).toUpperCase() + spot.texture.slice(1)}`),
   }
 
   // 2 — Range hit
-  const who = spot.heroIsPFR ? 'TU es le relanceur préflop' : 'l’adversaire est le relanceur, TU as payé'
+  const who = spot.heroIsPFR ? t('spotq.whoPfr') : t('spotq.whoCaller')
   const rangehit: SpotQuestion = {
-    kind: 'rangehit', title: 'Le board frappe quelle range ?',
-    prompt: `${spot.story} Sur ce flop ${b}, l’avantage de range va à qui ?`,
-    options: (['hero', 'villain', 'neutral'] as Favor[]).map(f => ({ id: f, label: FAVOR_LABEL[f], correct: f === spot.favor })),
+    kind: 'rangehit', title: t('spotq.titleRange'),
+    prompt: t('spotq.promptRange', { story: spot.story, board: b }),
+    options: (['hero', 'villain', 'neutral'] as Favor[]).map(f => ({ id: f, label: t(FAVOR_KEY[f]), correct: f === spot.favor })),
     explain: (() => {
       const top = Math.max(...spot.board.map(c => RV[c.rank]))
-      const side = top >= 12 ? `Un board ${top === 14 ? 'As' : top === 13 ? 'Roi' : 'Dame'}-haut colle à la range du RELANCEUR (gros As/Rois, broadways, grosses paires).`
-        : top <= 9 ? 'Un board bas (9-haut ou moins) colle à la range du SUIVEUR (connecteurs, petites paires, suités) — le relanceur a surtout des cartes hautes ratées.'
-          : 'Un board T/J-haut sans As ni Roi est contesté : les deux ranges le touchent à peu près autant → neutre.'
-      const concl = spot.favor === 'hero' ? '→ l’avantage va à TA range : tu peux miser/attaquer plus souvent.'
-        : spot.favor === 'villain' ? '→ l’avantage va à SA range : prudence, défends sans surjouer.'
-        : '→ avantage partagé : personne ne domine, joue serré.'
+      const side = top >= 12 ? t('spotq.rangeSideHigh', { card: top === 14 ? t('spotq.cardAce') : top === 13 ? t('spotq.cardKing') : t('spotq.cardQueen') })
+        : top <= 9 ? t('spotq.rangeSideLow')
+          : t('spotq.rangeSideMid')
+      const concl = spot.favor === 'hero' ? t('spotq.rangeConclHero')
+        : spot.favor === 'villain' ? t('spotq.rangeConclVillain')
+        : t('spotq.rangeConclNeutral')
       return `${who}. ${side} ${concl}`
     })(),
   }
@@ -228,25 +213,18 @@ export function buildQuestions(spot: TrainerSpot): SpotQuestion[] {
   // 3 — Equity
   const correctBand = eqBandIndex(spot.equity)
   const equity: SpotQuestion = {
-    kind: 'equity', title: 'Ton équité',
-    prompt: `Face à ${spot.opponents} adversaire${spot.opponents > 1 ? 's' : ''} sur ${b}, ton équité approximative ?`,
+    kind: 'equity', title: t('spotq.titleEquity'),
+    prompt: t('spotq.promptEquity', { count: spot.opponents, board: b }),
     options: EQ_BANDS.map((band, i) => ({ id: band.id, label: band.label, correct: i === correctBand })),
-    explain: `Ton équité réelle ≈ ${pct(spot.equity)} (simulation vs leur range). ${spot.diag.bucket === 'value' ? 'Main faite forte → tu domines une grosse part de sa range.' : spot.diag.bucket === 'draw' ? 'Tu es derrière maintenant, ton équité vient de ton tirage (tu touches ~1 fois sur 3).' : spot.diag.bucket === 'bluffcatch' ? 'Une paire moyenne : tu bats ses bluffs/ratés mais perds vs ses mains faites → équité moyenne.' : 'Quasi rien de fait : ton équité vient surtout de tes surcartes / du peu de showdown value.'}`,
+    explain: t('spotq.equityExplain', { eq: pct(spot.equity), detail: t(EQ_DETAIL[spot.diag.bucket]) }),
   }
 
   // 4 — Bucket (the star question)
   const bucket: SpotQuestion = {
-    kind: 'bucket', title: 'Dans quel seau es-tu ?',
-    prompt: `Ta main ${spot.hero.key} sur ${b} — tu es dans quel seau ?`,
-    options: (['value', 'bluffcatch', 'draw', 'air'] as HandBucket[]).map(k => ({ id: k, label: BUCKET_LABEL[k], correct: k === spot.diag.bucket })),
-    explain: (() => {
-      const made = spot.diag.madeName
-      const draws = spot.diag.draws.length ? ' + ' + spot.diag.draws.join(' + ') : ''
-      if (spot.diag.bucket === 'value') return `${made}${draws} : tu bats sa range de CALL → c’est de la VALUE, tu mises/relances pour te faire payer par pire. Question clé : « est-ce que des pires mains me paient ? » → oui.`
-      if (spot.diag.bucket === 'bluffcatch') return `${made}${draws} : tu bats ses bluffs mais perds contre ses mains de valeur, et tu n’améliores pas → BLUFF-CATCH. Tu checkes/paies, tu ne mises PAS (des pires se couchent, des meilleures paient).`
-      if (spot.diag.bucket === 'draw') return `${made}${draws} : derrière maintenant, mais un tirage qui peut toucher → TIRAGE. Tu joues par la cote + les cotes implicites, ou en semi-bluff.`
-      return `${made}${draws} : ni paire utile ni tirage → AIRE. Soit tu abandonnes, soit tu bluffes si le board et l’adversaire s’y prêtent.`
-    })(),
+    kind: 'bucket', title: t('spotq.titleBucket'),
+    prompt: t('spotq.promptBucket', { key: spot.hero.key, board: b }),
+    options: (['value', 'bluffcatch', 'draw', 'air'] as HandBucket[]).map(k => ({ id: k, label: t(BUCKET_KEY[k]), correct: k === spot.diag.bucket })),
+    explain: t(BUCKET_EXPLAIN[spot.diag.bucket], { made: spot.diag.madeName + (spot.diag.draws.length ? ' + ' + spot.diag.draws.join(' + ') : '') }),
   }
 
   return [texture, rangehit, equity, bucket]
