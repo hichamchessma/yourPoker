@@ -1983,7 +1983,12 @@ export default function GamePage(): JSX.Element {
     const potTotal = state.pot
     collectBetsToPot(state.seats)
     fireStackToWinner(seatIdx, potTotal, state.seats.length, 350)
-    const seats = state.seats.map(s => ({ ...s, isActive: false, bet: 0 }))
+    // In the Revive sandbox the point is to ANALYSE: even when everyone folds (no
+    // showdown), reveal EVERY player's cards — the lone winner who never had to show
+    // AND the folders — so you can see exactly what you were up against.
+    const revealAll = simModeRef.current
+    const seats = state.seats.map(s => ({ ...s, isActive: false, bet: 0,
+      cardsFaceUp: s.cardsFaceUp || (revealAll && (!!s.holeCards[0] || !!s.holeCards[1])) }))
     const winner = seats[seatIdx]
     if (winner) {
       winner.stack += potTotal
@@ -2216,12 +2221,20 @@ export default function GamePage(): JSX.Element {
     // contender's cards (no muck) so the player can study what the opponents had.
     if (simModeRef.current) contenderIdxs.forEach(idx => reveal.add(idx))
 
+    // Sandbox (Revive): also flip the FOLDED players' cards face-up so the whole
+    // table is visible for analysis. They render dimmed/greyed (folded styling), like
+    // the hand-history replay — you keep the "who folded what" information.
+    const revealFolded = simModeRef.current
     const finalSeats = evaluated.map(s => {
-      const shown = !s.isFolded && (s.isHero || reveal.has(s.idx))
+      const shown = revealFolded
+        ? (!!s.holeCards[0] || !!s.holeCards[1])           // sandbox: reveal the whole table, folders included
+        : (!s.isFolded && (s.isHero || reveal.has(s.idx))) // normal muck rules
       return {
         ...s,
         cardsFaceUp: shown,
-        handStrength: shown ? s.handStrength : undefined,
+        // A folder's "made hand" at the river is misleading — only label hands that
+        // actually reached showdown (non-folded).
+        handStrength: (shown && !s.isFolded) ? s.handStrength : undefined,
         stack: s.stack + (payouts[s.idx] ?? 0),
         isWinner: winnerSet.has(s.idx),
         isEliminated: s.stack + (payouts[s.idx] ?? 0) === 0 && !s.isHero,
