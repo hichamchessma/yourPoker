@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FlaskConical, Play, Square, Trophy, TrendingUp, TrendingDown, Coins, Users, Layers } from 'lucide-react'
 import { playTournament, playMTT, type BlindLevel, type TourConfig, type MTTConfig, type SimSeat } from '../lib/simEngine'
 import { makeSimDecider } from '../lib/simDeciders'
@@ -17,6 +18,7 @@ interface Stats { done: number; wins: number; cashes: number; ft: number; profit
 const blank = (field: number): Stats => ({ done: 0, wins: 0, cashes: 0, ft: 0, profit: 0, hands: 0, places: [], field })
 
 export default function SimulationPage(): JSX.Element {
+  const { t } = useTranslation()
   const [mode, setMode] = useState<Mode>('mtt')
   const [tours, setTours] = useState(300)
   const [numTables, setNumTables] = useState(12)
@@ -125,13 +127,13 @@ export default function SimulationPage(): JSX.Element {
     <div className="h-full overflow-y-auto px-8 py-7 text-white">
       <div className="flex items-center gap-3 mb-1">
         <FlaskConical className="text-[#c9a227]" size={26} />
-        <h1 className="text-2xl font-black tracking-tight">Simulation — banc de test du coach</h1>
+        <h1 className="text-2xl font-black tracking-tight">{t('sim.title')}</h1>
       </div>
-      <p className="text-white/45 text-sm mb-5 max-w-3xl">Le coach joue des tournois avec <b>exactement les mêmes décisions que l'autopilote</b>, contre des bots. On le compare à un <b>joueur moyen</b> (un bot à sa place) pour mesurer son edge — places, ITM, ROI.</p>
+      <p className="text-white/45 text-sm mb-5 max-w-3xl">{t('sim.desc')}</p>
 
       {/* Mode */}
       <div className="flex gap-2 mb-4">
-        {([['sng', 'Single-table (SNG)', <Users size={15} />], ['mtt', 'Multi-tables (MTT)', <Layers size={15} />]] as const).map(([m, lbl, ic]) => (
+        {([['sng', t('sim.modeSng'), <Users size={15} />], ['mtt', t('sim.modeMtt'), <Layers size={15} />]] as const).map(([m, lbl, ic]) => (
           <button key={m} disabled={running} onClick={() => setMode(m)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 ${mode === m ? 'bg-[#c9a227]/15 border border-[#c9a227]/50 text-[#c9a227]' : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10'}`}>
             {ic} {lbl}
@@ -141,57 +143,57 @@ export default function SimulationPage(): JSX.Element {
 
       {/* Config */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 mb-4">
-        <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold mb-4">Configuration{mode === 'mtt' ? ` · field de ${field} joueurs` : ''}</p>
+        <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold mb-4">{mode === 'mtt' ? t('sim.configField', { n: field }) : t('sim.config')}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Num label="Nb de tournois" value={tours} set={setTours} min={10} max={20000} step={50} suffix="plus = stats fiables" />
-          {mode === 'mtt' && <Num label="Nb de tables" value={numTables} set={setNumTables} min={2} max={200} suffix={`field = ${numTables}×${seats} = ${field}`} />}
-          <Num label="Joueurs / table" value={seats} set={setSeats} min={2} max={9} suffix={mode === 'mtt' ? '' : 'coach + (n−1) bots'} />
-          <Num label="Stack de départ" value={startStack} set={setStartStack} min={500} max={100000} step={500} suffix="jetons" />
-          <Num label="Mains / niveau" value={handsPerLevel} set={setHandsPerLevel} min={3} max={40} suffix="bas = turbo" />
-          <Num label="Buy-in" value={buyin} set={setBuyin} min={1} max={100000} step={10} />
-          {mode === 'mtt' && <Num label="% payés (ITM)" value={paidPct} set={setPaidPct} min={1} max={50} suffix={`${paid} places payées`} />}
+          <Num label={t('sim.numTours')} value={tours} set={setTours} min={10} max={20000} step={50} suffix={t('sim.suffixTours')} />
+          {mode === 'mtt' && <Num label={t('sim.numTables')} value={numTables} set={setNumTables} min={2} max={200} suffix={`field = ${numTables}×${seats} = ${field}`} />}
+          <Num label={t('sim.numSeats')} value={seats} set={setSeats} min={2} max={9} suffix={mode === 'mtt' ? '' : t('sim.suffixSeatsSng')} />
+          <Num label={t('sim.numStack')} value={startStack} set={setStartStack} min={500} max={100000} step={500} suffix={t('sim.suffixChips')} />
+          <Num label={t('sim.numHands')} value={handsPerLevel} set={setHandsPerLevel} min={3} max={40} suffix={t('sim.suffixTurbo')} />
+          <Num label={t('sim.numBuyin')} value={buyin} set={setBuyin} min={1} max={100000} step={10} />
+          {mode === 'mtt' && <Num label={t('sim.numPaid')} value={paidPct} set={setPaidPct} min={1} max={50} suffix={t('sim.suffixPaid', { n: paid })} />}
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">{mode === 'mtt' ? 'Courbe de gains' : 'Structure de gains'}</span>
+            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">{mode === 'mtt' ? t('sim.curveLabel') : t('sim.structLabel')}</span>
             <select value={mode === 'mtt' ? curve : 'standard'} disabled={running} onChange={e => setCurve(e.target.value as Curve)}
               className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none disabled:opacity-50">
               {mode === 'mtt' ? (<>
-                <option value="standard" className="bg-[#0a0e1a]">Standard</option>
-                <option value="topheavy" className="bg-[#0a0e1a]">Top-heavy (gros 1er)</option>
-                <option value="flat" className="bg-[#0a0e1a]">Plate (peu d'écart)</option>
-              </>) : (<option value="standard" className="bg-[#0a0e1a]">Top 1/3 (65/35)</option>)}
+                <option value="standard" className="bg-[#0a0e1a]">{t('sim.curveStandard')}</option>
+                <option value="topheavy" className="bg-[#0a0e1a]">{t('sim.curveTopheavy')}</option>
+                <option value="flat" className="bg-[#0a0e1a]">{t('sim.curveFlat')}</option>
+              </>) : (<option value="standard" className="bg-[#0a0e1a]">{t('sim.structSng')}</option>)}
             </select>
-            <span className="text-[9px] text-white/30">pool {pool} · 1er gagne {prizeFor(1)}</span>
+            <span className="text-[9px] text-white/30">{t('sim.poolInfo', { pool, prize: prizeFor(1) })}</span>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">Niveau des bots</span>
+            <span className="text-[11px] uppercase tracking-widest text-white/40 font-bold">{t('sim.botLevel')}</span>
             <select value={botTier} disabled={running} onChange={e => setBotTier(Number(e.target.value))}
               className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none disabled:opacity-50">
-              <option value={1} className="bg-[#0a0e1a]">Amateur</option>
-              <option value={2} className="bg-[#0a0e1a]">Pro (TAG solide)</option>
-              <option value={3} className="bg-[#0a0e1a]">Expert</option>
+              <option value={1} className="bg-[#0a0e1a]">{t('sim.botAmateur')}</option>
+              <option value={2} className="bg-[#0a0e1a]">{t('sim.botPro')}</option>
+              <option value={3} className="bg-[#0a0e1a]">{t('sim.botExpert')}</option>
             </select>
           </label>
         </div>
         <div className="flex items-center gap-3 mt-5 flex-wrap">
           {!running ? (
             <button onClick={run} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black uppercase tracking-widest text-sm transition-all hover:scale-[1.02]" style={{ background: 'linear-gradient(135deg,#e8c547,#c9a227)', color: '#0a0716' }}>
-              <Play size={16} /> Lancer
+              <Play size={16} /> {t('sim.run')}
             </button>
           ) : (
             <button onClick={() => { cancelRef.current = true }} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold uppercase tracking-widest text-sm bg-red-900/30 border border-red-700/40 text-red-300 hover:bg-red-900/50">
-              <Square size={16} /> Arrêter
+              <Square size={16} /> {t('sim.stop')}
             </button>
           )}
           {!running && (
             <span className="text-[12px] text-white/50">
-              ⏱ Temps estimé : {calibrating || estTotal == null ? <span className="text-white/30">calcul…</span> : <b className="text-[#c9a227]">≈ {fmtTime(estTotal)}</b>}
-              <span className="text-white/25"> pour {tours} tournois (+ baseline)</span>
+              {t('sim.estTime')} {calibrating || estTotal == null ? <span className="text-white/30">{t('sim.calc')}</span> : <b className="text-[#c9a227]">≈ {fmtTime(estTotal)}</b>}
+              <span className="text-white/25"> {t('sim.estFor', { n: tours })}</span>
             </span>
           )}
           {running && (
             <div className="flex-1 min-w-[200px]">
               <div className="h-2 rounded-full bg-white/8 overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: `${progress * 100}%`, background: 'linear-gradient(90deg,#c9a227,#e8c547)' }} /></div>
-              <span className="text-[10px] text-white/40">{stats?.done ?? 0} / {tours} tournois — en cours…</span>
+              <span className="text-[10px] text-white/40">{t('sim.progress', { done: stats?.done ?? 0, total: tours })}</span>
             </div>
           )}
         </div>
@@ -201,26 +203,27 @@ export default function SimulationPage(): JSX.Element {
       {stats && stats.done > 0 && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Stat icon={<Coins size={18} />} label="Profit net" value={`${stats.profit >= 0 ? '+' : ''}${Math.round(stats.profit).toLocaleString('fr')}`} sub={`${stats.done} tournois · buy-in ${buyin}`} good={stats.profit >= 0} big />
-            <Stat icon={roi(stats) >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />} label="ROI" value={`${roi(stats) >= 0 ? '+' : ''}${roi(stats).toFixed(0)}%`} sub={base ? `joueur moyen : ${roi(base).toFixed(0)}%` : ''} good={base ? roi(stats) > roi(base) : roi(stats) >= 0} big />
-            <Stat icon={<Trophy size={18} />} label="ITM (payé)" value={`${pct(stats.cashes, stats.done)}%`} sub={base ? `moyen : ${pct(base.cashes, base.done)}% · neutre ${(100 * paid / field).toFixed(0)}%` : `neutre ${(100 * paid / field).toFixed(0)}%`} good={base ? stats.cashes / stats.done > base.cashes / base.done : undefined} />
-            <Stat icon={<Trophy size={18} />} label={mode === 'mtt' ? 'Place médiane' : 'Victoires'} value={mode === 'mtt' ? `${med(stats)} / ${field}` : `${pct(stats.wins, stats.done)}%`} sub={base ? (mode === 'mtt' ? `joueur moyen : ${med(base)}` : `moyen : ${pct(base.wins, base.done)}%`) : ''} good={base ? (mode === 'mtt' ? med(stats) < med(base) : stats.wins / stats.done > base.wins / base.done) : undefined} />
+            <Stat icon={<Coins size={18} />} label={t('sim.statProfit')} value={`${stats.profit >= 0 ? '+' : ''}${Math.round(stats.profit).toLocaleString()}`} sub={t('sim.profitSub', { n: stats.done, buyin })} good={stats.profit >= 0} big />
+            <Stat icon={roi(stats) >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />} label={t('sim.statRoi')} value={`${roi(stats) >= 0 ? '+' : ''}${roi(stats).toFixed(0)}%`} sub={base ? t('sim.avgPlayer', { v: `${roi(base).toFixed(0)}%` }) : ''} good={base ? roi(stats) > roi(base) : roi(stats) >= 0} big />
+            <Stat icon={<Trophy size={18} />} label={t('sim.statItm')} value={`${pct(stats.cashes, stats.done)}%`} sub={base ? t('sim.itmAvg', { v: pct(base.cashes, base.done), neutral: (100 * paid / field).toFixed(0) }) : t('sim.itmNeutral', { neutral: (100 * paid / field).toFixed(0) })} good={base ? stats.cashes / stats.done > base.cashes / base.done : undefined} />
+            <Stat icon={<Trophy size={18} />} label={mode === 'mtt' ? t('sim.statMedian') : t('sim.statWins')} value={mode === 'mtt' ? `${med(stats)} / ${field}` : `${pct(stats.wins, stats.done)}%`} sub={base ? (mode === 'mtt' ? t('sim.avgPlayer', { v: med(base) }) : t('sim.avgPlayer', { v: `${pct(base.wins, base.done)}%` })) : ''} good={base ? (mode === 'mtt' ? med(stats) < med(base) : stats.wins / stats.done > base.wins / base.done) : undefined} />
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold">Répartition des places{mode === 'mtt' ? ' (par tranche du field)' : ''}</p>
-              <span className="text-[10px] text-white/35">{(stats.hands / stats.done).toFixed(0)} mains/tournoi · victoires {stats.wins} · tables finales {pct(stats.ft, stats.done)}%</span>
+              <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold">{mode === 'mtt' ? t('sim.placeDistMtt') : t('sim.placeDist')}</p>
+              <span className="text-[10px] text-white/35">{t('sim.handsInfo', { h: (stats.hands / stats.done).toFixed(0), w: stats.wins, ft: pct(stats.ft, stats.done) })}</span>
             </div>
             <PlaceChart stats={stats} field={field} buckets={mode === 'mtt' ? 10 : field} paid={paid} seats={seats} />
-            <p className="text-[10px] text-white/30 mt-2">Doré = dans les places payées. {mode === 'mtt' ? 'Plus la masse penche à GAUCHE (places hautes), mieux c\'est.' : 'P1 = victoire.'}</p>
+            <p className="text-[10px] text-white/30 mt-2">{t('sim.legendGold')} {mode === 'mtt' ? t('sim.legendMtt') : t('sim.legendSng')}</p>
           </div>
 
           {base && base.done > 0 && (
             <p className="text-[12px] text-white/40">
-              <b className="text-white/70">Verdict :</b> le coach fait un ROI de <span className={roi(stats) > roi(base) ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{roi(stats) >= 0 ? '+' : ''}{roi(stats).toFixed(0)}%</span> contre <span className="text-white/60 font-bold">{roi(base).toFixed(0)}%</span> pour un joueur moyen à sa place →
-              {roi(stats) > roi(base) ? <span className="text-emerald-400 font-bold"> il bat clairement le field de {(roi(stats) - roi(base)).toFixed(0)} points de ROI.</span> : <span className="text-red-400"> pas d'edge mesurable sur cet échantillon.</span>}
-              {mode === 'mtt' && <span className="text-white/30"> (Places CALIBRÉES sur la survie : le joueur moyen ressort à ~0% de ROI / {(100 * paid / field).toFixed(0)}% d'ITM — donc les chiffres ABSOLUS du coach sont fiables, pas seulement l'écart.)</span>}
+              <b className="text-white/70">{t('sim.verdictLabel')}</b>{' '}
+              {t('sim.verdictMid', { r: `${roi(stats) >= 0 ? '+' : ''}${roi(stats).toFixed(0)}`, base: roi(base).toFixed(0) })}
+              {roi(stats) > roi(base) ? <span className="text-emerald-400 font-bold"> {t('sim.verdictBeat', { pts: (roi(stats) - roi(base)).toFixed(0) })}</span> : <span className="text-red-400"> {t('sim.verdictNoEdge')}</span>}
+              {mode === 'mtt' && <span className="text-white/30"> {t('sim.calibNote', { n: (100 * paid / field).toFixed(0) })}</span>}
             </p>
           )}
         </div>
