@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Target, GraduationCap, Medal, FlaskConical, SlidersHorizontal, History,
   Wallet, TrendingUp, Trophy, Spade, ArrowRight, Crown
@@ -11,6 +12,7 @@ import { getRoster, playersOnline } from '../lib/leaderboard'
 import { useIsPro } from '../lib/entitlements'
 import WindowControls from '../components/layout/WindowControls'
 import SoundToggle from '../components/SoundToggle'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 
 function KingCard({ rotation, glow }: { rotation: number; glow: string }) {
@@ -204,6 +206,7 @@ function StatTile({ icon, label, value, accent = '#ffffff' }: { icon: React.Reac
 export default function LobbyPage(): JSX.Element {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const isPro = useIsPro()
   const stats = useMemo(() => computePlayerStats(4), [])
 
@@ -246,9 +249,10 @@ export default function LobbyPage(): JSX.Element {
         {/* Players online — social proof */}
         <div className="hidden sm:flex items-center gap-2 mr-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
           <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" /></span>
-          <span className="text-[11px] text-white/70"><b className="text-emerald-400 font-mono">{online.toLocaleString('fr-FR')}</b> en ligne</span>
+          <span className="text-[11px] text-white/70">{t('lobby.online', { count: online.toLocaleString() })}</span>
         </div>
 
+        <LanguageSwitcher />
         <SoundToggle />
 
         {/* User — click to open profile */}
@@ -277,7 +281,7 @@ export default function LobbyPage(): JSX.Element {
               {displayName}
               {isPro && <span className="text-[7px] font-black uppercase tracking-wider px-1 py-0.5 rounded text-[#1a1206]" style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)' }}>Pro</span>}
             </p>
-            <p className="text-[9px] text-white/35 group-hover:text-poker-teal transition-colors">Voir mon profil</p>
+            <p className="text-[9px] text-white/35 group-hover:text-poker-teal transition-colors">{t('lobby.viewProfile')}</p>
           </div>
         </button>
 
@@ -406,20 +410,20 @@ export default function LobbyPage(): JSX.Element {
 
           {/* Quick-launch shortcuts to the trainers */}
           <div className="flex-shrink-0">
-            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold mb-2 px-1">Lancer un entraînement</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold mb-2 px-1">{t('lobby.launchTraining')}</p>
             <div className="grid grid-cols-3 gap-3">
-              <ShortcutCard icon={<Target size={16} />} title="Hand Trainer" accent="#00d4ff"
-                desc="Lecture de spot & décisions au quiz." onClick={() => navigate('/handtrainer')} />
-              <ShortcutCard icon={<GraduationCap size={16} />} title="Cash Game" accent="#22c55e"
-                desc="Joue en cash avec le coach en direct." onClick={() => navigate('/training')} />
-              <ShortcutCard icon={<Medal size={16} />} title="Tournoi (MTT)" accent="#c9a227"
-                desc="Tournois multi-tables, push/fold & ICM." onClick={() => navigate('/tournament')} />
-              <ShortcutCard icon={<FlaskConical size={16} />} title="Simulation" accent="#a855f7"
-                desc="Banc de test : mesure l'EV du coach." onClick={() => navigate('/simulation')} />
-              <ShortcutCard icon={<SlidersHorizontal size={16} />} title="Scénario" accent="#e0457b"
-                desc="Recrée n'importe quel spot sur mesure." onClick={() => navigate('/setup')} />
-              <ShortcutCard icon={<History size={16} />} title="Historique" accent="#9aa4b2"
-                desc="Revois et analyse tes coups joués." onClick={() => navigate('/history')} />
+              <ShortcutCard icon={<Target size={16} />} title={t('lobby.scHandTrainer')} accent="#00d4ff"
+                desc={t('lobby.scHandTrainerD')} onClick={() => navigate('/handtrainer')} />
+              <ShortcutCard icon={<GraduationCap size={16} />} title={t('lobby.scCash')} accent="#22c55e"
+                desc={t('lobby.scCashD')} onClick={() => navigate('/training')} />
+              <ShortcutCard icon={<Medal size={16} />} title={t('lobby.scTournament')} accent="#c9a227"
+                desc={t('lobby.scTournamentD')} onClick={() => navigate('/tournament')} />
+              <ShortcutCard icon={<FlaskConical size={16} />} title={t('lobby.scSim')} accent="#a855f7"
+                desc={t('lobby.scSimD')} onClick={() => navigate('/simulation')} />
+              <ShortcutCard icon={<SlidersHorizontal size={16} />} title={t('lobby.scScenario')} accent="#e0457b"
+                desc={t('lobby.scScenarioD')} onClick={() => navigate('/setup')} />
+              <ShortcutCard icon={<History size={16} />} title={t('lobby.scHistory')} accent="#9aa4b2"
+                desc={t('lobby.scHistoryD')} onClick={() => navigate('/history')} />
             </div>
           </div>
         </div>
@@ -433,13 +437,13 @@ export default function LobbyPage(): JSX.Element {
               <div className="w-5 h-5 rounded bg-poker-gold/20 flex items-center justify-center">
                 <Wallet size={11} className="text-poker-gold" />
               </div>
-              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Solde</p>
-              <span className="ml-auto text-[8px] px-1.5 py-0.5 rounded bg-poker-teal/15 text-poker-teal font-bold uppercase tracking-wide">Fictif</span>
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">{t('lobby.balance')}</p>
+              <span className="ml-auto text-[8px] px-1.5 py-0.5 rounded bg-poker-teal/15 text-poker-teal font-bold uppercase tracking-wide">{t('lobby.fictive')}</span>
             </div>
 
             <div className="mb-3">
               <p className="text-2xl font-bold text-poker-gold font-mono leading-none">{balance.toLocaleString()}</p>
-              <p className="text-[9px] text-white/30 uppercase tracking-wide mt-1">jetons d'entraînement</p>
+              <p className="text-[9px] text-white/30 uppercase tracking-wide mt-1">{t('lobby.balanceUnit')}</p>
             </div>
 
             {/* Recharge */}
@@ -459,7 +463,7 @@ export default function LobbyPage(): JSX.Element {
                 onClick={() => rechargeAmt > 0 && setBalance(b => b + rechargeAmt)}
                 className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all hover:brightness-110"
                 style={{ background: 'linear-gradient(135deg,#c9a227,#8B6810)', color: '#0a0a0a' }}>
-                Recharger
+                {t('lobby.recharge')}
               </button>
             </div>
             <div className="flex gap-1 mb-3">
@@ -477,7 +481,7 @@ export default function LobbyPage(): JSX.Element {
           <button onClick={() => navigate('/leaderboard')} className="glass-card p-4 text-left hover:bg-white/[0.04] transition-colors group">
             <div className="flex items-center gap-2 mb-3">
               <Trophy size={13} className="text-[#c9a227]" />
-              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Classement</p>
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">{t('nav.leaderboard')}</p>
               <ArrowRight size={13} className="ml-auto text-white/20 group-hover:text-white/60 group-hover:translate-x-0.5 transition-all" />
             </div>
             <div className="space-y-1.5">
@@ -494,19 +498,19 @@ export default function LobbyPage(): JSX.Element {
           {/* Tes stats — real, derived from history */}
           <div className="glass-card p-4">
             <div className="flex items-center gap-2 mb-3">
-              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Tes stats</p>
-              <button onClick={() => navigate('/profile')} className="ml-auto text-[9px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wide font-bold">Profil →</button>
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">{t('lobby.yourStats')}</p>
+              <button onClick={() => navigate('/profile')} className="ml-auto text-[9px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wide font-bold">{t('lobby.profileLink')} →</button>
             </div>
             {stats.hasData ? (
               <div className="grid grid-cols-2 gap-2">
-                <StatTile icon={<Spade size={13} />} label="Sessions" value={String(stats.totalSessions)} />
-                <StatTile icon={<TrendingUp size={13} />} label="Mains jouées" value={String(stats.totalHands)} />
-                <StatTile icon={<Crown size={13} />} label="ITM tournois" value={stats.tourPlayed ? `${stats.tourItmPct}%` : '—'} accent="#c9a227" />
-                <StatTile icon={<Trophy size={13} />} label="Net cash" value={`${stats.cashNetBB > 0 ? '+' : ''}${stats.cashNetBB} BB`} accent={stats.cashNetBB >= 0 ? '#4ade80' : '#f87171'} />
+                <StatTile icon={<Spade size={13} />} label={t('lobby.statSessions')} value={String(stats.totalSessions)} />
+                <StatTile icon={<TrendingUp size={13} />} label={t('lobby.statHands')} value={String(stats.totalHands)} />
+                <StatTile icon={<Crown size={13} />} label={t('lobby.statItm')} value={stats.tourPlayed ? `${stats.tourItmPct}%` : '—'} accent="#c9a227" />
+                <StatTile icon={<Trophy size={13} />} label={t('lobby.statNetCash')} value={`${stats.cashNetBB > 0 ? '+' : ''}${stats.cashNetBB} BB`} accent={stats.cashNetBB >= 0 ? '#4ade80' : '#f87171'} />
               </div>
             ) : (
               <p className="text-[10.5px] text-white/35 leading-relaxed text-center py-2">
-                Aucune session encore. Lance un entraînement — tes vraies stats apparaîtront ici.
+                {t('lobby.noStats')}
               </p>
             )}
           </div>
@@ -514,9 +518,9 @@ export default function LobbyPage(): JSX.Element {
           {/* Dernières sessions — real recent history */}
           <div className="glass-card p-4">
             <div className="flex items-center gap-2 mb-3">
-              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Dernières sessions</p>
+              <p className="text-[11px] font-bold text-white/80 uppercase tracking-wider">{t('lobby.recentSessions')}</p>
               {stats.recent.length > 0 && (
-                <button onClick={() => navigate('/history')} className="ml-auto text-[9px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wide font-bold">Tout voir →</button>
+                <button onClick={() => navigate('/history')} className="ml-auto text-[9px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wide font-bold">{t('lobby.seeAll')} →</button>
               )}
             </div>
             {stats.recent.length > 0 ? (
@@ -540,7 +544,7 @@ export default function LobbyPage(): JSX.Element {
               </div>
             ) : (
               <p className="text-[10.5px] text-white/35 leading-relaxed text-center py-2">
-                Tes sessions terminées s'afficheront ici.
+                {t('lobby.noSessions')}
               </p>
             )}
           </div>

@@ -139,7 +139,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
           </button>
         )}
 
-        <div className="flex justify-center"><LanguageSwitcher /></div>
+        <div className="flex justify-center"><LanguageSwitcher up /></div>
 
         <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 

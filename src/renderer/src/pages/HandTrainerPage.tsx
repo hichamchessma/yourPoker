@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Target, Sliders, Play, Check, RotateCcw, ChevronLeft, Trophy, ScanEye, Zap, ArrowRight, Lock } from 'lucide-react'
 import WindowControls from '../components/layout/WindowControls'
@@ -46,6 +47,7 @@ interface Card { rank: string; suit: string }
 interface Question { scenario: TScenario; position: string; openerPos: string; c1: Card; c2: Card; key: string; correct: TAction }
 
 export default function HandTrainerPage() {
+  const { t } = useTranslation()
   const [screen, setScreen] = useState<'landing' | 'setup' | 'editor' | 'quiz' | 'result' | 'spotread' | 'decision'>('landing')
   const [mode, setMode] = useState<'standard' | 'custom'>('standard')
   const [numHands, setNumHands] = useState(20)
@@ -139,7 +141,7 @@ export default function HandTrainerPage() {
           <Target className="text-[#00d4ff]" size={22} />
           <div>
             <h1 className="text-lg font-black text-[#00d4ff] uppercase tracking-[0.2em]">Hand Trainer</h1>
-            <p className="text-[10px] text-white/35 uppercase tracking-widest">Ranges préflop &amp; lecture de spot postflop</p>
+            <p className="text-[10px] text-white/35 uppercase tracking-widest">{t('trainer.subtitle')}</p>
           </div>
         </div>
         <div className="app-drag-none"><WindowControls /></div>
@@ -151,19 +153,19 @@ export default function HandTrainerPage() {
           {screen === 'landing' && (
             <motion.div key="landing" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="w-full max-w-6xl mt-10">
-              <p className="text-center text-white/50 mb-6 text-sm">Comment veux-tu t'entraîner ?</p>
+              <p className="text-center text-white/50 mb-6 text-sm">{t('trainer.howTrain')}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-                <OptionCard icon={<Target size={28} />} title="Ranges standard"
-                  desc="Entraîne-toi sur les ranges de référence déjà intégrées dans l'app."
+                <OptionCard icon={<Target size={28} />} title={t('trainer.standard')}
+                  desc={t('trainer.standardD')}
                   onClick={() => { setMode('standard'); setScreen('setup') }} accent="#00d4ff" />
-                <OptionCard icon={<Sliders size={28} />} title="Personnaliser mes ranges"
-                  desc="Édite tes propres ranges par position (vert/rouge/jaune/gris), puis entraîne-toi dessus."
+                <OptionCard icon={<Sliders size={28} />} title={t('trainer.custom')}
+                  desc={t('trainer.customD')}
                   onClick={openEditor} accent="#c9a227" />
-                <OptionCard icon={<ScanEye size={28} />} title="Lecture de spot"
-                  desc="Postflop : diagnostique chaque main — texture, range, équité, et ton seau (Aire / Value / Bluff-catch / Tirage)."
+                <OptionCard icon={<ScanEye size={28} />} title={t('trainer.spotRead')}
+                  desc={t('trainer.spotReadD')}
                   onClick={() => setScreen('spotread')} accent="#2dd4bf" />
-                <OptionCard icon={<Zap size={28} />} title="Le bon coup"
-                  desc="Face à sa mise : choisis le bon coup (fold / call / raise / bet / check). Mode réflexe avec chrono. La décision + le pourquoi."
+                <OptionCard icon={<Zap size={28} />} title={t('trainer.decision')}
+                  desc={t('trainer.decisionD')}
                   onClick={() => setScreen('decision')} accent="#f0a830" />
               </div>
             </motion.div>
@@ -442,6 +444,7 @@ function QuizBackground({ reveal, correct }: { reveal: boolean; correct: boolean
 
 // ── Landing option card ───────────────────────────────────────────────────────
 function OptionCard({ icon, title, desc, onClick, accent }: { icon: React.ReactNode; title: string; desc: string; onClick: () => void; accent: string }) {
+  const { t } = useTranslation()
   return (
     <button onClick={onClick}
       className="text-left rounded-2xl border p-6 transition-all hover:scale-[1.02] hover:bg-white/[0.04]"
@@ -449,7 +452,7 @@ function OptionCard({ icon, title, desc, onClick, accent }: { icon: React.ReactN
       <span style={{ color: accent }}>{icon}</span>
       <h3 className="text-white font-black uppercase tracking-wide mt-3 text-sm" style={{ color: accent }}>{title}</h3>
       <p className="text-white/45 text-[12px] mt-1.5 leading-relaxed">{desc}</p>
-      <div className="mt-4 flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: accent }}>Choisir <Play size={11} /></div>
+      <div className="mt-4 flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: accent }}>{t('trainer.choose')} <Play size={11} /></div>
     </button>
   )
 }

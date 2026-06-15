@@ -4,7 +4,7 @@ import { Globe, Check } from 'lucide-react'
 import { LANGS } from '../i18n'
 
 // Compact language picker (flag + dropdown). Drop it in any header.
-export default function LanguageSwitcher({ className = '' }: { className?: string }) {
+export default function LanguageSwitcher({ className = '', up = false }: { className?: string; up?: boolean }) {
   const { i18n } = useTranslation()
   const [open, setOpen] = useState(false)
   const cur = (i18n.resolvedLanguage || i18n.language || 'en').slice(0, 2)
@@ -19,7 +19,7 @@ export default function LanguageSwitcher({ className = '' }: { className?: strin
         <span className="text-[13px] leading-none">{active.flag}</span>
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1 py-1 rounded-lg bg-[#0c1424] border border-white/10 shadow-xl z-[100] min-w-[150px]">
+        <div className={`absolute right-0 py-1 rounded-lg bg-[#0c1424] border border-white/10 shadow-xl z-[100] min-w-[150px] ${up ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {LANGS.map(l => (
             <button key={l.code}
               onClick={() => { i18n.changeLanguage(l.code); setOpen(false) }}
