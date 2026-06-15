@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Lock, KeyRound } from 'lucide-react'
 import SocialButton from '../components/auth/SocialButton'
@@ -91,6 +92,7 @@ function PlayingCard({ rank, suit, rotation = 0, glowColor = '#c9a227' }: { rank
 type AuthMode = 'login' | 'signup' | 'forgot' | 'reset'
 
 export default function AuthPage(): JSX.Element {
+  const { t } = useTranslation()
   const { setSession, passwordRecovery, setPasswordRecovery } = useAuthStore()
   const [mode, setMode] = useState<AuthMode>(passwordRecovery ? 'reset' : 'login')
   const [showPassword, setShowPassword] = useState(false)
@@ -127,14 +129,14 @@ export default function AuthPage(): JSX.Element {
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null); setNotice(null)
-    if (!identifier.includes('@')) { setError('Entre l’adresse e-mail de ton compte.'); return }
+    if (!identifier.includes('@')) { setError(t('auth.errForgotEmail')); return }
     setIsLoading(true)
     try {
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(identifier.trim(), {
         redirectTo: `${window.location.origin}/?type=recovery`
       })
       if (resetErr) throw resetErr
-      setNotice('Si un compte existe pour cette adresse, un e-mail de réinitialisation vient d’être envoyé.')
+      setNotice(t('auth.noticeForgot'))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de l’envoi du lien')
     } finally {
@@ -145,8 +147,8 @@ export default function AuthPage(): JSX.Element {
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null); setNotice(null)
-    if (password.length < 6) { setError('Le mot de passe doit faire au moins 6 caractères.'); return }
-    if (password !== confirmPassword) { setError('Les mots de passe ne correspondent pas.'); return }
+    if (password.length < 6) { setError(t('auth.errPwLen')); return }
+    if (password !== confirmPassword) { setError(t('auth.errPwMatch')); return }
     setIsLoading(true)
     try {
       const { error: updErr } = await supabase.auth.updateUser({ password })
@@ -155,7 +157,7 @@ export default function AuthPage(): JSX.Element {
       await supabase.auth.signOut()
       setPasswordRecovery(false)
       setPassword(''); setConfirmPassword('')
-      setNotice('Mot de passe mis à jour ! Connecte-toi avec ton nouveau mot de passe.')
+      setNotice(t('auth.noticeReset'))
       setMode('login')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour')
@@ -167,9 +169,9 @@ export default function AuthPage(): JSX.Element {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null); setNotice(null)
-    if (!identifier.includes('@')) { setError('Entre une adresse e-mail valide.'); return }
-    if (password.length < 6) { setError('Le mot de passe doit faire au moins 6 caractères.'); return }
-    if (password !== confirmPassword) { setError('Les mots de passe ne correspondent pas.'); return }
+    if (!identifier.includes('@')) { setError(t('auth.errEmail')); return }
+    if (password.length < 6) { setError(t('auth.errPwLen')); return }
+    if (password !== confirmPassword) { setError(t('auth.errPwMatch')); return }
     setIsLoading(true)
     try {
       const { data, error: signErr } = await supabase.auth.signUp({
@@ -183,7 +185,7 @@ export default function AuthPage(): JSX.Element {
         setSession(data.session)
       } else {
         // Confirmation enabled → a verification email was sent.
-        setNotice('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.')
+        setNotice(t('auth.noticeSignup'))
         switchMode('login')
       }
     } catch (err: unknown) {
@@ -284,16 +286,12 @@ export default function AuthPage(): JSX.Element {
           <div className="absolute top-10 left-10 right-10 z-20">
             <motion.h2 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
               className="text-2xl font-black leading-tight text-white">
-              Arrête de deviner. <span style={{ background: 'linear-gradient(90deg,#f0d060,#c9a227)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Joue +EV.</span>
+              {t('auth.valueTitle1')} <span style={{ background: 'linear-gradient(90deg,#f0d060,#c9a227)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t('auth.valueTitle2')}</span>
             </motion.h2>
             <div className="mt-4 space-y-2">
-              {[
-                '🎯 Un coach IA t’explique chaque décision en temps réel',
-                '🔮 Range Vision : vois la main adverse se resserrer',
-                '📈 EV prouvée par simulation sur des milliers de mains',
-              ].map((t, i) => (
+              {[t('auth.value1'), t('auth.value2'), t('auth.value3')].map((line, i) => (
                 <motion.p key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.1 }}
-                  className="text-[12px] text-white/55 leading-snug">{t}</motion.p>
+                  className="text-[12px] text-white/55 leading-snug">{line}</motion.p>
               ))}
             </div>
           </div>
@@ -379,10 +377,10 @@ export default function AuthPage(): JSX.Element {
                 Poker Elite Coach
               </h1>
               <p className="text-poker-teal text-xs tracking-[0.35em] uppercase mt-2 font-semibold">
-                {mode === 'signup' ? 'Créer un compte'
-                  : mode === 'forgot' ? 'Mot de passe oublié'
-                  : mode === 'reset' ? 'Nouveau mot de passe'
-                  : "Page d'Authentification"}
+                {mode === 'signup' ? t('auth.subtitleSignup')
+                  : mode === 'forgot' ? t('auth.subtitleForgot')
+                  : mode === 'reset' ? t('auth.subtitleReset')
+                  : t('auth.subtitleLogin')}
               </p>
               <div className="w-28 h-px bg-gradient-to-r from-transparent via-poker-teal/60 to-transparent mx-auto mt-3" />
             </div>
@@ -394,7 +392,7 @@ export default function AuthPage(): JSX.Element {
                 {mode !== 'reset' && (
                 <div>
                   <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
-                    {mode === 'login' ? "E-mail ou Nom d'Utilisateur" : 'E-mail'}
+                    {mode === 'login' ? t('auth.emailOrUser') : t('auth.email')}
                   </label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
@@ -415,7 +413,7 @@ export default function AuthPage(): JSX.Element {
                 {mode !== 'forgot' && (
                 <div>
                   <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
-                    {mode === 'reset' ? 'Nouveau mot de passe' : 'Mot de Passe'}
+                    {mode === 'reset' ? t('auth.newPassword') : t('auth.password')}
                   </label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
@@ -435,7 +433,7 @@ export default function AuthPage(): JSX.Element {
                       className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-white/40 hover:text-white/80 transition-colors text-[10px] font-bold tracking-wider uppercase"
                     >
                       {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                      <span>Afficher</span>
+                      <span>{t('auth.show')}</span>
                     </button>
                   </div>
                 </div>
@@ -445,7 +443,7 @@ export default function AuthPage(): JSX.Element {
                 {(mode === 'signup' || mode === 'reset') && (
                   <div>
                     <label className="block text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1.5">
-                      Confirmer le mot de passe
+                      {t('auth.confirmPassword')}
                     </label>
                     <div className="relative">
                       <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-poker-teal/60">
@@ -474,10 +472,10 @@ export default function AuthPage(): JSX.Element {
                         </svg>
                       )}
                     </div>
-                    <span className="text-[10px] text-white/50 uppercase tracking-wider select-none">Se souvenir de moi</span>
+                    <span className="text-[10px] text-white/50 uppercase tracking-wider select-none">{t('auth.remember')}</span>
                   </label>
                   <button type="button" onClick={() => switchMode('forgot')} className="text-[10px] text-poker-teal hover:text-poker-gold transition-colors uppercase tracking-wider font-semibold">
-                    Mot de passe oublié ?
+                    {t('auth.forgot')}
                   </button>
                 </div>
                 )}
@@ -517,16 +515,16 @@ export default function AuthPage(): JSX.Element {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                       </svg>
-                      {mode === 'signup' ? 'Création...'
-                        : mode === 'forgot' ? 'Envoi...'
-                        : mode === 'reset' ? 'Mise à jour...'
-                        : 'Connexion...'}
+                      {mode === 'signup' ? t('auth.creating')
+                        : mode === 'forgot' ? t('auth.sending')
+                        : mode === 'reset' ? t('auth.updating')
+                        : t('auth.connecting')}
                     </span>
                   ) : (
-                    mode === 'signup' ? "S'inscrire"
-                      : mode === 'forgot' ? 'Envoyer le lien'
-                      : mode === 'reset' ? 'Mettre à jour le mot de passe'
-                      : 'Se Connecter'
+                    mode === 'signup' ? t('auth.signUp')
+                      : mode === 'forgot' ? t('auth.sendLink')
+                      : mode === 'reset' ? t('auth.updatePassword')
+                      : t('auth.signIn')
                   )}
                 </motion.button>
               </form>
@@ -536,7 +534,7 @@ export default function AuthPage(): JSX.Element {
                 <>
                   <div className="flex items-center gap-3 my-5">
                     <div className="flex-1 h-px bg-white/10" />
-                    <span className="text-[10px] text-white/30 uppercase tracking-widest">{mode === 'signup' ? "Ou s'inscrire avec" : 'Ou se connecter avec'}</span>
+                    <span className="text-[10px] text-white/30 uppercase tracking-widest">{mode === 'signup' ? t('auth.orSignUpWith') : t('auth.orSignInWith')}</span>
                     <div className="flex-1 h-px bg-white/10" />
                   </div>
 
@@ -549,31 +547,31 @@ export default function AuthPage(): JSX.Element {
               {/* Bottom navigation between modes */}
               <p className="text-center mt-5 text-[10px] text-white/40 uppercase tracking-wider">
                 {mode === 'login' && (
-                  <>Pas encore de compte ?{' '}
+                  <>{t('auth.noAccount')}{' '}
                     <button type="button" onClick={() => switchMode('signup')}
                       className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
-                      S'inscrire ici
+                      {t('auth.signUpHere')}
                     </button>
                   </>
                 )}
                 {mode === 'signup' && (
-                  <>Déjà un compte ?{' '}
+                  <>{t('auth.haveAccount')}{' '}
                     <button type="button" onClick={() => switchMode('login')}
                       className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
-                      Se connecter
+                      {t('auth.signIn')}
                     </button>
                   </>
                 )}
                 {mode === 'forgot' && (
-                  <>Tu te souviens ?{' '}
+                  <>{t('auth.remember2')}{' '}
                     <button type="button" onClick={() => switchMode('login')}
                       className="text-poker-teal hover:text-poker-gold transition-colors font-bold underline underline-offset-2">
-                      Retour à la connexion
+                      {t('auth.backToLogin')}
                     </button>
                   </>
                 )}
                 {mode === 'reset' && (
-                  <>Choisis un nouveau mot de passe pour ton compte.</>
+                  <>{t('auth.resetHint')}</>
                 )}
               </p>
             </div>

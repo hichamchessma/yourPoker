@@ -14,10 +14,12 @@ import {
   LogOut,
   ChevronRight
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsPro } from '../../lib/entitlements'
 import ProBadge from '../ProBadge'
+import LanguageSwitcher from '../LanguageSwitcher'
 import { Sparkles, Crown } from 'lucide-react'
 
 interface NavItem {
@@ -32,15 +34,15 @@ interface NavItem {
 // Classement, Support) were removed to avoid menu dead-ends; re-add them with a real
 // page when built.
 const NAV_ITEMS: NavItem[] = [
-  { id: 'lobby', label: 'Accueil (Lobby)', icon: <Home size={20} />, path: '/lobby' },
-  { id: 'handtrainer', label: 'Hand Trainer', icon: <Target size={20} />, path: '/handtrainer' },
-  { id: 'training', label: 'Entraînement CashGame', icon: <GraduationCap size={20} />, path: '/training' },
-  { id: 'tournament', label: 'Entraînement Tournoi', icon: <Medal size={20} />, path: '/tournament' },
-  { id: 'simulation', label: 'Simulation (banc de test)', icon: <FlaskConical size={20} />, path: '/simulation', pro: true },
-  { id: 'setup', label: 'Scénario sur mesure', icon: <SlidersHorizontal size={20} />, path: '/setup', pro: true },
-  { id: 'leaderboard', label: 'Classement', icon: <Trophy size={20} />, path: '/leaderboard' },
-  { id: 'profile', label: 'Profil', icon: <User size={20} />, path: '/profile' },
-  { id: 'history', label: 'Historique', icon: <History size={20} />, path: '/history' },
+  { id: 'lobby', label: 'nav.lobby', icon: <Home size={20} />, path: '/lobby' },
+  { id: 'handtrainer', label: 'nav.handTrainer', icon: <Target size={20} />, path: '/handtrainer' },
+  { id: 'training', label: 'nav.cashTraining', icon: <GraduationCap size={20} />, path: '/training' },
+  { id: 'tournament', label: 'nav.tournamentTraining', icon: <Medal size={20} />, path: '/tournament' },
+  { id: 'simulation', label: 'nav.simulation', icon: <FlaskConical size={20} />, path: '/simulation', pro: true },
+  { id: 'setup', label: 'nav.scenario', icon: <SlidersHorizontal size={20} />, path: '/setup', pro: true },
+  { id: 'leaderboard', label: 'nav.leaderboard', icon: <Trophy size={20} />, path: '/leaderboard' },
+  { id: 'profile', label: 'nav.profile', icon: <User size={20} />, path: '/profile' },
+  { id: 'history', label: 'nav.history', icon: <History size={20} />, path: '/history' },
 ]
 
 interface SidebarProps {
@@ -52,6 +54,7 @@ interface SidebarProps {
 export default function Sidebar({ activeItem, autoHide = false }: SidebarProps): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useTranslation()
   const { signOut } = useAuthStore()
   const isPro = useIsPro()
   const [confirmLogout, setConfirmLogout] = useState(false)
@@ -114,7 +117,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
                 {item.icon}
               </span>
               <span className="font-display font-semibold text-sm tracking-wide uppercase">
-                {item.label}
+                {t(item.label)}
               </span>
               {item.pro && !isPro && <ProBadge className="ml-auto flex-shrink-0" />}
             </motion.button>
@@ -126,15 +129,17 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
       <div className="p-3 space-y-2">
         {isPro ? (
           <div className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#c9a227]/10 border border-[#c9a227]/30 text-[#c9a227]">
-            <Crown size={13} /> <span className="text-[10px] font-black uppercase tracking-widest">Membre Pro</span>
+            <Crown size={13} /> <span className="text-[10px] font-black uppercase tracking-widest">{t('nav.proMember')}</span>
           </div>
         ) : (
           <button onClick={() => navigate('/pricing')}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all hover:brightness-110"
             style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)', color: '#0a0a0a' }}>
-            <Sparkles size={13} /> Passer Pro
+            <Sparkles size={13} /> {t('nav.goPro')}
           </button>
         )}
+
+        <div className="flex justify-center"><LanguageSwitcher /></div>
 
         <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
@@ -148,20 +153,20 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
               className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 space-y-2"
             >
               <p className="text-[10px] text-white/60 text-center uppercase tracking-wider">
-                Se déconnecter ?
+                {t('nav.logoutConfirm')}
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setConfirmLogout(false)}
                   className="flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors"
                 >
-                  Annuler
+                  {t('nav.cancel')}
                 </button>
                 <button
                   onClick={handleLogout}
                   className="flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
                 >
-                  Oui
+                  {t('nav.yes')}
                 </button>
               </div>
             </motion.div>
@@ -175,7 +180,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
             >
               <LogOut size={18} />
               <span className="font-display font-semibold text-xs tracking-wide uppercase">
-                Déconnexion
+                {t('nav.logout')}
               </span>
             </motion.button>
           )}
