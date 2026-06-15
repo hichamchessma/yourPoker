@@ -8,8 +8,20 @@
 // Heuristic, not a solver — but a much sharper "expert beside you".
 // ─────────────────────────────────────────────────────────────────────────────
 
+import i18n from '../i18n'
+const tt = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
+
 export interface Card { rank: string; suit: string }
 export type AdviceAction = 'BET' | 'CHECK' | 'CALL' | 'RAISE' | 'FOLD'
+
+// ── Shared, localized hand vocabulary (used by the live coach AND the trainers) ──
+type DrawCode = 'flush' | 'oesd' | 'gutshot'
+export function handCatLabel(cat: number): string { return tt(`hand.cat${Math.max(0, Math.min(8, cat))}`) }
+function drawLabel(c: DrawCode): string { return tt(c === 'flush' ? 'hand.drawFlush' : c === 'oesd' ? 'hand.drawOesd' : 'hand.drawGut') }
+function drawDisplay(cs: DrawCode[]): string[] { return cs.map(drawLabel) }
+function pairLabel(p: PairKind): string { return tt(p === 'overpair' ? 'hand.pairOverpair' : p === 'top' ? 'hand.pairTop' : p === 'second' ? 'hand.pairSecond' : 'hand.pairWeak') }
+const RANK_KEY: Record<number, string> = { 14: 'hand.rankA', 13: 'hand.rankK', 12: 'hand.rankQ', 11: 'hand.rankJ', 10: 'hand.rankT', 9: 'hand.r9', 8: 'hand.r8', 7: 'hand.r7', 6: 'hand.r6', 5: 'hand.r5', 4: 'hand.r4', 3: 'hand.r3', 2: 'hand.r2' }
+function rankLabel(v: number): string { const k = RANK_KEY[v]; return k ? tt(k) : String(v) }
 
 export interface FacePlanRow {
   label: string      // "⅓ pot", "pot", "all-in"…
@@ -25,7 +37,9 @@ export interface Advice {
   equity: number
   potOdds: number
   madeHand: string
+  madeCat: number          // true made-hand category (0 high card … 8) — language-agnostic logic key
   draws: string[]
+  strongDraw: boolean       // flush / open-ended (logic key, not a localized string)
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[] // plan vs a bet/raise behind — when CHECK / BET / CALL
@@ -37,7 +51,6 @@ export interface Advice {
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
 const RV: Record<string, number> = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, T: 10, J: 11, Q: 12, K: 13, A: 14 }
 const SUITS = ['♠', '♥', '♦', '♣']
-const HAND_NAMES = ['Carte haute', 'Paire', 'Double paire', 'Brelan', 'Suite', 'Couleur', 'Full', 'Carré', 'Quinte flush']
 
 // ── Evaluation ───────────────────────────────────────────────────────────────
 function eval5(c: Card[]): number {
@@ -76,7 +89,7 @@ function padTo5(cards: Card[]): Card[] {
   return out
 }
 function categoryOf(score: number): number { return Math.floor(score / 15 ** 5) } // 0..8
-export function handCategory(cards: Card[]): string { return HAND_NAMES[categoryOf(best7(cards))] ?? 'Carte haute' }
+export function handCategory(cards: Card[]): string { return handCatLabel(categoryOf(best7(cards))) }
 
 // Best made-hand category among FEWER than 5 cards (no padding → no phantom pairs).
 // Used to tell whether a card improves the BOARD alone (everyone) vs the HERO only.
@@ -129,7 +142,7 @@ export function computeOuts(hole: Card[], board: Card[]): OutCard[] {
     const isDrawGain = heroCat === 4 || heroCat === 5 || heroCat === 8 // straight / flush / straight flush
     if (!isDrawGain && !holeRanks.has(c.rank)) continue
     const weak = heroCat === 5 && c.suit === weakFlushSuit
-    res.push({ card: c, cat: heroCat, label: HAND_NAMES[heroCat] ?? 'Carte haute', weak })
+    res.push({ card: c, cat: heroCat, label: handCatLabel(heroCat), weak })
   }
   // Strongest improvement first, then by rank then suit — stable, easy to count.
   const suitOrder: Record<string, number> = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 }
@@ -306,17 +319,17 @@ function analyseMade(hole: Card[], board: Card[]): { cat: number; pair: PairKind
     else if (bRanks[1] !== undefined && hRanks.includes(bRanks[1])) pair = 'second'
     else pair = 'weak'
   }
-  return { cat, pair, name: HAND_NAMES[cat] ?? 'Carte haute' }
+  return { cat, pair, name: handCatLabel(cat) }
 }
 
-// ── Draw detection ───────────────────────────────────────────────────────────
-function detectDraws(hole: Card[], board: Card[]): string[] {
-  const draws: string[] = []
+// ── Draw detection (returns STABLE codes; translate for display via drawDisplay) ─
+function detectDraws(hole: Card[], board: Card[]): DrawCode[] {
+  const draws: DrawCode[] = []
   if (board.length >= 5) return draws
   const all = [...hole, ...board]
   const bySuit: Record<string, number> = {}
   all.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
-  if (Object.values(bySuit).some(n => n === 4)) draws.push('Tirage couleur')
+  if (Object.values(bySuit).some(n => n === 4)) draws.push('flush')
   const vals = new Set(all.map(c => RV[c.rank]))
   if (vals.has(14)) vals.add(1)
   let oesd = false, gut = false
@@ -325,10 +338,11 @@ function detectDraws(hole: Card[], board: Card[]): string[] {
     for (let k = lo; k < lo + 5; k++) if (vals.has(k)) count++
     if (count === 4) { if (!vals.has(lo + 4) || !vals.has(lo)) oesd = true; else gut = true }
   }
-  if (oesd) draws.push('Tirage quinte (ouvert)')
-  else if (gut) draws.push('Tirage quinte (ventral)')
+  if (oesd) draws.push('oesd')
+  else if (gut) draws.push('gutshot')
   return draws
 }
+function isStrongDraw(cs: DrawCode[]): boolean { return cs.some(d => d === 'flush' || d === 'oesd') }
 
 // Wet/dangerous board: 3+ to a flush, or 3+ connected → ranges connect more.
 function boardWetness(board: Card[]): number {
@@ -385,8 +399,9 @@ export function getPostflopAdvice(input: {
 
   const eq = rangeEquity(hole, board, Math.max(1, opponents), aggression, input.iters ?? 1800, input.villainTier, input.aggressors, input.donkLead && !tinyBet, input.facingRaise && !tinyBet)
   const { cat, pair, name } = analyseMade(hole, board)
-  const draws = detectDraws(hole, board)
-  const strongDraw = draws.some(d => d.includes('couleur') || d.includes('ouvert'))
+  const drawCodes = detectDraws(hole, board)
+  const draws = drawDisplay(drawCodes)
+  const strongDraw = isStrongDraw(drawCodes)
   const wet = boardWetness(board)
   const spr = pot > 0 ? effStack / pot : 99
   const pct = (x: number) => `${Math.round(x * 100)}%`
@@ -664,13 +679,11 @@ export function getPostflopAdvice(input: {
   // Honest hand label: a "pair" that is ONLY the board's pair (your hole cards add
   // nothing) is really just your high card + the shared board pair — never call it
   // "Paire" as if it were yours. A two-pair leaning on a board pair is shown as top pair.
-  const RANK_FR: Record<number, string> = { 14: 'As', 13: 'Roi', 12: 'Dame', 11: 'Valet', 10: '10', 9: '9', 8: '8', 7: '7', 6: '6', 5: '5', 4: '4', 3: '3', 2: '2' }
-  const heroHi = RANK_FR[Math.max(RV[hole[0].rank], RV[hole[1].rank])] ?? 'haute'
-  const ePairFr = effPair === 'overpair' ? 'overpaire' : effPair === 'top' ? 'top paire' : effPair === 'second' ? '2e paire' : 'paire faible'
-  const madeHand = boardOnlyPair ? `Carte haute : ${heroHi} (+ paire du board, partagée)`
-    : boardLeanTwoPair ? `Paire (${ePairFr} — board pairé)`
+  const heroHi = rankLabel(Math.max(RV[hole[0].rank], RV[hole[1].rank]))
+  const madeHand = boardOnlyPair ? tt('hand.madeBoardOnly', { hi: heroHi })
+    : boardLeanTwoPair ? tt('hand.madeBoardLean', { pair: pairLabel(effPair) })
     : name
-  return { action, sizingText, equity: eq, potOdds, madeHand, draws, reasons, confidence, facePlan, outs: computeOuts(hole, board), betFrac, jam }
+  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, outs: computeOuts(hole, board), betFrac, jam }
 }
 
 // ── "How a pro thinks about it" — the equity-vs-pot-odds monologue ─────────────
@@ -733,8 +746,9 @@ export interface SpotDiagnosis {
 }
 export function diagnoseSpot(hole: Card[], board: Card[]): SpotDiagnosis {
   const { cat, pair, name } = analyseMade(hole, board)
-  const draws = detectDraws(hole, board)
-  const strongDraw = draws.some(d => d.includes('couleur') || d.includes('ouvert'))
+  const drawCodes = detectDraws(hole, board)
+  const draws = drawDisplay(drawCodes)
+  const strongDraw = isStrongDraw(drawCodes)
   const wetness = boardWetness(board)
   const paired = (() => { const r: Record<number, number> = {}; board.forEach(c => (r[RV[c.rank]] = (r[RV[c.rank]] ?? 0) + 1)); return Object.values(r).some(n => n >= 2) })()
   const playsBoard = board.length === 5 && best7([...hole, ...board]) <= best7(board)

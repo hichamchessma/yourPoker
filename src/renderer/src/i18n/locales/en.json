@@ -656,5 +656,31 @@
     "squeeze": "Squeeze (raise + caller)",
     "vs3bet": "Facing a 3-bet",
     "vs4bet": "Facing a 4-bet"
+  },
+  "hand": {
+    "cat0": "High card",
+    "cat1": "Pair",
+    "cat2": "Two pair",
+    "cat3": "Three of a kind",
+    "cat4": "Straight",
+    "cat5": "Flush",
+    "cat6": "Full house",
+    "cat7": "Four of a kind",
+    "cat8": "Straight flush",
+    "pairOverpair": "overpair",
+    "pairTop": "top pair",
+    "pairSecond": "2nd pair",
+    "pairWeak": "weak pair",
+    "drawFlush": "Flush draw",
+    "drawOesd": "Open-ended straight draw",
+    "drawGut": "Gutshot straight draw",
+    "rankA": "Ace",
+    "rankK": "King",
+    "rankQ": "Queen",
+    "rankJ": "Jack",
+    "rankT": "10",
+    "rankHigh": "high",
+    "madeBoardOnly": "High card: {{hi}} (+ the board pair, shared)",
+    "madeBoardLean": "Pair ({{pair}} — paired board)"
   }
 }

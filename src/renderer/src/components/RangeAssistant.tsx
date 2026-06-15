@@ -31,6 +31,7 @@ interface UnifiedAdvice {
   potOdds: number
   madeHand: string
   draws: string[]
+  strongDraw: boolean
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[]
@@ -155,13 +156,13 @@ export default function RangeAssistant({
         reasons.push(`Pression ICM (~${Math.round(icmPressure * 100)}%) : près de la bulle / d’un saut de prix, busté coûte cher. Resserre tes tapis et tes call-off — survivre vaut plus que d’encaisser un petit edge.`)
       return {
         actionText: reshove ? 'TAPIS (RE-SHOVE)' : ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
-        equity, potOdds, madeHand: heroKey ?? '—', draws: [], reasons,
+        equity, potOdds, madeHand: heroKey ?? '—', draws: [], strongDraw: false, reasons,
         confidence: chart === 'fold' && equity < 0.35 ? 'haute' : (chart === 'raise' || chart === '3bet') && equity > 0.55 ? 'haute' : 'moyenne',
       }
     }
     if (board.length < 3) return null
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
-    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, strongDraw: a.strongDraw, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier, aggressors, cappedRange, callPressure])
 
@@ -181,7 +182,7 @@ export default function RangeAssistant({
   function ask(q: string) {
     if (!advice) return
     const pct = (x: number) => `${Math.round(x * 100)}%`
-    const drawing = advice.draws.some(d => d.includes('couleur') || d.includes('ouvert'))
+    const drawing = advice.strongDraw
     // Verdict that stays consistent with the actual recommendation (handles the
     // implied-odds case where we call a draw slightly below direct pot odds).
     const oddsVerdict = advice.equity >= advice.potOdds

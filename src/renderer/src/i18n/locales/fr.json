@@ -656,5 +656,31 @@
     "squeeze": "Squeeze (relance + suiveur)",
     "vs3bet": "Face à un 3-bet",
     "vs4bet": "Face à un 4-bet"
+  },
+  "hand": {
+    "cat0": "Carte haute",
+    "cat1": "Paire",
+    "cat2": "Double paire",
+    "cat3": "Brelan",
+    "cat4": "Suite",
+    "cat5": "Couleur",
+    "cat6": "Full",
+    "cat7": "Carré",
+    "cat8": "Quinte flush",
+    "pairOverpair": "overpaire",
+    "pairTop": "top paire",
+    "pairSecond": "2e paire",
+    "pairWeak": "paire faible",
+    "drawFlush": "Tirage couleur",
+    "drawOesd": "Tirage quinte (ouvert)",
+    "drawGut": "Tirage quinte (ventral)",
+    "rankA": "As",
+    "rankK": "Roi",
+    "rankQ": "Dame",
+    "rankJ": "Valet",
+    "rankT": "10",
+    "rankHigh": "haute",
+    "madeBoardOnly": "Carte haute : {{hi}} (+ paire du board, partagée)",
+    "madeBoardLean": "Paire ({{pair}} — board pairé)"
   }
 }

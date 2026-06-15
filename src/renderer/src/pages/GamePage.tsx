@@ -746,7 +746,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
       // CHECKING a LOCKED monster (full house+) multiway is a valid slow-play/trap, not
       // a leak: the hand needs no protection (board paired) and betting folds out the
       // air that would otherwise bluff/jam into you. Don't condemn it.
-      const monster = /Full|Carré|Quinte flush/.test(adv.madeHand)
+      const monster = adv.madeCat >= 6 // full house, quads or straight flush — locked, language-agnostic
       if (act.actionType === 'CHECK' && monster && opponents >= 2) {
         verdict = 'good'; headline = 'Slow-play OK'
         lines.push(`Checker un monstre verrouillé (${adv.madeHand}) en multiway est un trap valide : ta main n'a rien à protéger (board pairé), et miser ferait fuir l'air qui peut bluffer/jam derrière. Le coach « value-bet » par défaut, mais ici le check (piège) est au moins aussi rentable. ✅`)

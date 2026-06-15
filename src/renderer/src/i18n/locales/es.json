@@ -656,5 +656,31 @@
     "squeeze": "Squeeze (subida + pagador)",
     "vs3bet": "Frente a un 3-bet",
     "vs4bet": "Frente a un 4-bet"
+  },
+  "hand": {
+    "cat0": "Carta alta",
+    "cat1": "Pareja",
+    "cat2": "Doble pareja",
+    "cat3": "Trío",
+    "cat4": "Escalera",
+    "cat5": "Color",
+    "cat6": "Full",
+    "cat7": "Póker",
+    "cat8": "Escalera de color",
+    "pairOverpair": "overpair",
+    "pairTop": "pareja máxima",
+    "pairSecond": "2ª pareja",
+    "pairWeak": "pareja débil",
+    "drawFlush": "Proyecto de color",
+    "drawOesd": "Proyecto de escalera (abierto)",
+    "drawGut": "Proyecto de escalera (interior)",
+    "rankA": "As",
+    "rankK": "Rey",
+    "rankQ": "Dama",
+    "rankJ": "Jota",
+    "rankT": "10",
+    "rankHigh": "alta",
+    "madeBoardOnly": "Carta alta: {{hi}} (+ la pareja del board, compartida)",
+    "madeBoardLean": "Pareja ({{pair}} — board emparejado)"
   }
 }
