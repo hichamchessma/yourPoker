@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import {
   GRID_RANKS, buildRangeMap, buildJamCallMap, handKeyFromCards, cellKey,
@@ -80,6 +81,7 @@ export default function RangeAssistant({
   representedView?: RangeView | null
   representedMeta?: { move: string; effect: string } | null
 }) {
+  const { t } = useTranslation()
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
@@ -96,7 +98,7 @@ export default function RangeAssistant({
   const isReshove = (scenario === 'vsopen' || scenario === 'squeeze') && effBB > 13 && rangeMap
     ? [...rangeMap.values()].includes('raise')
     : false
-  const formatLabel = activePlayers <= 2 ? 'Heads-up (2 joueurs)' : `${activePlayers} joueurs actifs`
+  const formatLabel = activePlayers <= 2 ? t('coach.headsUp') : t('coach.activePlayers', { n: activePlayers })
 
   const boardSig = board.map(c => c.rank + c.suit).join('')
   const opponents = Math.max(1, activePlayers - 1)
@@ -211,8 +213,8 @@ export default function RangeAssistant({
   }
 
   const QA_BUTTONS: [string, string][] = [
-    ['why', 'Pourquoi ?'], ['equity', 'Mon équité ?'], ['raise', 'Et si je relance ?'], ['hand', 'C’est quoi ma main ?'],
-    ['equity_calc', 'Comment tu calcules mon équité ?'], ['potodds_calc', 'Comment tu calcules la cote ?'], ['bluff', 'Et si j’essaie de bluffer ?'],
+    ['why', t('coach.qWhy')], ['equity', t('coach.qEquity')], ['raise', t('coach.qRaise')], ['hand', t('coach.qHand')],
+    ['equity_calc', t('coach.qEquityCalc')], ['potodds_calc', t('coach.qPotoddsCalc')], ['bluff', t('coach.qBluff')],
   ]
 
   const panel = (
@@ -225,43 +227,43 @@ export default function RangeAssistant({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/8 sticky top-0 z-10" style={{ background: '#070d1a' }}>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-[#c9a227] uppercase tracking-widest">Assistant Coach</span>
-            <span className="text-[10px] text-white/35">{isPreflop ? 'Préflop' : 'Postflop'}</span>
+            <span className="text-[11px] font-bold text-[#c9a227] uppercase tracking-widest">{t('coach.title')}</span>
+            <span className="text-[10px] text-white/35">{isPreflop ? t('coach.preflop') : t('coach.postflop')}</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/8 border border-white/10 text-white/50 font-bold uppercase tracking-wide">{formatLabel}</span>
           </div>
           {embedded
-            ? <span className="text-[9px] text-white/30 italic">survol — quitte le profil pour fermer</span>
+            ? <span className="text-[9px] text-white/30 italic">{t('coach.hoverHint')}</span>
             : <button onClick={onClose}
                 className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10">✕</button>}
         </div>
 
         <div className="p-5">
           {/* Postflop before the flop is dealt */}
-          {!advice && !isPreflop && <p className="text-white/50 text-sm text-center py-8">En attente du flop…</p>}
+          {!advice && !isPreflop && <p className="text-white/50 text-sm text-center py-8">{t('coach.waitFlop')}</p>}
 
           {advice && (
             <>
               {/* Situation + recommendation banner */}
               {isPreflop && (
                 <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">
-                  Situation : <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? `Face à ${numAllIn} tapis (all-in)` : SCENARIO_LABEL[scenario as Scenario]}
+                  {t('coach.situation')} <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? t('coach.vsJam', { n: numAllIn }) : SCENARIO_LABEL[scenario as Scenario]}
                 </p>
               )}
               {isPreflop && icmPressure > 0.3 && (
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-2 py-1 rounded-md inline-block"
                   style={{ color: '#f0c060', background: 'rgba(200,120,40,0.16)', border: '1px solid rgba(240,192,96,0.4)' }}>
-                  ⚠️ ICM / Bulle — resserre : survivre &gt; maximiser ({Math.round(icmPressure * 100)}%)
+                  {t('coach.icmBanner', { n: Math.round(icmPressure * 100) })}
                 </p>
               )}
               <div className="flex items-center gap-4 rounded-xl border p-4 mb-4"
                 style={{ background: advice.color + '1f', borderColor: advice.color + '88' }}>
                 <div className="text-center min-w-[72px]">
-                  <p className="text-[9px] text-white/40 uppercase tracking-widest">Conseil</p>
+                  <p className="text-[9px] text-white/40 uppercase tracking-widest">{t('coach.advice')}</p>
                   <p className="text-xl font-black tracking-wide leading-tight" style={{ color: advice.color }}>{advice.actionText}</p>
                 </div>
                 <div className="flex-1">
                   {heroKey && <p className="text-sm font-bold text-white/90 font-mono">{heroKey} · <span className="font-sans">{advice.sizingText}</span></p>}
-                  <p className="text-[10px] text-white/45 mt-0.5">Confiance : <span className="font-bold" style={{ color: advice.color }}>{advice.confidence}</span></p>
+                  <p className="text-[10px] text-white/45 mt-0.5">{t('coach.confidence')} <span className="font-bold" style={{ color: advice.color }}>{t(`coach.conf${advice.confidence.charAt(0).toUpperCase() + advice.confidence.slice(1)}`)}</span></p>
                 </div>
               </div>
             </>
@@ -304,7 +306,7 @@ export default function RangeAssistant({
                 ).map(a => (
                   <div key={a} className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm" style={{ background: ACTION_COLOR[a].bg }} />
-                    <span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{isReshove && a === 'raise' ? 'TAPIS (RE-SHOVE)' : ACTION_LABEL[a]}</span>
+                    <span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{isReshove && a === 'raise' ? t('coach.reshoveLabel') : ACTION_LABEL[a]}</span>
                   </div>
                 ))}
               </div>
@@ -316,25 +318,25 @@ export default function RangeAssistant({
               {/* Represented range (perceived) — postflop, all streets */}
               {!isPreflop && representedView && (
                 <div className="mb-4 flex flex-col items-center">
-                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">Ta range représentée (perçue)</p>
+                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">{t('coach.representedRange')}</p>
                   <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
-                    name="Toi — range représentée" heroKey={heroKey}/>
+                    name={t('coach.youRepresented')} heroKey={heroKey}/>
                 </div>
               )}
               {/* Equity / pot odds */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-[10px] mb-1">
-                  <span className="text-white/50 uppercase tracking-wide">Ton équité</span>
+                  <span className="text-white/50 uppercase tracking-wide">{t('coach.yourEquity')}</span>
                   <span className="font-bold text-emerald-300">{Math.round(advice.equity * 100)}%
-                    {toCall > 0 && <span className="text-white/40 font-normal"> · cote {Math.round(advice.potOdds * 100)}%</span>}
+                    {toCall > 0 && <span className="text-white/40 font-normal"> · {t('coach.odds', { n: Math.round(advice.potOdds * 100) })}</span>}
                   </span>
                 </div>
                 <div className="relative h-3 rounded-full overflow-hidden bg-white/8">
                   <div className="h-full rounded-full" style={{ width: `${advice.equity * 100}%`, background: 'linear-gradient(90deg,#1f9d5e,#34d399)' }} />
-                  {toCall > 0 && <div className="absolute top-0 bottom-0 w-[2px] bg-[#c9a227]" style={{ left: `${advice.potOdds * 100}%` }} title="Équité requise pour payer" />}
+                  {toCall > 0 && <div className="absolute top-0 bottom-0 w-[2px] bg-[#c9a227]" style={{ left: `${advice.potOdds * 100}%` }} title={t('coach.requiredEquity')} />}
                 </div>
                 {!isPreflop && (
-                  <p className="text-[9px] text-white/30 mt-1">Ta main : <span className="text-white/60 font-bold">{advice.madeHand}</span>{advice.draws.length ? ` · ${advice.draws.join(' · ')}` : ''}</p>
+                  <p className="text-[9px] text-white/30 mt-1">{t('coach.yourHand')} <span className="text-white/60 font-bold">{advice.madeHand}</span>{advice.draws.length ? ` · ${advice.draws.join(' · ')}` : ''}</p>
                 )}
                 {/* Outs — exact cards that improve the hero's hand (flop/turn only).
                     When FACING a bet the outs appear inside the reasoning block below,
@@ -342,8 +344,8 @@ export default function RangeAssistant({
                 {!isPreflop && toCall <= 0 && advice.outs && advice.outs.length > 0 && (
                   <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-2">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[9px] uppercase tracking-widest text-emerald-300/80 font-bold">Tes outs</span>
-                      <span className="text-[9px] text-white/40">{advice.outs.length} carte{advice.outs.length > 1 ? 's' : ''} qui t’améliorent</span>
+                      <span className="text-[9px] uppercase tracking-widest text-emerald-300/80 font-bold">{t('coach.yourOuts')}</span>
+                      <span className="text-[9px] text-white/40">{t('coach.outsImprove', { count: advice.outs.length })}</span>
                     </div>
                     <div className="space-y-1">
                       {groupOuts(advice.outs).map(g => {
@@ -363,7 +365,7 @@ export default function RangeAssistant({
                       })}
                     </div>
                     {advice.outs.some(o => o.weak) && (
-                      <p className="text-[10px] text-amber-400/80 mt-1.5 leading-snug">⚠︎ couleur dominée : ça reste un out (compté dans ton équité), mais tu peux toucher et perdre quand même face à une couleur plus haute.</p>
+                      <p className="text-[10px] text-amber-400/80 mt-1.5 leading-snug">{t('coach.dominatedFlush')}</p>
                     )}
                   </div>
                 )}
@@ -384,7 +386,7 @@ export default function RangeAssistant({
 
               {/* Guided Q&A */}
               <div className="border-t border-white/8 pt-3">
-                <p className="text-[9px] text-white/35 uppercase tracking-widest mb-2">Demande au coach</p>
+                <p className="text-[9px] text-white/35 uppercase tracking-widest mb-2">{t('coach.askCoach')}</p>
                 <div className="flex flex-wrap gap-2">
                   {QA_BUTTONS.map(([q, label]) => (
                     <button key={q} onClick={() => ask(q)}
@@ -397,9 +399,9 @@ export default function RangeAssistant({
                     const enabled = !!advice.facePlan && ['CHECK', 'BET', 'CALL'].includes(advice.actionText)
                     return (
                       <button onClick={() => enabled && ask('face_raise')} disabled={!enabled}
-                        title={enabled ? 'Plan si l’adversaire mise / te relance, par taille' : 'Disponible quand le conseil est CHECK, BET ou CALL'}
+                        title={enabled ? t('coach.faceRaiseTitle') : t('coach.faceRaiseDisabled')}
                         className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${enabled ? 'bg-[#c9a227]/12 border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/20' : 'bg-white/3 border-white/8 text-white/20 cursor-not-allowed'}`}>
-                        🎯 Et si je me fais raise ?
+                        {t('coach.qFaceRaise')}
                       </button>
                     )
                   })()}
@@ -415,7 +417,7 @@ export default function RangeAssistant({
               {/* Action recap */}
               {actionRecap.length > 0 && (
                 <div className="border-t border-white/8 pt-3 mt-3">
-                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5">Déroulé du coup</p>
+                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5">{t('coach.handFlow')}</p>
                   <div className="space-y-0.5 max-h-28 overflow-y-auto">
                     {actionRecap.map((l, i) => <p key={i} className="text-[10px] text-white/40 font-mono">{l}</p>)}
                   </div>
@@ -423,9 +425,7 @@ export default function RangeAssistant({
               )}
 
               <p className="text-[9px] text-white/25 text-center mt-4 leading-relaxed">
-                {isPreflop
-                  ? 'Range adaptée au nombre de joueurs en jeu + équité estimée par simulation. Conseil d’entraînement, pas un solveur.'
-                  : 'Équité estimée par simulation (Monte-Carlo) vs mains aléatoires. Conseil heuristique d’entraînement, pas un solveur.'}
+                {isPreflop ? t('coach.footerPreflop') : t('coach.footerPostflop')}
               </p>
             </>
           )}
