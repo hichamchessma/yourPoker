@@ -38,6 +38,7 @@ export interface HandState {
   buttonIdx: number
   sb: number; bb: number; ante: number
   actions: HandAction[]
+  winners?: Set<number>     // seat ids that won a pot this hand (filled by awardPots)
 }
 export type SimDecision = { action: 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'allin'; to?: number }
 export type Decider = (seatId: number, hs: HandState) => SimDecision
@@ -94,9 +95,9 @@ export function assignPositions(seats: SimSeat[], buttonIdx: number): void {
 // ── One hand ─────────────────────────────────────────────────────────────────
 function activeCount(seats: SimSeat[]): number { return seats.filter(s => s.inHand && !s.folded).length }
 
-export function playHand(seats: SimSeat[], buttonIdx: number, sb: number, bb: number, ante: number, decider: Decider): void {
+export function playHand(seats: SimSeat[], buttonIdx: number, sb: number, bb: number, ante: number, decider: Decider): HandState | null {
   const inHand = seats.filter(s => s.inHand && s.stack > 0)
-  if (inHand.length < 2) return
+  if (inHand.length < 2) return null
   assignPositions(seats, buttonIdx)
   // reset per-hand
   const deck = shuffle(freshDeck())
@@ -105,7 +106,7 @@ export function playHand(seats: SimSeat[], buttonIdx: number, sb: number, bb: nu
   for (const s of inHand) s.hole = [deck[di++], deck[di++]]
   const board: Card[] = []
 
-  const hs: HandState = { seats, board, pot: 0, currentBet: 0, minRaise: bb, street: 'preflop', buttonIdx, sb, bb, ante, actions: [] }
+  const hs: HandState = { seats, board, pot: 0, currentBet: 0, minRaise: bb, street: 'preflop', buttonIdx, sb, bb, ante, actions: [], winners: new Set<number>() }
 
   const post = (s: SimSeat, amt: number) => { const a = Math.min(amt, s.stack); s.stack -= a; s.bet += a; s.totalBet += a; if (s.stack === 0) s.allIn = true; return a }
 
@@ -146,7 +147,8 @@ export function playHand(seats: SimSeat[], buttonIdx: number, sb: number, bb: nu
   // final collect
   seats.forEach(s => { hs.pot += s.bet; s.bet = 0 })
 
-  awardPots(seats, board)
+  awardPots(seats, board, hs.winners)
+  return hs
 }
 
 function runBetting(hs: HandState, decider: Decider, startIdx: number): void {
@@ -198,10 +200,10 @@ function commit(_hs: HandState, s: SimSeat, amt: number): void { const a = Math.
 function logAct(hs: HandState, s: SimSeat, type: HandAction['type'], amount: number): void { hs.actions.push({ id: s.id, street: hs.street, type, amount, pos: s.position }) }
 
 // ── Side pots + showdown ─────────────────────────────────────────────────────
-function awardPots(seats: SimSeat[], board: Card[]): void {
+function awardPots(seats: SimSeat[], board: Card[], winnersOut?: Set<number>): void {
   const contributors = seats.filter(s => s.totalBet > 0)
   const live = seats.filter(s => s.inHand && !s.folded)
-  if (live.length === 1) { live[0].stack += contributors.reduce((a, s) => a + s.totalBet, 0); return }
+  if (live.length === 1) { live[0].stack += contributors.reduce((a, s) => a + s.totalBet, 0); winnersOut?.add(live[0].id); return }
   // build side pots from distinct contribution levels
   const levels = [...new Set(contributors.map(s => s.totalBet))].sort((a, b) => a - b)
   let prev = 0
@@ -217,7 +219,7 @@ function awardPots(seats: SimSeat[], board: Card[]): void {
       let best = -1; let winners: SimSeat[] = []
       for (const s of eligible) { const sc = rank7([...(s.hole as Card[]), ...board]); if (sc > best) { best = sc; winners = [s] } else if (sc === best) winners.push(s) }
       const share = Math.floor(potAmt / winners.length)
-      winners.forEach(w => (w.stack += share))
+      winners.forEach(w => { w.stack += share; winnersOut?.add(w.id) })
       winners[0].stack += potAmt - share * winners.length // odd chip to first winner
     } else {
       // everyone at this level folded → give to the live contributor(s) (rare)
