@@ -778,5 +778,29 @@
     "fpWhyDraw": "{{eq}} ≈ {{req}} required + implied odds.",
     "fpWhyFold": "equity {{eq}} < {{req}} required{{big}}.",
     "fpBigBet": " (big bet = strong range)"
+  },
+  "equity": {
+    "header": "🧠 How I reason",
+    "potLine": "The pot is <w>{{pot}}</w> and I must call <w>{{toCall}}</w>. My odds = bet ÷ (pot + bet) = {{toCall}} ÷ ({{pot}} + {{toCall}}) ≈ <gold>{{req}}</gold>: I need at least <gold>{{req}}</gold> equity to call.",
+    "outsIntro_one": "I have <w>{{count}}</w> out that improves me:",
+    "outsIntro_other": "I have <w>{{count}}</w> outs that improve me:",
+    "outsRule": "Outs rule ({{rule}}): these {{count}} out{{s}} ≈ <green>{{approx}}</green> draw equity{{cap}}{{weak}}.",
+    "ruleFlop": "×4 on the flop, 2 cards to come",
+    "ruleTurn": "×2 on the turn, 1 card to come",
+    "ruleCap": " (capped — beyond ~8 outs the rule overestimates)",
+    "ruleWeak": " (dominated draw → counted half)",
+    "noOuts": "No card really improves me — my equity comes only from what I already beat.",
+    "river": "No more cards to come: my equity is only what I beat at showdown.",
+    "realEquityOuts": "My real equity ≈ <green>{{eq}}</green> (simulation: I replay the hand thousands of times and count the share I win).",
+    "realEquityPreflop": "My real equity ≈ <green>{{eq}}</green> — estimated by simulation: I replay this hand thousands of times dealing random opponent hands + board, and count the share I win ({{eq}} here). No outs to show before the flop.",
+    "realEquityRiver": "My real equity ≈ <green>{{eq}}</green> — estimated by simulation: I replay the showdowns thousands of times and count the share I win.",
+    "whyTitle": "Why {{eq}} and not {{approx}}?",
+    "whyBody": " The {{approx}} only counts the times I hit an out. But I ALSO win without improving: <green>{{approx}}</green> (I improve) + <green>~{{sdv}}</green> (already ahead at showdown) ≈ <green>{{eq}}</green>.",
+    "whyCalc": "And that ~{{sdv}} is computed: I miss my outs ~<w2>{{noImp}}</w2> of the time × my hand already beats ~<w2>{{beat}}</w2> of their range at showdown (their bluffs, missed draws, lower cards) ≈ {{noImp}} × {{beat}} = ~{{sdv}}.",
+    "vFold": "❌ I need {{req}} and only have {{eq}} → I do NOT have the odds → I fold.",
+    "vCall": "✅ {{eq}} equity ≥ {{req}} required → I have the odds → I call.",
+    "vImplied": "≈ I'm a bit below the direct odds ({{eq}} vs {{req}}), but my implied odds — I win big when I hit — make up for it → call.",
+    "vRaiseValue": "✅ I have the odds ({{eq}} vs {{req}}) — and even better: I don't just call, I raise for value.",
+    "vRaiseBluff": "On odds alone I'm short ({{eq}} vs {{req}}), but I play this as a (semi-)bluff: the decision comes from fold equity, not the price."
   }
 }

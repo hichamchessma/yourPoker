@@ -1,4 +1,13 @@
+import { Trans, useTranslation } from 'react-i18next'
 import type { EquityReasoning, OutCard } from '../lib/postflopAdvisor'
+
+// Shared <Trans> tag → styled element map (white / gold / green / dim-white bolds).
+const TAGS = {
+  w: <b className="text-white" />,
+  w2: <b className="text-white/75" />,
+  gold: <b style={{ color: '#e8c547' }} />,
+  green: <b style={{ color: '#34d399' }} />,
+}
 
 // Tiny face-up card used to visualise outs / draws in the coach panels.
 export function MiniCard({ rank, suit, dim }: { rank: string; suit: string; dim?: boolean }) {
@@ -30,6 +39,7 @@ const money = (x: number) => `$${Math.round(x).toLocaleString('en-US')}`
 // quick rule-of-2/4 estimate → real equity → verdict (I have the odds or not).
 // Shared by the live coach panel and the hand-history critique so they read the same.
 export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
+  const { t } = useTranslation()
   const reqTxt = pct(r.potOdds)
   const eqTxt = pct(r.equity)
   const hasOuts = r.outs.length > 0
@@ -39,34 +49,29 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
     : r.verdict === 'raise-value' ? '#c9a227'
     : r.verdict === 'raise-bluff' ? '#3aa0d8'
     : '#34d399'
-  const verdictText =
-    r.verdict === 'fold'
-      ? `❌ Il me faut ${reqTxt} et je n'ai que ${eqTxt} → je n'ai PAS la cote → je me couche.`
-    : r.verdict === 'call'
-      ? `✅ ${eqTxt} d'équité ≥ ${reqTxt} requis → j'ai la cote → je paie.`
-    : r.verdict === 'implied'
-      ? `≈ Je suis un peu sous la cote directe (${eqTxt} vs ${reqTxt}), mais mes gains implicites — je gagne gros quand je touche — la compensent → call.`
-    : r.verdict === 'raise-value'
-      ? `✅ J'ai la cote (${eqTxt} vs ${reqTxt}) — et même mieux : je ne me contente pas de payer, je relance pour la valeur.`
-      : `Sur la seule cote je n'ai pas le compte (${eqTxt} vs ${reqTxt}), mais je joue ce coup en (semi-)bluff : la décision vient de la fold equity, pas du prix.`
+  const verdictKey =
+    r.verdict === 'fold' ? 'equity.vFold'
+    : r.verdict === 'call' ? 'equity.vCall'
+    : r.verdict === 'implied' ? 'equity.vImplied'
+    : r.verdict === 'raise-value' ? 'equity.vRaiseValue'
+    : 'equity.vRaiseBluff'
+  const realEquityKey = hasOuts ? 'equity.realEquityOuts' : r.preflop ? 'equity.realEquityPreflop' : 'equity.realEquityRiver'
 
   return (
     <div className="mb-4 rounded-xl border border-[#3aa0d8]/25 bg-[#3aa0d8]/[0.06] p-3">
-      <p className="text-[9px] uppercase tracking-widest text-[#7cc4ec] font-bold mb-2">🧠 Comment je raisonne</p>
+      <p className="text-[9px] uppercase tracking-widest text-[#7cc4ec] font-bold mb-2">{t('equity.header')}</p>
       <div className="space-y-1.5">
         {/* Pot odds */}
         <p className="text-[12.5px] text-white/80 leading-relaxed">
           <span className="text-[#3aa0d8] mr-1">▸</span>
-          Le pot fait <b className="text-white">{money(r.pot)}</b> et je dois payer <b className="text-white">{money(r.toCall)}</b>.
-          {' '}Ma cote = mise ÷ (pot + mise) = {money(r.toCall)} ÷ ({money(r.pot)} + {money(r.toCall)}) ≈ <b style={{ color: '#e8c547' }}>{reqTxt}</b> :
-          {' '}il me faut au moins <b style={{ color: '#e8c547' }}>{reqTxt}</b> d'équité pour payer.
+          <Trans i18nKey="equity.potLine" components={TAGS} values={{ pot: money(r.pot), toCall: money(r.toCall), req: reqTxt }} />
         </p>
 
         {/* Outs as cards (flop/turn) */}
         {r.cardsToCome > 0 && hasOuts && (
           <div className="text-[12.5px] text-white/80 leading-relaxed">
             <span className="text-[#3aa0d8] mr-1">▸</span>
-            J'ai <b className="text-white">{r.outs.length}</b> out{r.outs.length > 1 ? 's' : ''} qui m'améliorent :
+            <Trans i18nKey="equity.outsIntro" count={r.outs.length} components={TAGS} values={{ count: r.outs.length }} />
             <div className="mt-1 mb-1 space-y-1 pl-4">
               {groupOuts(r.outs).map(g => {
                 const weak = g.cards.every(c => c.weak)
@@ -84,19 +89,24 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
               })}
             </div>
             <span className="text-[#3aa0d8] mr-1">▸</span>
-            Règle des outs ({r.cardsToCome === 2 ? '×4 au flop, 2 cartes à venir' : '×2 au turn, 1 carte à venir'}) : ces {r.outs.length} out{r.outs.length > 1 ? 's' : ''} ≈ <b style={{ color: '#34d399' }}>{pct(r.outsApprox)}</b> d'équité de tirage{r.outs.length > 8 && r.cardsToCome === 2 ? ' (plafonné — au-delà de ~8 outs la règle surestime)' : ''}{weakOnly ? ' (tirage dominé → compté de moitié)' : ''}.
+            <Trans i18nKey="equity.outsRule" components={TAGS} values={{
+              rule: r.cardsToCome === 2 ? t('equity.ruleFlop') : t('equity.ruleTurn'),
+              count: r.outs.length, s: r.outs.length > 1 ? 's' : '', approx: pct(r.outsApprox),
+              cap: r.outs.length > 8 && r.cardsToCome === 2 ? t('equity.ruleCap') : '',
+              weak: weakOnly ? t('equity.ruleWeak') : '',
+            }} />
           </div>
         )}
         {r.cardsToCome > 0 && !hasOuts && (
           <p className="text-[12.5px] text-white/80 leading-relaxed">
             <span className="text-[#3aa0d8] mr-1">▸</span>
-            Aucune carte ne m'améliore vraiment — mon équité vient seulement de ce que je bats déjà.
+            {t('equity.noOuts')}
           </p>
         )}
         {r.cardsToCome === 0 && !r.preflop && (
           <p className="text-[12.5px] text-white/80 leading-relaxed">
             <span className="text-[#3aa0d8] mr-1">▸</span>
-            Plus de carte à venir : mon équité, c'est uniquement ce que je bats à l'abattage.
+            {t('equity.river')}
           </p>
         )}
 
@@ -105,12 +115,7 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
             (preflop / river, no outs) spell out the Monte-Carlo simulation. */}
         <p className="text-[12.5px] text-white/80 leading-relaxed">
           <span className="text-[#3aa0d8] mr-1">▸</span>
-          Mon équité réelle ≈ <b style={{ color: '#34d399' }}>{eqTxt}</b>
-          {hasOuts
-            ? ' (simulation : je rejoue le coup des milliers de fois et je compte la part où je gagne).'
-            : r.preflop
-              ? ` — estimée par simulation : je rejoue ce coup des milliers de fois en distribuant au hasard les mains adverses + le board, et je compte la part où je gagne (${eqTxt} ici). Pas d'outs à montrer avant le flop.`
-              : ' — estimée par simulation : je rejoue les abattages des milliers de fois et je compte la part où je gagne.'}
+          <Trans i18nKey={realEquityKey} components={TAGS} values={{ eq: eqTxt }} />
         </p>
 
         {/* Why real equity > raw outs: the outs only count the times I IMPROVE; I also
@@ -122,16 +127,19 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
           const beatShare = Math.min(0.99, sdv / noImp)  // P(my current hand beats his range | no improve)
           return (
             <p className="text-[12px] leading-relaxed rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(52,211,153,0.08)', color: 'rgba(255,255,255,0.78)' }}>
-              <span className="font-bold" style={{ color: '#34d399' }}>Pourquoi {eqTxt} et pas {pct(r.outsApprox)} ?</span> Les {pct(r.outsApprox)} ne comptent QUE les fois où je touche un out. Mais je gagne AUSSI sans m'améliorer : <b style={{ color: '#34d399' }}>{pct(r.outsApprox)}</b> (j'améliore) + <b style={{ color: '#34d399' }}>~{pct(sdv)}</b> (déjà devant au showdown) ≈ <b style={{ color: '#34d399' }}>{eqTxt}</b>.
+              <span className="font-bold" style={{ color: '#34d399' }}>{t('equity.whyTitle', { eq: eqTxt, approx: pct(r.outsApprox) })}</span>
+              <Trans i18nKey="equity.whyBody" components={TAGS} values={{ approx: pct(r.outsApprox), sdv: pct(sdv), eq: eqTxt }} />
               <br />
-              <span className="text-white/55">Et ce ~{pct(sdv)} se calcule : je rate mes outs ~<b className="text-white/75">{pct(noImp)}</b> du temps × ma main bat déjà ~<b className="text-white/75">{pct(beatShare)}</b> de sa range au showdown (ses bluffs, tirages ratés, cartes plus basses) ≈ {pct(noImp)} × {pct(beatShare)} = ~{pct(sdv)}.</span>
+              <span className="text-white/55">
+                <Trans i18nKey="equity.whyCalc" components={TAGS} values={{ sdv: pct(sdv), noImp: pct(noImp), beat: pct(beatShare) }} />
+              </span>
             </p>
           )
         })()}
 
         {/* Verdict */}
         <p className="text-[13px] leading-relaxed font-semibold mt-0.5" style={{ color: verdictColor }}>
-          {verdictText}
+          {t(verdictKey, { eq: eqTxt, req: reqTxt })}
         </p>
       </div>
     </div>

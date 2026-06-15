@@ -778,5 +778,29 @@
     "fpWhyDraw": "{{eq}} ≈ {{req}} requis + gains implicites.",
     "fpWhyFold": "équité {{eq}} < {{req}} requis{{big}}.",
     "fpBigBet": " (grosse mise = range forte)"
+  },
+  "equity": {
+    "header": "🧠 Comment je raisonne",
+    "potLine": "Le pot fait <w>{{pot}}</w> et je dois payer <w>{{toCall}}</w>. Ma cote = mise ÷ (pot + mise) = {{toCall}} ÷ ({{pot}} + {{toCall}}) ≈ <gold>{{req}}</gold> : il me faut au moins <gold>{{req}}</gold> d'équité pour payer.",
+    "outsIntro_one": "J'ai <w>{{count}}</w> out qui m'améliore :",
+    "outsIntro_other": "J'ai <w>{{count}}</w> outs qui m'améliorent :",
+    "outsRule": "Règle des outs ({{rule}}) : ces {{count}} out{{s}} ≈ <green>{{approx}}</green> d'équité de tirage{{cap}}{{weak}}.",
+    "ruleFlop": "×4 au flop, 2 cartes à venir",
+    "ruleTurn": "×2 au turn, 1 carte à venir",
+    "ruleCap": " (plafonné — au-delà de ~8 outs la règle surestime)",
+    "ruleWeak": " (tirage dominé → compté de moitié)",
+    "noOuts": "Aucune carte ne m'améliore vraiment — mon équité vient seulement de ce que je bats déjà.",
+    "river": "Plus de carte à venir : mon équité, c'est uniquement ce que je bats à l'abattage.",
+    "realEquityOuts": "Mon équité réelle ≈ <green>{{eq}}</green> (simulation : je rejoue le coup des milliers de fois et je compte la part où je gagne).",
+    "realEquityPreflop": "Mon équité réelle ≈ <green>{{eq}}</green> — estimée par simulation : je rejoue ce coup des milliers de fois en distribuant au hasard les mains adverses + le board, et je compte la part où je gagne ({{eq}} ici). Pas d'outs à montrer avant le flop.",
+    "realEquityRiver": "Mon équité réelle ≈ <green>{{eq}}</green> — estimée par simulation : je rejoue les abattages des milliers de fois et je compte la part où je gagne.",
+    "whyTitle": "Pourquoi {{eq}} et pas {{approx}} ?",
+    "whyBody": " Les {{approx}} ne comptent QUE les fois où je touche un out. Mais je gagne AUSSI sans m'améliorer : <green>{{approx}}</green> (j'améliore) + <green>~{{sdv}}</green> (déjà devant au showdown) ≈ <green>{{eq}}</green>.",
+    "whyCalc": "Et ce ~{{sdv}} se calcule : je rate mes outs ~<w2>{{noImp}}</w2> du temps × ma main bat déjà ~<w2>{{beat}}</w2> de sa range au showdown (ses bluffs, tirages ratés, cartes plus basses) ≈ {{noImp}} × {{beat}} = ~{{sdv}}.",
+    "vFold": "❌ Il me faut {{req}} et je n'ai que {{eq}} → je n'ai PAS la cote → je me couche.",
+    "vCall": "✅ {{eq}} d'équité ≥ {{req}} requis → j'ai la cote → je paie.",
+    "vImplied": "≈ Je suis un peu sous la cote directe ({{eq}} vs {{req}}), mais mes gains implicites — je gagne gros quand je touche — la compensent → call.",
+    "vRaiseValue": "✅ J'ai la cote ({{eq}} vs {{req}}) — et même mieux : je ne me contente pas de payer, je relance pour la valeur.",
+    "vRaiseBluff": "Sur la seule cote je n'ai pas le compte ({{eq}} vs {{req}}), mais je joue ce coup en (semi-)bluff : la décision vient de la fold equity, pas du prix."
   }
 }

@@ -778,5 +778,29 @@
     "fpWhyDraw": "{{eq}} ≈ {{req}} requerido + odds implícitas.",
     "fpWhyFold": "equity {{eq}} < {{req}} requerido{{big}}.",
     "fpBigBet": " (apuesta grande = rango fuerte)"
+  },
+  "equity": {
+    "header": "🧠 Cómo razono",
+    "potLine": "El bote es <w>{{pot}}</w> y debo pagar <w>{{toCall}}</w>. Mis odds = apuesta ÷ (bote + apuesta) = {{toCall}} ÷ ({{pot}} + {{toCall}}) ≈ <gold>{{req}}</gold>: necesito al menos <gold>{{req}}</gold> de equity para pagar.",
+    "outsIntro_one": "Tengo <w>{{count}}</w> out que me mejora:",
+    "outsIntro_other": "Tengo <w>{{count}}</w> outs que me mejoran:",
+    "outsRule": "Regla de outs ({{rule}}): estos {{count}} out{{s}} ≈ <green>{{approx}}</green> de equity de proyecto{{cap}}{{weak}}.",
+    "ruleFlop": "×4 en el flop, faltan 2 cartas",
+    "ruleTurn": "×2 en el turn, falta 1 carta",
+    "ruleCap": " (limitado — más allá de ~8 outs la regla sobreestima)",
+    "ruleWeak": " (proyecto dominado → contado a la mitad)",
+    "noOuts": "Ninguna carta me mejora de verdad — mi equity viene solo de lo que ya gano.",
+    "river": "No quedan cartas: mi equity es solo lo que gano en el showdown.",
+    "realEquityOuts": "Mi equity real ≈ <green>{{eq}}</green> (simulación: rejuego la mano miles de veces y cuento la parte que gano).",
+    "realEquityPreflop": "Mi equity real ≈ <green>{{eq}}</green> — estimada por simulación: rejuego esta mano miles de veces repartiendo al azar las manos rivales + el board, y cuento la parte que gano ({{eq}} aquí). No hay outs que mostrar antes del flop.",
+    "realEquityRiver": "Mi equity real ≈ <green>{{eq}}</green> — estimada por simulación: rejuego los showdowns miles de veces y cuento la parte que gano.",
+    "whyTitle": "¿Por qué {{eq}} y no {{approx}}?",
+    "whyBody": " El {{approx}} solo cuenta las veces que ligo un out. Pero TAMBIÉN gano sin mejorar: <green>{{approx}}</green> (mejoro) + <green>~{{sdv}}</green> (ya por delante en el showdown) ≈ <green>{{eq}}</green>.",
+    "whyCalc": "Y ese ~{{sdv}} se calcula: fallo mis outs ~<w2>{{noImp}}</w2> del tiempo × mi mano ya gana a ~<w2>{{beat}}</w2> de su rango en el showdown (sus faroles, proyectos fallados, cartas más bajas) ≈ {{noImp}} × {{beat}} = ~{{sdv}}.",
+    "vFold": "❌ Necesito {{req}} y solo tengo {{eq}} → NO tengo las odds → foldeo.",
+    "vCall": "✅ {{eq}} de equity ≥ {{req}} requerido → tengo las odds → pago.",
+    "vImplied": "≈ Estoy un poco por debajo de las odds directas ({{eq}} vs {{req}}), pero mis odds implícitas — gano mucho al ligar — lo compensan → pago.",
+    "vRaiseValue": "✅ Tengo las odds ({{eq}} vs {{req}}) — y aún mejor: no solo pago, subo por valor.",
+    "vRaiseBluff": "Solo con las odds no me llega ({{eq}} vs {{req}}), pero juego esta mano como (semi)farol: la decisión viene de la fold equity, no del precio."
   }
 }
