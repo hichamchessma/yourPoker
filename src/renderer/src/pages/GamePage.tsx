@@ -1,5 +1,8 @@
 ﻿import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import i18n from '../i18n'
+// Module-level helper for the (non-component) hand-history critique builder.
+const tc = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye, FastForward } from 'lucide-react'
@@ -649,30 +652,31 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // jam-or-fold zone marks jam hands 'raise' (the normal path would use '3bet').
     const isReshoveCrit = rec === 'raise' && (scenario === 'vsopen' || scenario === 'squeeze')
     const recLabel = rec === 'fold' ? 'FOLD'
-      : rec === 'call' ? (vsJam ? 'CALL (paie le tapis)' : 'CALL')
-      : rec === '3bet' ? (scenario === 'squeeze' ? 'SQUEEZE (3-bet)' : '3-BET')
-      : rec === '4bet' ? (scenario === 'vs4bet' ? '5-BET / TAPIS' : '4-BET')
-      : isReshoveCrit ? '3-BET TAPIS (re-shove)'
-      : scenario === 'iso' ? 'ISO-RAISE' : 'OPEN/RAISE'
-    const ctx = vsJam ? `en ${hero.position}, face à ${numAllIn} tapis (all-in)`
-      : scenario === 'rfi' ? `en ${hero.position}, personne n’a ouvert`
-      : scenario === 'iso' ? `en ${hero.position}, des limpers devant (iso-raise)`
-      : scenario === 'vsopen' ? `en ${hero.position}, face à l’ouverture${lastAggressorName ? ' de ' + lastAggressorName : ''}`
-      : scenario === 'squeeze' ? `en ${hero.position}, face à une relance + suiveur (squeeze)`
-      : scenario === 'vs4bet' ? `en ${hero.position}, face à un 4-bet`
-      : `en ${hero.position}, face au 3-bet${lastAggressorName ? ' de ' + lastAggressorName : ''}`
-    lines.push(`Situation : ${ctx}. Ta main : ${key}.`)
-    lines.push(`Range de référence : ${key} se joue ${recLabel}.`)
+      : rec === 'call' ? (vsJam ? tc('crit.recCallJam') : tc('crit.recCall'))
+      : rec === '3bet' ? (scenario === 'squeeze' ? tc('crit.recSqueeze') : tc('crit.rec3bet'))
+      : rec === '4bet' ? (scenario === 'vs4bet' ? tc('crit.rec5betJam') : tc('crit.rec4bet'))
+      : isReshoveCrit ? tc('crit.recReshove')
+      : scenario === 'iso' ? tc('crit.recIso') : tc('crit.recOpen')
+    const from = lastAggressorName ? tc('crit.ctxFrom', { name: lastAggressorName }) : ''
+    const ctx = vsJam ? tc('crit.ctxJam', { pos: hero.position, n: numAllIn })
+      : scenario === 'rfi' ? tc('crit.ctxRfi', { pos: hero.position })
+      : scenario === 'iso' ? tc('crit.ctxIso', { pos: hero.position })
+      : scenario === 'vsopen' ? tc('crit.ctxVsopen', { pos: hero.position, from })
+      : scenario === 'squeeze' ? tc('crit.ctxSqueeze', { pos: hero.position })
+      : scenario === 'vs4bet' ? tc('crit.ctxVs4bet', { pos: hero.position })
+      : tc('crit.ctxVs3bet', { pos: hero.position, from })
+    lines.push(tc('crit.pfSituation', { ctx, key }))
+    lines.push(tc('crit.pfRefRange', { key, rec: recLabel }))
     // For an "open too wide" call, separate a genuine punt from a borderline open
     // that's only a hair outside the range — the latter is a mix, not a leak.
     const openMargin = scenario === 'rfi' ? handOpenRank(key) - openPctFor(hero.position, playersBehind) : 99
-    if (heroCat === recCat) { verdict = 'good'; headline = `Bon coup — ${recLabel}` ; lines.push('Ton choix colle à la range standard de cette position/situation. ✅') }
-    else if (recCat === 'fold' && heroCat === 'aggr' && openMargin <= 12) { verdict = 'ok'; headline = 'Open borderline'; lines.push(`${key} est juste en dehors de la range standard (${recLabel === 'FOLD' ? 'fold' : recLabel}) — un open marginal qui se défend/se mixe ici, pas une fuite.`) }
-    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Trop large'; lines.push(`${key} n’est pas dans ta range ici — jouer ce coup perd de l’argent sur le long terme.`) }
-    else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = 'Trop passif'; lines.push(`${key} devrait ${recLabel} (value + initiative), pas seulement suivre — tu laisses de la valeur et de la fold equity.`) }
-    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold trop serré'; lines.push(`${key} est assez fort pour ${recLabel} — le coucher est une fuite.`) }
-    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push(`${key} est plutôt un call ici ; relancer te fait jouer un gros pot dominé une partie du temps.`) }
-    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = 'Fold un peu serré'; lines.push(`${key} pouvait suivre (cote/jouabilité), mais le fold reste défendable.`) }
+    if (heroCat === recCat) { verdict = 'good'; headline = tc('crit.hGood', { rec: recLabel }); lines.push(tc('crit.lGoodPre')) }
+    else if (recCat === 'fold' && heroCat === 'aggr' && openMargin <= 12) { verdict = 'ok'; headline = tc('crit.hOpenBorderline'); lines.push(tc('crit.lOpenBorderline', { key, rec: rec === 'fold' ? tc('crit.foldWord') : recLabel })) }
+    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hTooWide'); lines.push(tc('crit.lTooWide', { key })) }
+    else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = tc('crit.hTooPassive'); lines.push(tc('crit.lTooPassivePre', { key, rec: recLabel })) }
+    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hFoldTooTight'); lines.push(tc('crit.lFoldTooTight', { key, rec: recLabel })) }
+    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = tc('crit.hOverAggro'); lines.push(tc('crit.lOverAggroPre', { key })) }
+    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = tc('crit.hFoldSlightlyTight'); lines.push(tc('crit.lFoldSlightlyTight', { key })) }
   } else {
     const villainBets = record.actions.slice(0, actionIdx).filter(a => isAggroAction(a, pfInfo.deadAllIn))
     const postBets = villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')
@@ -718,13 +722,13 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
       decision: adv.action === 'FOLD' ? 'fold' : adv.action === 'CALL' ? 'call' : 'aggro' })
-    const phaseLbl = PHASE_LABEL[phase] ?? phase
-    lines.push(`Situation : ${phaseLbl}, board ${board.map(c => c.rank + c.suit).join(' ')}${lastAggressorName && toCall > 0 ? `, ${lastAggressorName} a misé` : ''}.`)
-    lines.push(`Ton équité ≈ ${pct(adv.equity)}${toCall > 0 ? ` — cote requise ${pct(adv.potOdds)}` : ''} ; ta main : ${adv.madeHand}${adv.draws.length ? ' + ' + adv.draws.join(' + ') : ''}.`)
-    lines.push(`Coup optimal : ${adv.action} (${adv.sizingText}).`)
+    const phaseLbl = tc(phase === 'flop' ? 'crit.phaseFlop' : phase === 'turn' ? 'crit.phaseTurn' : phase === 'river' ? 'crit.phaseRiver' : 'crit.phasePreflop')
+    lines.push(tc('crit.pSituation', { phase: phaseLbl, board: board.map(c => c.rank + c.suit).join(' '), aggr: lastAggressorName && toCall > 0 ? tc('crit.pBetSuffix', { name: lastAggressorName }) : '' }))
+    lines.push(tc('crit.pEquityHand', { eq: pct(adv.equity), odds: toCall > 0 ? tc('crit.pOddsReq', { odds: pct(adv.potOdds) }) : '', made: adv.madeHand, draws: adv.draws.length ? tc('crit.pDraws', { draws: adv.draws.join(' + ') }) : '' }))
+    lines.push(tc('crit.pOptimal', { action: adv.action, sizing: adv.sizingText }))
     adv.reasons.slice(1, 3).forEach(r => lines.push(r))
     if (heroCat === recCat) {
-      verdict = 'good'; headline = `Bon coup — ${adv.action}`; lines.push('Ta décision correspond au coup recommandé. ✅')
+      verdict = 'good'; headline = tc('crit.hGoodPost', { action: adv.action }); lines.push(tc('crit.lGoodPost'))
       // SIZING check on a value BET: the right action category isn't enough — a giant
       // overbet/jam folds out the worse hands you beat (lost value), while a tiny bet
       // under-charges draws. Only when you opened the betting (toCall === 0).
@@ -733,30 +737,30 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
         const sprNow = effStack / pot
         const isValue = adv.equity >= 0.6
         if (isValue && betFrac > 1.15) {
-          verdict = 'ok'; headline = 'Sizing — surbet'
-          lines.push(`⚠️ Sizing : tu mises ${Math.round(betFrac * 100)}% du pot${act.actionType === 'ALL-IN' ? ' (tapis)' : ''} — un SURBET avec une main de valeur. Tu fais fuir les pires mains (2e paire, As faible, tirages) qui paieraient ~⅔ pot → tu perds de la value.${sprNow <= 1.8 ? ` Cela dit, à SPR bas (~${sprNow.toFixed(1)}) tu finis tapis de toute façon : l'erreur reste mineure.` : ' Vise ~⅔–¾ pot pour garder sa range plus large.'}`)
+          verdict = 'ok'; headline = tc('crit.hSizeOverbet')
+          lines.push(tc('crit.lSizeOverbet', { pct: Math.round(betFrac * 100), allin: act.actionType === 'ALL-IN' ? tc('crit.pAllinSuffix') : '', tail: sprNow <= 1.8 ? tc('crit.lSizeOverbetLowSpr', { spr: sprNow.toFixed(1) }) : tc('crit.lSizeOverbetHighSpr') }))
         } else if (isValue && betFrac < 0.4) {
-          verdict = 'ok'; headline = 'Sizing — trop petit'
-          lines.push(`⚠️ Sizing : ${Math.round(betFrac * 100)}% du pot, c'est trop peu pour une main forte — tu laisses de la value et tu protèges mal contre les tirages. Vise ~⅔ pot.`)
+          verdict = 'ok'; headline = tc('crit.hSizeTooSmall')
+          lines.push(tc('crit.lSizeTooSmall', { pct: Math.round(betFrac * 100) }))
         }
       }
     }
-    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = 'Tu continues trop'; lines.push(`Ton équité (${pct(adv.equity)}) est sous la cote (${pct(adv.potOdds)}) : payer/relancer perd à long terme.`) }
+    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hContinueTooMuch'); lines.push(tc('crit.lContinueTooMuch', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
     else if (recCat === 'aggr' && heroCat === 'passive') {
       // CHECKING a LOCKED monster (full house+) multiway is a valid slow-play/trap, not
       // a leak: the hand needs no protection (board paired) and betting folds out the
       // air that would otherwise bluff/jam into you. Don't condemn it.
       const monster = adv.madeCat >= 6 // full house, quads or straight flush — locked, language-agnostic
       if (act.actionType === 'CHECK' && monster && opponents >= 2) {
-        verdict = 'good'; headline = 'Slow-play OK'
-        lines.push(`Checker un monstre verrouillé (${adv.madeHand}) en multiway est un trap valide : ta main n'a rien à protéger (board pairé), et miser ferait fuir l'air qui peut bluffer/jam derrière. Le coach « value-bet » par défaut, mais ici le check (piège) est au moins aussi rentable. ✅`)
+        verdict = 'good'; headline = tc('crit.hSlowplayOK')
+        lines.push(tc('crit.lSlowplayOK', { made: adv.madeHand }))
       } else {
-        verdict = 'ok'; headline = 'Trop passif'; lines.push('Tu avais une main/équité pour miser ou relancer (value + protection) — checker/suivre laisse de la valeur.')
+        verdict = 'ok'; headline = tc('crit.hTooPassive'); lines.push(tc('crit.lTooPassivePost'))
       }
     }
-    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold de trop'; lines.push('Tu te couches une main qui devait miser pour la valeur.') }
-    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = 'Sur-agressif'; lines.push('Relancer transforme une main de showdown/bluffcatch en cible : tu fais fuir les pires mains et payer les meilleures.') }
-    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = 'Fold rentable manqué'; lines.push(`Tu avais la cote (${pct(adv.equity)} ≥ ${pct(adv.potOdds)}) : se coucher jette de l’EV.`) }
+    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hFoldTooMany'); lines.push(tc('crit.lFoldTooMany')) }
+    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = tc('crit.hOverAggro'); lines.push(tc('crit.lOverAggroPost')) }
+    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hMissedFold'); lines.push(tc('crit.lMissedFold', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
   }
   return { verdict, headline, lines, reasoning }
 }
