@@ -1058,7 +1058,8 @@
     "undoTip": "Deshacer la última acción introducida (Retroceso ⌫)",
     "undoBtn": "Deshacer",
     "reviveTip": "Recrea este spot exacto como sandbox jugable — los rivales mantienen su rango, sus cartas se sacan al azar dentro",
-    "betSizeTip": "{{label}} bote — tecla « {{key}} »"
+    "betSizeTip": "{{label}} bote — tecla « {{key}} »",
+    "youShort": "Tú"
   },
   "htr": {
     "settings": "Ajustes del ejercicio",
@@ -1190,8 +1191,8 @@
     "analyze": "Analizar",
     "hand": "Mano",
     "pot": "bote",
-    "won": "+{{n}}",
-    "lost": "{{n}}",
+    "won": "+{{n}} BB",
+    "lost": "{{n}} BB",
     "preflop": "preflop (all-in)",
     "reportTitle": "Informe del torneo"
   }

@@ -1058,7 +1058,8 @@
     "undoTip": "Annuler la dernière action saisie (touche Retour ⌫)",
     "undoBtn": "Annuler",
     "reviveTip": "Recrée cette situation exacte en simulation jouable — les adversaires gardent leur range, leurs cartes sont retirées au hasard dedans",
-    "betSizeTip": "{{label}} pot — touche « {{key}} »"
+    "betSizeTip": "{{label}} pot — touche « {{key}} »",
+    "youShort": "Vous"
   },
   "htr": {
     "settings": "Réglages de l'exercice",
@@ -1190,8 +1191,8 @@
     "analyze": "Analyser",
     "hand": "Main",
     "pot": "pot",
-    "won": "+{{n}}",
-    "lost": "{{n}}",
+    "won": "+{{n}} BB",
+    "lost": "{{n}} BB",
     "preflop": "préflop (tapis)",
     "reportTitle": "Compte-rendu du tournoi"
   }

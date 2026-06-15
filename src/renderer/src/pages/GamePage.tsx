@@ -1028,11 +1028,12 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                         </div>
                       )}
                       {/* Name badge */}
-                      <div className={`px-2.5 py-0.5 rounded-lg border text-[12.5px] font-bold whitespace-nowrap
+                      <div className={`px-2.5 py-0.5 rounded-lg border text-[12.5px] font-bold whitespace-nowrap flex items-center gap-1.5
                         ${pl.isHero?'border-[#00d4ff]/50 bg-[#00d4ff]/10 text-[#00d4ff]'
                         :isWinner?'border-[#c9a227]/60 bg-[#c9a227]/10 text-[#c9a227]'
                         :'border-white/10 bg-black/40 text-white/70'}`}>
-                        {pl.isHero ? 'Vous' : pl.name}
+                        {pl.isHero ? t('sess.youShort') : pl.name}
+                        {pl.position && <span className="text-[8px] font-black px-1 rounded bg-[#c9a227]/15 text-[#c9a227]/90 border border-[#c9a227]/25 uppercase tracking-wider">{pl.position}</span>}
                       </div>
                       <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">${stack}</div>
                       {isWinner && <div className="text-lg">🏆</div>}

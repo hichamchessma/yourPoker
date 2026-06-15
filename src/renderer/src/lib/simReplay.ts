@@ -109,10 +109,23 @@ function buildRecord(
     }
   }
 
+  // ALL-IN run-out: the engine deals the remaining board with NO betting, so no street
+  // marker was emitted for it — the replay (driven by markers) would then never reveal
+  // the board. Emit the missing markers for every street the board actually reached, in
+  // order, so the run-out board shows up exactly like a normal showdown.
+  const marked = new Set(out.filter(o => o.seatIdx === -1).map(o => o.phase))
+  const reachedStreets = (['flop', 'turn', 'river'] as const).filter((_st, i) => hs.board.length >= 3 + i)
+  for (const st of reachedStreets) {
+    if (marked.has(st)) continue
+    collected += sumCur(); for (const k of Object.keys(curBet)) delete curBet[+k]
+    marker(st)
+  }
+
   const finalPot = dealt.reduce((s, x) => s + x.totalBet, 0)
   const board5: (Card | null)[] = [0, 1, 2, 3, 4].map(i => hs.board[i] ?? null)
   const coach = dealt.find(s => s.kind === 'coach')
-  const heroProfit = coach ? coach.stack - (startStacks[coach.id] ?? coach.stack) : 0
+  // heroProfit is stored in BIG BLINDS (like the live recorder), not chips.
+  const heroProfit = coach && bb > 0 ? Math.round(((coach.stack - (startStacks[coach.id] ?? coach.stack)) / bb) * 10) / 10 : 0
 
   return {
     id: handNum, handNum, date: new Date(),

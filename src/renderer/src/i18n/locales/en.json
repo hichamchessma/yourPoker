@@ -1058,7 +1058,8 @@
     "undoTip": "Undo the last entered action (Backspace ⌫)",
     "undoBtn": "Undo",
     "reviveTip": "Re-create this exact spot as a playable sandbox — opponents keep their range, their cards are drawn at random within it",
-    "betSizeTip": "{{label}} pot — press « {{key}} »"
+    "betSizeTip": "{{label}} pot — press « {{key}} »",
+    "youShort": "You"
   },
   "htr": {
     "settings": "Exercise settings",
@@ -1190,8 +1191,8 @@
     "analyze": "Review",
     "hand": "Hand",
     "pot": "pot",
-    "won": "+{{n}}",
-    "lost": "{{n}}",
+    "won": "+{{n}} BB",
+    "lost": "{{n}} BB",
     "preflop": "preflop (all-in)",
     "reportTitle": "Tournament report"
   }
