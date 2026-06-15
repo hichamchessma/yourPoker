@@ -26,7 +26,7 @@ const ACT: Record<TAction, { label: string; color: string; fg: string }> = {
   '3bet': { label: '3-BET', color: '#dc2626', fg: '#fff' },
   fold: { label: 'FOLD', color: '#27313f', fg: '#9aa4b2' },
 }
-const SCEN_LABEL: Record<TScenario, string> = { open: 'Ouverture (RFI)', vsopen: 'Face à une relance' }
+const SCEN_LABEL: Record<TScenario, string> = { open: 'htr.scenOpen', vsopen: 'htr.scenVsopen' }
 
 // Standard action for a (scenario, position, hand) from the app's reference charts.
 function standardAction(scenario: TScenario, position: string, key: string, openerPos = 'CO'): TAction {
@@ -185,18 +185,18 @@ export default function HandTrainerPage() {
           {screen === 'setup' && (
             <motion.div key="setup" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="w-full max-w-md mt-10 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-              <h2 className="text-[#00d4ff] font-black uppercase tracking-widest text-sm mb-1">Réglages de l'exercice</h2>
-              <p className="text-[10px] text-white/35 mb-5">{mode === 'custom' ? 'Tes ranges personnalisées' : 'Ranges standard'}</p>
+              <h2 className="text-[#00d4ff] font-black uppercase tracking-widest text-sm mb-1">{t('htr.settings')}</h2>
+              <p className="text-[10px] text-white/35 mb-5">{mode === 'custom' ? t('htr.customRanges') : t('htr.standardRanges')}</p>
 
-              <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Nombre de mains</label>
+              <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">{t('htr.numHands')}</label>
               <div className="flex items-center gap-3 mt-2 mb-5">
                 <input type="range" min={5} max={50} step={5} value={numHands} onChange={e => setNumHands(+e.target.value)} className="flex-1 accent-[#00d4ff]" />
                 <span className="text-lg font-black text-[#00d4ff] font-mono w-10 text-right">{numHands}</span>
               </div>
 
-              <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Type de spots</label>
+              <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">{t('htr.spotType')}</label>
               <div className="flex gap-1.5 mt-2 mb-6">
-                {([['mixed', 'Mixte'], ['open', 'Ouverture'], ['vsopen', 'Face à relance']] as const).map(([id, lbl]) => (
+                {([['mixed', t('htr.filterMixed')], ['open', t('htr.filterOpen')], ['vsopen', t('htr.filterVsopen')]] as const).map(([id, lbl]) => (
                   <button key={id} onClick={() => setScenFilter(id)}
                     className={`flex-1 py-2 rounded-lg text-[10px] font-bold border transition-all ${scenFilter === id ? 'bg-[#00d4ff] text-black border-[#00d4ff]' : 'bg-white/5 text-white/50 border-white/10 hover:bg-white/10'}`}>{lbl}</button>
                 ))}
@@ -205,10 +205,10 @@ export default function HandTrainerPage() {
               <button onClick={startQuiz}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black uppercase tracking-[0.2em] text-sm transition-all hover:scale-[1.02]"
                 style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
-                <Play size={16} /> Commencer l'entraînement
+                <Play size={16} /> {t('htr.start')}
               </button>
               {mode === 'custom' && (
-                <button onClick={() => setScreen('editor')} className="w-full mt-2 py-2 text-[10px] text-white/40 hover:text-white/70 uppercase tracking-widest">← Modifier mes ranges</button>
+                <button onClick={() => setScreen('editor')} className="w-full mt-2 py-2 text-[10px] text-white/40 hover:text-white/70 uppercase tracking-widest">{t('htr.editRanges')}</button>
               )}
             </motion.div>
           )}
@@ -230,14 +230,14 @@ export default function HandTrainerPage() {
             <motion.div key="result" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
               className="w-full max-w-md mt-12 rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center">
               <Trophy size={40} className="mx-auto text-[#c9a227] mb-2" />
-              <h2 className="text-white/80 font-black uppercase tracking-widest text-sm">Résultat</h2>
+              <h2 className="text-white/80 font-black uppercase tracking-widest text-sm">{t('htr.result')}</h2>
               <p className="text-5xl font-black text-[#00d4ff] font-mono my-3">{score}<span className="text-white/30 text-2xl">/{questions.length}</span></p>
               <p className="text-sm font-bold mb-4" style={{ color: score / questions.length >= 0.8 ? '#4ade80' : score / questions.length >= 0.6 ? '#fbbf24' : '#f87171' }}>
-                {Math.round((score / questions.length) * 100)}% — {score / questions.length >= 0.8 ? 'Excellent 🔥' : score / questions.length >= 0.6 ? 'Pas mal, continue' : 'À retravailler'}
+                {Math.round((score / questions.length) * 100)}% — {score / questions.length >= 0.8 ? t('htr.gradeExcellent') : score / questions.length >= 0.6 ? t('htr.gradeGood') : t('htr.gradeBad')}
               </p>
               {wrongsRef.current.length > 0 && (
                 <div className="rounded-xl border border-white/10 bg-black/30 p-3 mb-4 text-left max-h-[160px] overflow-y-auto">
-                  <p className="text-[9px] uppercase tracking-widest text-white/40 font-bold mb-1.5">Erreurs ({wrongsRef.current.length})</p>
+                  <p className="text-[9px] uppercase tracking-widest text-white/40 font-bold mb-1.5">{t('htr.errors', { n: wrongsRef.current.length })}</p>
                   {wrongsRef.current.map((q, i) => (
                     <div key={i} className="flex items-center justify-between text-[11px] py-0.5">
                       <span className="text-white/55 font-mono">{q.key} <span className="text-white/30">{q.position} · {q.scenario === 'open' ? 'open' : 'vs ' + q.openerPos}</span></span>
@@ -247,8 +247,8 @@ export default function HandTrainerPage() {
                 </div>
               )}
               <div className="flex gap-3">
-                <button onClick={startQuiz} className="flex-1 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest" style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>Rejouer</button>
-                <button onClick={() => setScreen('setup')} className="flex-1 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-widest border border-white/15 bg-white/5 text-white/60 hover:bg-white/10">Réglages</button>
+                <button onClick={startQuiz} className="flex-1 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest" style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>{t('htr.replay')}</button>
+                <button onClick={() => setScreen('setup')} className="flex-1 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-widest border border-white/15 bg-white/5 text-white/60 hover:bg-white/10">{t('htr.settingsBtn')}</button>
               </div>
             </motion.div>
           )}
@@ -263,6 +263,7 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
   q: Question; qi: number; total: number; score: number; picked: TAction | null
   onAnswer: (a: TAction) => void; onNext: () => void; buildSpotMap: (q: Question) => Record<string, TAction>
 }) {
+  const { t } = useTranslation()
   const reveal = picked !== null
   const spotMap = useMemo(() => buildSpotMap(q), [q]) // eslint-disable-line react-hooks/exhaustive-deps
   const aggLabel = q.scenario === 'open' ? 'OPEN' : '3-BET'
@@ -290,8 +291,8 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
         {/* ── LEFT : question ── */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] text-white/45 font-bold uppercase tracking-widest">Main {qi + 1} / {total}</span>
-            <span className="text-[11px] font-bold"><span className="text-emerald-400">{score}</span><span className="text-white/30"> bonnes</span></span>
+            <span className="text-[11px] text-white/45 font-bold uppercase tracking-widest">{t('htr.handN', { n: qi + 1, total })}</span>
+            <span className="text-[11px] font-bold"><span className="text-emerald-400">{score}</span><span className="text-white/30">{t('htr.correctSuffix')}</span></span>
           </div>
           <div className="h-1 rounded-full bg-white/8 overflow-hidden mb-5">
             <div className="h-full bg-[#00d4ff] transition-all" style={{ width: `${(qi / total) * 100}%` }} />
@@ -299,7 +300,7 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-6 text-center mb-5">
             <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
-              Position <span className="text-[#c9a227] font-bold">{q.position}</span> — {q.scenario === 'open' ? 'personne n\'a ouvert' : `face à l'ouverture de ${q.openerPos}`}
+              {t('htr.posLabel')} <span className="text-[#c9a227] font-bold">{q.position}</span> — {q.scenario === 'open' ? t('htr.noOpen') : t('htr.vsOpenFrom', { pos: q.openerPos })}
             </p>
             <div className="flex items-center justify-center gap-3 my-4">
               {[q.c1, q.c2].map((c, i) => (
@@ -323,12 +324,12 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
             {reveal && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
                 {picked !== q.correct && (
-                  <p className="text-center text-[11px] text-white/50 mb-3">Bonne réponse : <span className="font-bold" style={{ color: ACT[q.correct].color }}>{ACT[q.correct].label}</span></p>
+                  <p className="text-center text-[11px] text-white/50 mb-3">{t('htr.correctAnswer')} <span className="font-bold" style={{ color: ACT[q.correct].color }}>{ACT[q.correct].label}</span></p>
                 )}
                 <button onClick={onNext}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black uppercase tracking-[0.18em] text-sm transition-all hover:scale-[1.02]"
                   style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
-                  {isLast ? 'Voir le résultat' : 'Main suivante'} <ArrowRight size={16} />
+                  {isLast ? t('htr.seeResult') : t('htr.nextHand')} <ArrowRight size={16} />
                 </button>
               </motion.div>
             )}
@@ -340,7 +341,7 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
           <div className="flex items-center gap-2 mb-3">
             {reveal ? <Target size={13} className="text-[#ff2d55]" /> : <Lock size={13} className="text-white/40" />}
             <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: reveal ? '#ff7a96' : 'rgba(255,255,255,0.45)' }}>
-              {reveal ? 'Range correcte' : 'Range mystère'}
+              {reveal ? t('htr.rangeCorrect') : t('htr.rangeMystery')}
             </p>
           </div>
           <RangeGrid map={spotMap} highlight={q.key} revealed={reveal} />
@@ -350,7 +351,7 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
                 {(q.scenario === 'open' ? ['open', 'fold'] : ['3bet', 'call', 'fold'] as TAction[]).map(a => (
                   <div key={a} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: ACT[a as TAction].color }} /><span className="text-[9px] text-white/55 font-bold uppercase tracking-wide">{ACT[a as TAction].label}</span></div>
                 ))}
-                <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm border-2" style={{ borderColor: '#ff2d55', boxShadow: '0 0 6px #ff2d55' }} /><span className="text-[9px] text-[#ff7a96] font-bold uppercase tracking-wide">Ta main</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm border-2" style={{ borderColor: '#ff2d55', boxShadow: '0 0 6px #ff2d55' }} /><span className="text-[9px] text-[#ff7a96] font-bold uppercase tracking-wide">{t('htr.yourHandTag')}</span></div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -363,6 +364,7 @@ function QuizScreen({ q, qi, total, score, picked, onAnswer, onNext, buildSpotMa
 // 13×13 range grid: dark "mystery" until revealed, then each cell wipes in (diagonal
 // stagger) with the played hand ringed in red laser.
 function RangeGrid({ map, highlight, revealed }: { map: Record<string, TAction>; highlight: string; revealed: boolean }) {
+  const { t } = useTranslation()
   return (
     <div className="relative mx-auto" style={{ width: 'min(100%, 360px)' }}>
       <div className="grid select-none rounded-lg overflow-hidden" style={{ gridTemplateColumns: 'repeat(13,1fr)', gap: 2 }}>
@@ -402,8 +404,8 @@ function RangeGrid({ map, highlight, revealed }: { map: Record<string, TAction>;
             style={{ background: 'rgba(8,12,24,0.5)' }}>
             <div className="text-center">
               <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2, repeat: Infinity }} className="text-2xl mb-1">🔒</motion.div>
-              <p className="text-[9px] uppercase tracking-widest text-white/55 font-bold">Range masquée</p>
-              <p className="text-[8px] text-white/30">Réponds pour la révéler</p>
+              <p className="text-[9px] uppercase tracking-widest text-white/55 font-bold">{t('htr.rangeHidden')}</p>
+              <p className="text-[8px] text-white/30">{t('htr.answerToReveal')}</p>
             </div>
           </motion.div>
         )}
@@ -459,6 +461,7 @@ function OptionCard({ icon, title, desc, onClick, accent }: { icon: React.ReactN
 
 // ── Range editor (paint cells with a brush) ──────────────────────────────────
 function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCustom: (c: Custom) => void; onValidate: () => void }) {
+  const { t } = useTranslation()
   const [scenario, setScenario] = useState<TScenario>('open')
   const [position, setPosition] = useState('BTN')
   const [brush, setBrush] = useState<TAction>('open')
@@ -482,7 +485,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
         {/* scenario */}
         <div className="flex gap-1">
           {(['open', 'vsopen'] as TScenario[]).map(s => (
-            <button key={s} onClick={() => setScenario(s)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border ${scenario === s ? 'bg-[#00d4ff] text-black border-[#00d4ff]' : 'bg-white/5 text-white/50 border-white/10'}`}>{SCEN_LABEL[s]}</button>
+            <button key={s} onClick={() => setScenario(s)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border ${scenario === s ? 'bg-[#00d4ff] text-black border-[#00d4ff]' : 'bg-white/5 text-white/50 border-white/10'}`}>{t(SCEN_LABEL[s])}</button>
           ))}
         </div>
         <div className="h-5 w-px bg-white/10" />
@@ -496,7 +499,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
 
       {/* brush palette */}
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Pinceau :</span>
+        <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('htr.brush')}</span>
         {actions.map(a => (
           <button key={a} onClick={() => setBrush(a)}
             className="px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
@@ -504,7 +507,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
             {ACT[a].label}
           </button>
         ))}
-        <button onClick={resetPos} className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-white/10 bg-white/5 text-white/50 hover:bg-white/10"><RotateCcw size={11} /> Réinit. {position}</button>
+        <button onClick={resetPos} className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-white/10 bg-white/5 text-white/50 hover:bg-white/10"><RotateCcw size={11} /> {t('htr.resetPos', { pos: position })}</button>
       </div>
 
       {/* grid */}
@@ -536,7 +539,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
 
       <div className="flex justify-center mt-4">
         <button onClick={onValidate} className="flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-[0.18em] text-sm" style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
-          <Check size={16} /> Valider mes ranges
+          <Check size={16} /> {t('htr.validate')}
         </button>
       </div>
     </motion.div>
