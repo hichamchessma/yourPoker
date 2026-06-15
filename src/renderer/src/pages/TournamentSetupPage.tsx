@@ -1,21 +1,24 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Play, Minus, Plus, Trophy, Users, Coins, Timer, Medal } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import WindowControls from '../components/layout/WindowControls'
 import {
-  type Speed, SPEED_LABEL, LEVEL_MINUTES_OPTIONS, blindStructure, placesPaid, payoutTable,
+  type Speed, LEVEL_MINUTES_OPTIONS, blindStructure, placesPaid, payoutTable,
 } from '../lib/tournament'
 
 type Curve = 'standard' | 'topheavy' | 'flat'
 const FIELD_PRESETS = [9, 27, 45, 90, 180, 500, 1000]
 const BUYINS = [5, 20, 50, 100, 500]
-const CURVES: { id: Curve; label: string }[] = [
-  { id: 'standard', label: 'Standard' }, { id: 'topheavy', label: 'Top-heavy' }, { id: 'flat', label: 'Plate' },
-]
-const fmt = (n: number) => n.toLocaleString('fr-FR')
+const CURVE_IDS: Curve[] = ['standard', 'topheavy', 'flat']
+const CURVE_KEY: Record<Curve, string> = { standard: 'tour.curveStandard', topheavy: 'tour.curveTopheavy', flat: 'tour.curveFlat' }
+const SPEED_KEY: Record<Speed, string> = { regular: 'tour.speedRegular', turbo: 'tour.speedTurbo', hyper: 'tour.speedHyper' }
+const speedMult = (s: Speed) => s === 'hyper' ? '1.85' : s === 'turbo' ? '1.6' : '1.4'
+const fmt = (n: number) => n.toLocaleString()
 
 export default function TournamentSetupPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Hero'
@@ -57,8 +60,8 @@ export default function TournamentSetupPage() {
         <div className="flex items-center gap-3">
           <Medal className="text-[#f0c060]" size={22} />
           <div>
-            <h1 className="text-lg font-black text-[#f0c060] uppercase tracking-[0.2em]">Entraînement Tournoi — MTT</h1>
-            <p className="text-[10px] text-white/35 uppercase tracking-widest">Configure ton tournoi multi-tables, puis lance-le</p>
+            <h1 className="text-lg font-black text-[#f0c060] uppercase tracking-[0.2em]">{t('tour.title')}</h1>
+            <p className="text-[10px] text-white/35 uppercase tracking-widest">{t('tour.subtitle')}</p>
           </div>
         </div>
         <div className="app-drag-none"><WindowControls /></div>
@@ -68,8 +71,8 @@ export default function TournamentSetupPage() {
         {/* ── LEFT: parameters ── */}
         <div className="flex flex-col gap-4">
           {/* Field & tables */}
-          <Card title="Le champ" icon={<Users size={14} />}>
-            <Label>Nombre d'inscrits</Label>
+          <Card title={t('tour.cardField')} icon={<Users size={14} />}>
+            <Label>{t('tour.registrants')}</Label>
             <div className="flex flex-wrap gap-1.5 mt-1.5">
               {FIELD_PRESETS.map(f => (
                 <Chip key={f} active={field === f} onClick={() => setField(f)}>{f}</Chip>
@@ -78,61 +81,61 @@ export default function TournamentSetupPage() {
             </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
               <div>
-                <Label>Joueurs / table</Label>
+                <Label>{t('tour.playersPerTable')}</Label>
                 <div className="flex gap-1.5 mt-1.5">
-                  {[9, 6].map(s => <Chip key={s} active={tableSize === s} onClick={() => setTableSize(s)}>{s}-max</Chip>)}
+                  {[9, 6].map(s => <Chip key={s} active={tableSize === s} onClick={() => setTableSize(s)}>{t('tour.max', { n: s })}</Chip>)}
                 </div>
               </div>
-              <Readout label="Nombre de tables" value={`${nbTables}`} />
+              <Readout label={t('tour.numTables')} value={`${nbTables}`} />
             </div>
           </Card>
 
           {/* Stacks & structure */}
-          <Card title="Tapis & structure" icon={<Timer size={14} />}>
+          <Card title={t('tour.cardStacks')} icon={<Timer size={14} />}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Stack de départ (BB)</Label>
+                <Label>{t('tour.startStack')}</Label>
                 <Stepper value={startBB} min={20} max={500} step={10} onChange={setStartBB} />
-                <p className="text-[9px] text-white/30 mt-1">= {fmt(startChips)} jetons (blindes niv.1 {levels[0].sb}/{levels[0].bb})</p>
+                <p className="text-[9px] text-white/30 mt-1">{t('tour.chipsInfo', { chips: fmt(startChips), sb: levels[0].sb, bb: levels[0].bb })}</p>
               </div>
               <div>
-                <Label>Vitesse — raideur des sauts de blindes</Label>
+                <Label>{t('tour.speed')}</Label>
                 <div className="flex flex-col gap-1.5 mt-1.5">
                   {(['regular', 'turbo', 'hyper'] as Speed[]).map(s => (
-                    <Chip key={s} active={speed === s} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]} · ×{s === 'hyper' ? '1.85' : s === 'turbo' ? '1.6' : '1.4'}/niv.</Chip>
+                    <Chip key={s} active={speed === s} onClick={() => setSpeed(s)}>{t('tour.speedChip', { label: t(SPEED_KEY[s]), mult: speedMult(s) })}</Chip>
                   ))}
                 </div>
                 <div className="mt-2.5">
-                  <Label>Durée d'un niveau (timer)</Label>
+                  <Label>{t('tour.levelDuration')}</Label>
                   <div className="flex gap-1.5 mt-1.5">
                     {LEVEL_MINUTES_OPTIONS.map(m => (
-                      <Chip key={m} active={levelMinutes === m} onClick={() => setLevelMinutes(m)}>{m} min</Chip>
+                      <Chip key={m} active={levelMinutes === m} onClick={() => setLevelMinutes(m)}>{t('tour.min', { n: m })}</Chip>
                     ))}
                   </div>
                 </div>
                 <div className="mt-2.5">
-                  <Label>Antes (big-blind ante)</Label>
+                  <Label>{t('tour.antes')}</Label>
                   <div className="flex gap-1.5 mt-1.5">
-                    <Chip active={antes} onClick={() => setAntes(true)}>Activées</Chip>
-                    <Chip active={!antes} onClick={() => setAntes(false)}>Désactivées</Chip>
+                    <Chip active={antes} onClick={() => setAntes(true)}>{t('tour.antesOn')}</Chip>
+                    <Chip active={!antes} onClick={() => setAntes(false)}>{t('tour.antesOff')}</Chip>
                   </div>
-                  <p className="text-[8.5px] text-white/30 mt-1">{antes ? `Ante = 1 BB (payée par la grosse blinde) dès le niveau 3.` : 'Aucune ante.'}</p>
+                  <p className="text-[8.5px] text-white/30 mt-1">{antes ? t('tour.antesNoteOn') : t('tour.antesNoteOff')}</p>
                 </div>
               </div>
             </div>
           </Card>
 
           {/* Prizes */}
-          <Card title="Dotation" icon={<Coins size={14} />}>
+          <Card title={t('tour.cardPrizes')} icon={<Coins size={14} />}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Buy-in</Label>
+                <Label>{t('tour.buyin')}</Label>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {BUYINS.map(b => <Chip key={b} active={buyIn === b} onClick={() => setBuyIn(b)}>${b}</Chip>)}
                 </div>
               </div>
               <div>
-                <Label>Places payées (% du champ)</Label>
+                <Label>{t('tour.paidPlaces')}</Label>
                 <div className="flex items-center gap-2 mt-1.5">
                   <input type="range" min={5} max={25} step={1} value={paidPct} onChange={e => setPaidPct(+e.target.value)} className="flex-1 accent-[#f0c060]" />
                   <span className="text-sm font-bold text-[#f0c060] font-mono w-10 text-right">{paidPct}%</span>
@@ -140,27 +143,27 @@ export default function TournamentSetupPage() {
               </div>
             </div>
             <div className="mt-3">
-              <Label>Courbe de paiement</Label>
+              <Label>{t('tour.payoutCurve')}</Label>
               <div className="flex gap-1.5 mt-1.5">
-                {CURVES.map(c => <Chip key={c.id} active={curve === c.id} onClick={() => setCurve(c.id)}>{c.label}</Chip>)}
+                {CURVE_IDS.map(c => <Chip key={c} active={curve === c} onClick={() => setCurve(c)}>{t(CURVE_KEY[c])}</Chip>)}
               </div>
             </div>
           </Card>
 
           {/* Format & bots */}
-          <Card title="Format & adversaires">
+          <Card title={t('tour.cardFormat')}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Format</Label>
+                <Label>{t('tour.format')}</Label>
                 <div className="flex gap-1.5 mt-1.5">
-                  <Chip active={!reentry} onClick={() => setReentry(false)}>Freezeout</Chip>
-                  <Chip active={reentry} onClick={() => setReentry(true)}>Re-entry</Chip>
+                  <Chip active={!reentry} onClick={() => setReentry(false)}>{t('tour.freezeout')}</Chip>
+                  <Chip active={reentry} onClick={() => setReentry(true)}>{t('tour.reentry')}</Chip>
                 </div>
               </div>
               <div>
-                <Label>Niveau des bots</Label>
+                <Label>{t('tour.botLevel')}</Label>
                 <div className="flex gap-1.5 mt-1.5">
-                  {[{ l: 1, n: 'Amateur' }, { l: 2, n: 'Pro' }, { l: 3, n: 'Expert' }].map(b => (
+                  {[{ l: 1, n: t('tour.botAmateur') }, { l: 2, n: t('tour.botPro') }, { l: 3, n: t('tour.botExpert') }].map(b => (
                     <Chip key={b.l} active={botLevel === b.l} onClick={() => setBotLevel(b.l)}>{b.n}</Chip>
                   ))}
                 </div>
@@ -174,49 +177,49 @@ export default function TournamentSetupPage() {
           <div className="rounded-2xl border border-[#f0c060]/25 bg-[#f0c060]/[0.04] p-4">
             <div className="flex items-center gap-2 mb-3">
               <Trophy size={16} className="text-[#f0c060]" />
-              <span className="text-[11px] font-black text-[#f0c060] uppercase tracking-widest">Récapitulatif</span>
+              <span className="text-[11px] font-black text-[#f0c060] uppercase tracking-widest">{t('tour.recap')}</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Big label="Prize pool" value={`$${fmt(prizePool)}`} />
-              <Big label="Places payées" value={`${places}`} />
-              <Big label="Tables" value={`${nbTables}`} />
-              <Big label="Inscrits" value={`${fmt(field)}`} />
+              <Big label={t('tour.prizePool')} value={`$${fmt(prizePool)}`} />
+              <Big label={t('tour.paidPlacesShort')} value={`${places}`} />
+              <Big label={t('tour.tables')} value={`${nbTables}`} />
+              <Big label={t('tour.registrantsShort')} value={`${fmt(field)}`} />
             </div>
             <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-              <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Paiements (top)</span>
+              <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('tour.payoutsTop')}</span>
               <div className="mt-2 space-y-1 max-h-[150px] overflow-y-auto">
                 {payouts.slice(0, 12).map(p => (
                   <div key={p.place} className="flex items-center justify-between text-[11px]">
-                    <span className="text-white/55">{p.place === 1 ? '🥇 1er' : p.place === 2 ? '🥈 2e' : p.place === 3 ? '🥉 3e' : `${p.place}e`}</span>
+                    <span className="text-white/55">{p.place === 1 ? t('tour.place1') : p.place === 2 ? t('tour.place2') : p.place === 3 ? t('tour.place3') : t('tour.placeN', { n: p.place })}</span>
                     <span className="font-mono font-bold text-emerald-300/90">${fmt(p.amount)}</span>
                   </div>
                 ))}
-                {places > 12 && <p className="text-[9px] text-white/25 text-center pt-1">… +{places - 12} autres places payées</p>}
+                {places > 12 && <p className="text-[9px] text-white/25 text-center pt-1">{t('tour.otherPlaces', { n: places - 12 })}</p>}
               </div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-            <span className="text-[10px] uppercase tracking-widest text-white/45 font-bold">Structure de blindes</span>
+            <span className="text-[10px] uppercase tracking-widest text-white/45 font-bold">{t('tour.blindStructure')}</span>
             <div className="mt-2 space-y-0.5 max-h-[180px] overflow-y-auto pr-1">
               {levels.slice(0, 14).map((l, i) => (
                 <div key={i} className="flex items-center justify-between text-[10px] px-1 py-0.5 rounded hover:bg-white/5">
-                  <span className="text-white/40">Niv. {i + 1}</span>
-                  <span className="font-mono text-white/70">{fmt(l.sb)} / {fmt(l.bb)}{l.ante ? ` (ante ${fmt(l.ante)})` : ''}</span>
+                  <span className="text-white/40">{t('tour.level', { n: i + 1 })}</span>
+                  <span className="font-mono text-white/70">{fmt(l.sb)} / {fmt(l.bb)}{l.ante ? t('tour.anteSuffix', { n: fmt(l.ante) }) : ''}</span>
                 </div>
               ))}
             </div>
-            <p className="text-[8.5px] text-white/30 mt-1.5">Chaque palier dure <b className="text-white/50">{levelMinutes} min</b> (timer) ; la <b className="text-white/50">vitesse</b> règle l'ampleur de chaque saut (×{speed === 'hyper' ? '1.85' : speed === 'turbo' ? '1.6' : '1.4'}). Stack départ : {startBB} BB.</p>
+            <p className="text-[8.5px] text-white/30 mt-1.5">{t('tour.structureNote', { min: levelMinutes, mult: speedMult(speed), bb: startBB })}</p>
           </div>
         </div>
       </div>
 
       <div className="border-t border-white/5 px-6 py-3 flex items-center">
-        <p className="text-[10px] text-white/35">Tu démarres à une table {tableSize}-max ; le reste du champ ({fmt(field - tableSize)} joueurs) joue en parallèle.</p>
+        <p className="text-[10px] text-white/35">{t('tour.footerNote', { n: tableSize, rest: fmt(field - tableSize) })}</p>
         <button onClick={launch}
           className="ml-auto flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-[0.2em] text-sm transition-all hover:scale-[1.02]"
           style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227,#8B6810)', color: '#0a0a0a' }}>
-          <Play size={16} /> Lancer le tournoi
+          <Play size={16} /> {t('tour.launch')}
         </button>
       </div>
     </div>
@@ -250,7 +253,7 @@ function Stepper({ value, min, max, step, onChange }: { value: number; min: numb
   return (
     <div className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/30 px-1 mt-0 align-middle">
       <button onClick={() => onChange(Math.max(min, value - step))} className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white"><Minus size={12} /></button>
-      <span className="text-[13px] font-black text-[#f0c060] font-mono min-w-[44px] text-center">{value.toLocaleString('fr-FR')}</span>
+      <span className="text-[13px] font-black text-[#f0c060] font-mono min-w-[44px] text-center">{value.toLocaleString()}</span>
       <button onClick={() => onChange(Math.min(max, value + step))} className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white"><Plus size={12} /></button>
     </div>
   )
