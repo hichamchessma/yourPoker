@@ -114,48 +114,49 @@ export default function RangeAssistant({
       const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
       const shortStack = effBB <= 13
       const reshove = isReshove && chart === 'raise'
-      const sizingText = chart === 'fold' ? 'couche-toi'
-        : chart === 'call' ? (vsJam ? 'paie le tapis (all-in)' : 'suis la mise')
-        : chart === '3bet' ? (shortStack ? 'TAPIS (all-in)' : 'relance (3-bet ≈ 3×)')
-        : chart === '4bet' ? 'sur-relance (4-bet)'
-        : reshove ? 'TAPIS — 3-bet (re-shove)'
-        : shortStack ? 'TAPIS (all-in)' : 'ouvre / relance (≈ 2.5–3 BB)'
+      const sizingText = chart === 'fold' ? t('padv.szFold')
+        : chart === 'call' ? (vsJam ? t('padv.szCallJam') : t('padv.szCall'))
+        : chart === '3bet' ? (shortStack ? t('padv.szAllin') : t('padv.sz3bet'))
+        : chart === '4bet' ? t('padv.sz4bet')
+        : reshove ? t('padv.szReshove')
+        : shortStack ? t('padv.szAllin') : t('padv.szOpen')
       const situationLabel = vsJam
-        ? `face à ${numAllIn} tapis (all-in)`
+        ? t('coach.vsJam', { n: numAllIn })
         : t(SCENARIO_LABEL[scenario as Scenario]).toLowerCase()
+      const bb = Math.round(effBB)
       const reasons = vsJam ? [
-        `Face à ${numAllIn} tapis (all-in), tu ne peux que PAYER ou te COUCHER — pas de flat${numAllIn > 1 ? ', et la range de call-off se resserre fort à plusieurs tapis' : ''}.`,
-        `Décision d'équité : ${heroKey} a ≈ ${pct(equity)} d'équité, il faut ${pct(potOdds)} pour payer → ${equity >= potOdds ? 'CALL rentable.' : 'FOLD (sous la cote).'}`,
-        `Profondeur ~${Math.round(effBB)} BB : ${effBB > 60 ? 'tapis profonds → seules les mains premium paient' : effBB < 20 ? 'tapis courts → call-off bien plus large' : 'profondeur moyenne'}.`,
+        t('padv.jamOnly', { n: numAllIn, multi: numAllIn > 1 ? t('padv.jamMulti') : '' }),
+        t('padv.jamEquity', { hero: heroKey, eq: pct(equity), odds: pct(potOdds), verdict: equity >= potOdds ? t('padv.jamVerdictCall') : t('padv.jamVerdictFold') }),
+        t('padv.jamDepth', { bb, txt: effBB > 60 ? t('padv.depthDeep') : effBB < 20 ? t('padv.depthShort') : t('padv.depthMid') }),
       ] : [
-        `Selon la range de ta position (${position} — ${situationLabel}), ${heroKey} se joue : ${ACTION_LABEL[chart]}.`,
-        `Équité brute estimée : ${pct(equity)} face à ${opponents} adversaire${opponents > 1 ? 's' : ''}.`,
-        inPosition ? 'Tu es en position : tu peux jouer un peu plus large.' : 'Tu es hors de position : resserre légèrement.',
+        t('padv.rangePos', { position, situation: situationLabel, hero: heroKey, action: ACTION_LABEL[chart] }),
+        t('padv.rawEquity', { eq: pct(equity), count: opponents }),
+        inPosition ? t('padv.posIP') : t('padv.posOOP'),
       ]
-      if (reshove) reasons.push(`Tapis ~${Math.round(effBB)} BB face à une ouverture → RE-SHOVE (3-bet TAPIS), pas un 3-bet petit : à cette profondeur un petit 3-bet te COMMET (tu ne peux plus fold à un 4-bet tapis) et flatter OOP joue un pot à bas SPR. Tu shoves pour la fold equity + l'argent mort de l'ouvreur.`)
-      else if (effBB <= 13) reasons.push(`Tapis court (~${Math.round(effBB)} BB) → PUSH/FOLD : tu mets tapis ou tu jettes, plus de jeu post-flop.`)
-      else if (effBB < 25) reasons.push(`Tapis court (~${Math.round(effBB)} BB) : privilégie 3-bet TAPIS (re-shove) / fold, peu de flats.`)
-      else if (effBB > 80) reasons.push(`Tapis profond (~${Math.round(effBB)} BB) : les mains assorties/connectées gagnent en valeur.`)
-      if (scenario === 'vsopen' && raiseToBB > 4) reasons.push(`Grosse ouverture (~${raiseToBB.toFixed(1)} BB) : pas de fold equity → on coupe les bluffs de 3-bet, value only.`)
-      else if (scenario === 'vsopen' && raiseToBB <= 2.6) reasons.push(`Petite ouverture (~${raiseToBB.toFixed(1)} BB) : range de 3-bet polarisée pleine + flats larges.`)
+      if (reshove) reasons.push(t('padv.reshove', { bb }))
+      else if (effBB <= 13) reasons.push(t('padv.pushFold', { bb }))
+      else if (effBB < 25) reasons.push(t('padv.shortStack', { bb }))
+      else if (effBB > 80) reasons.push(t('padv.deepStack', { bb }))
+      if (scenario === 'vsopen' && raiseToBB > 4) reasons.push(t('padv.bigOpen', { bb: raiseToBB.toFixed(1) }))
+      else if (scenario === 'vsopen' && raiseToBB <= 2.6) reasons.push(t('padv.smallOpen', { bb: raiseToBB.toFixed(1) }))
       if (scenario === 'vs3bet' && reRaiseRatio !== undefined) {
-        reasons.push(reRaiseRatio <= 2.3 ? `Petit 3-bet (~${reRaiseRatio.toFixed(1)}× l'ouverture) : bonne cote → tu continues bien plus large.`
-          : reRaiseRatio >= 3.5 ? `Gros 3-bet (~${reRaiseRatio.toFixed(1)}× l'ouverture) : resserre fort (surtout les flats).`
-          : `3-bet standard (~${reRaiseRatio.toFixed(1)}× l'ouverture).`)
+        reasons.push(reRaiseRatio <= 2.3 ? t('padv.small3bet', { r: reRaiseRatio.toFixed(1) })
+          : reRaiseRatio >= 3.5 ? t('padv.big3bet', { r: reRaiseRatio.toFixed(1) })
+          : t('padv.std3bet', { r: reRaiseRatio.toFixed(1) }))
       }
-      if (multiway) reasons.push('Plusieurs joueurs déjà dans le coup : resserre (surtout les mains dépareillées).')
+      if (multiway) reasons.push(t('padv.multiway'))
       if ((chart === '3bet' || chart === '4bet' || chart === 'raise') && equity < 0.45)
-        reasons.push('Main jouée en BLUFF / semi-bluff polarisé : sa valeur vient de la fold equity + des blockers + la jouabilité quand on est payé — PAS de l’équité au showdown. Ne te fie pas au % brut affiché ici.')
+        reasons.push(t('padv.bluffPolar'))
       if (chart === 'call' && heroKey && /^(22|33|44|55|66|77|88|99|TT)$/.test(heroKey) && effBB > 30)
-        reasons.push(`Set-mine : tu paies bon marché pour toucher un brelan (~1 fois sur 8) et empiler un tapis profond (~${Math.round(effBB)} BB) — les cotes implicites rendent le call rentable même si l'équité brute paraît basse.`)
+        reasons.push(t('padv.setMine', { bb }))
       else if (chart === 'call' && heroKey && (heroKey.endsWith('s') && effBB > 30))
-        reasons.push('Main assortie jouée IP en profondeur : tu suis pour la jouabilité + les cotes implicites (couleur/quinte), pas seulement la cote directe.')
+        reasons.push(t('padv.suitedDeep'))
       if (chart === 'call' && closingAction && potOddsPre > 0 && potOddsPre < 0.3)
-        reasons.push(`Tu FERMES l’action (grosse blinde) : ${pct(equity)} d’équité pour une cote de seulement ${pct(potOddsPre)} → tu as le prix pour payer, on défend large à ce tarif (K-high, connecteurs, paires…) puisque personne ne peut relancer derrière.`)
+        reasons.push(t('padv.closing', { eq: pct(equity), odds: pct(potOddsPre) }))
       if (icmPressure > 0.3)
-        reasons.push(`Pression ICM (~${Math.round(icmPressure * 100)}%) : près de la bulle / d’un saut de prix, busté coûte cher. Resserre tes tapis et tes call-off — survivre vaut plus que d’encaisser un petit edge.`)
+        reasons.push(t('padv.icm', { n: Math.round(icmPressure * 100) }))
       return {
-        actionText: reshove ? 'TAPIS (RE-SHOVE)' : ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
+        actionText: reshove ? t('padv.reshoveAction') : ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
         equity, potOdds, madeHand: heroKey ?? '—', draws: [], strongDraw: false, reasons,
         confidence: chart === 'fold' && equity < 0.35 ? 'haute' : (chart === 'raise' || chart === '3bet') && equity > 0.55 ? 'haute' : 'moyenne',
       }
@@ -186,30 +187,34 @@ export default function RangeAssistant({
     // Verdict that stays consistent with the actual recommendation (handles the
     // implied-odds case where we call a draw slightly below direct pot odds).
     const oddsVerdict = advice.equity >= advice.potOdds
-      ? 'tu es au-dessus → payer est rentable.'
+      ? t('cask.oddsOver')
       : (advice.actionText === 'CALL' && drawing)
-        ? 'tu es légèrement sous la cote directe, MAIS ton tirage donne des gains implicites (tu gagnes plus en touchant) → le call reste correct.'
-        : 'tu es en dessous → sur la cote directe, payer perd à long terme (d’où le fold).'
+        ? t('cask.oddsImplied')
+        : t('cask.oddsUnder')
     if (q === 'why') setAnswer(advice.reasons.join(' '))
-    else if (q === 'equity') setAnswer(`Tu as environ ${pct(advice.equity)} de chances de gagner le coup. ${toCall > 0 ? `Pour payer, il te faut au moins ${pct(advice.potOdds)} : ${oddsVerdict}` : 'Personne n’a misé : tu peux checker gratuitement ou miser pour la valeur.'}`)
-    else if (q === 'raise') setAnswer(advice.equity >= 0.6 ? `Avec ${pct(advice.equity)} d’équité, relancer pour la valeur est excellent : tu fais payer les mains plus faibles et les tirages.` : advice.draws.length ? `Relancer en semi-bluff est jouable : même battu maintenant, ton ${advice.draws.join(' / ')} peut te faire gagner gros.` : `Relancer ici est risqué : avec seulement ${pct(advice.equity)} d’équité, tu te fais payer surtout par mieux.`)
-    else if (q === 'hand') setAnswer(`Ta main : ${advice.madeHand}${advice.draws.length ? `, avec ${advice.draws.join(' et ')}` : ''}.`)
-    else if (q === 'equity_calc') setAnswer(`Je le calcule par simulation (Monte-Carlo) : je rejoue ce coup ~1000–1500 fois en distribuant au hasard les cartes manquantes du board et les mains des ${opponents} adversaire(s), puis je compare ta main à la leur à chaque fois. Le % de fois où tu gagnes (les partages comptent en fraction) = ton équité, soit ~${pct(advice.equity)} ici. Plus je fais de simulations, plus le chiffre est précis.`)
+    else if (q === 'equity') setAnswer(t('cask.equity', { eq: pct(advice.equity), tail: toCall > 0 ? t('cask.equityOdds', { odds: pct(advice.potOdds), verdict: oddsVerdict }) : t('cask.equityFree') }))
+    else if (q === 'raise') setAnswer(advice.equity >= 0.6 ? t('cask.raiseValue', { eq: pct(advice.equity) }) : advice.draws.length ? t('cask.raiseSemi', { draws: advice.draws.join(' / ') }) : t('cask.raiseRisky', { eq: pct(advice.equity) }))
+    else if (q === 'hand') setAnswer(t('cask.hand', { made: advice.madeHand, draws: advice.draws.length ? t('cask.handDraws', { draws: advice.draws.join(t('cask.andSep', { defaultValue: ' & ' })) }) : '' }))
+    else if (q === 'equity_calc') setAnswer(t('cask.equityCalc', { n: opponents, eq: pct(advice.equity) }))
     else if (q === 'potodds_calc') {
-      if (toCall <= 0) { setAnswer(`Personne n’a misé : tu n’as rien à payer, donc pas de cote du pot à atteindre.`); return }
-      setAnswer(`C’est purement mathématique : tu dois payer ${toCall} pour tenter de remporter le pot. Équité requise = mise à payer ÷ (pot total après ton call) = ${toCall} ÷ (${pot} + ${toCall}) ≈ ${pct(advice.potOdds)}. Il faut donc gagner le coup au moins ${pct(advice.potOdds)} du temps pour que payer soit rentable. Toi tu gagnes ~${pct(advice.equity)} → ${oddsVerdict}`)
+      if (toCall <= 0) { setAnswer(t('cask.potoddsNone')); return }
+      setAnswer(t('cask.potoddsCalc', { toCall, pot, odds: pct(advice.potOdds), eq: pct(advice.equity), verdict: oddsVerdict }))
     }
     else if (q === 'face_raise') {
-      if (!advice.facePlan || advice.facePlan.length === 0) { setAnswer('Disponible quand le conseil est CHECK, BET ou CALL.'); return }
-      const verb = advice.actionText === 'BET' ? 'te relance' : advice.actionText === 'CALL' ? 'relance derrière' : 'mise derrière toi'
-      const lines = advice.facePlan.map(r => `▸ S’il ${verb} ${r.label} → ${r.action}\n   ${r.equation}\n   ${r.why}`).join('\n')
-      setAnswer(`Anticipe : si l’adversaire ${verb}, voici le coup optimal selon sa taille (req = équité nécessaire pour payer, B = sa mise) :\n\n${lines}\n\nClé : un PETIT sizing avec une main forte → souvent un RE-RAISE / 4-bet pour la valeur, pas un simple call.`)
+      if (!advice.facePlan || advice.facePlan.length === 0) { setAnswer(t('cask.faceNone')); return }
+      const verb = advice.actionText === 'BET' ? t('cask.faceVerbBet') : advice.actionText === 'CALL' ? t('cask.faceVerbCall') : t('cask.faceVerbBetBehind')
+      const lines = advice.facePlan.map(r => t('cask.faceRow', { verb, label: r.label, action: r.action, equation: r.equation, why: r.why })).join('\n')
+      setAnswer(t('cask.faceIntro', { verb, lines }))
     }
     else if (q === 'bluff') {
       const betSize = Math.max(1, Math.round(pot * 0.66))
       const fe = betSize / (pot + betSize)
       const semi = advice.draws.length > 0
-      setAnswer(`Pour bluffer, ${toCall > 0 ? 'il faudrait relancer' : 'tu mises'} pour faire abandonner l’adversaire. Une taille d’environ ⅔ pot (~$${betSize}) est crédible : tu risques $${betSize} pour gagner $${pot}, donc il faut qu’il se couche au moins ~${pct(fe)} du temps (mise ÷ (pot + mise)) pour que le bluff soit gagnant. ⚠️ Risque : s’il paie, tu n’as plus que ~${pct(advice.equity)} d’équité — tu perds ta mise la plupart du temps. ${semi ? `Bonne nouvelle : avec ton ${advice.draws.join(' / ')}, c’est un SEMI-bluff — même payé tu peux encore toucher, donc bien moins risqué.` : `Sans tirage, ce serait un bluff “pur” : tu ne comptes que sur son fold. À réserver aux board qui touchent ta range et aux adversaires capables de se coucher.`}`)
+      setAnswer(t('cask.bluff', {
+        verb: toCall > 0 ? t('cask.bluffVerbRaise') : t('cask.bluffVerbBet'),
+        size: betSize, pot, fe: pct(fe), eq: pct(advice.equity),
+        tail: semi ? t('cask.bluffSemi', { draws: advice.draws.join(' / ') }) : t('cask.bluffPure'),
+      }))
     }
   }
 
