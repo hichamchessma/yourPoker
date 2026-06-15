@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import AuthPage from './pages/AuthPage'
 import LandingPage from './pages/LandingPage'
 import LobbyPage from './pages/LobbyPage'
@@ -19,8 +20,9 @@ import { useIsPro } from './lib/entitlements'
 
 // Gates a Pro-only page: the wrapped page only mounts when the user is Pro (keeps the
 // page's own hooks isolated), otherwise the upgrade wall is shown.
-function Gated({ title, desc, children }: { title: string; desc: string; children: JSX.Element }): JSX.Element {
-  return useIsPro() ? children : <ProGate title={title} desc={desc} />
+function Gated({ titleKey, descKey, children }: { titleKey: string; descKey: string; children: JSX.Element }): JSX.Element {
+  const { t } = useTranslation()
+  return useIsPro() ? children : <ProGate title={t(titleKey)} desc={t(descKey)} />
 }
 
 function App(): JSX.Element {
@@ -54,10 +56,10 @@ function App(): JSX.Element {
         <Route path="handtrainer" element={<HandTrainerPage />} />
         <Route path="training" element={<TrainingSetupPage />} />
         <Route path="tournament" element={<TournamentSetupPage />} />
-        <Route path="simulation" element={<Gated title="Simulation" desc="Le banc de test qui mesure l'EV du coach sur des milliers de mains. Réservé aux membres Pro."><SimulationPage /></Gated>} />
+        <Route path="simulation" element={<Gated titleKey="pricing.gateSimTitle" descKey="pricing.gateSimDesc"><SimulationPage /></Gated>} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="pricing" element={<PricingPage />} />
-        <Route path="setup" element={<Gated title="Scénario sur mesure" desc="Recrée n'importe quel spot (cartes, board, tapis) pour tester le coach. Réservé aux membres Pro."><SetupPositionPage /></Gated>} />
+        <Route path="setup" element={<Gated titleKey="pricing.gateScenTitle" descKey="pricing.gateScenDesc"><SetupPositionPage /></Gated>} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="game" element={<GamePage />} />

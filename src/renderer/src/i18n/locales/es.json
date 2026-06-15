@@ -117,7 +117,12 @@
     "pro3": "Escenario personalizado (recrea cualquier spot)",
     "pro4": "Coach de torneo avanzado (ICM, re-shove, burbuja)",
     "pro5": "Historial completo + repetición ilimitada",
-    "pro6": "Soporte prioritario"
+    "pro6": "Soporte prioritario",
+    "betaOffered": "Durante la beta, el Pro es gratis.",
+    "gateSimTitle": "Simulación",
+    "gateSimDesc": "El banco de pruebas que mide el EV del coach en miles de manos. Solo miembros Pro.",
+    "gateScenTitle": "Escenario a medida",
+    "gateScenDesc": "Recrea cualquier spot (cartas, board, stacks) para probar el coach. Solo miembros Pro."
   },
   "lobby": {
     "launchTraining": "Iniciar un entrenamiento",
@@ -652,7 +657,12 @@
     "handFlow": "Desarrollo de la mano",
     "reshoveLabel": "ALL-IN (RE-SHOVE)",
     "footerPreflop": "Rango adaptado al número de jugadores en la mano + equidad estimada por simulación. Consejo de entrenamiento, no un solver.",
-    "footerPostflop": "Equidad estimada por simulación (Monte-Carlo) vs manos aleatorias. Consejo heurístico de entrenamiento, no un solver."
+    "footerPostflop": "Equidad estimada por simulación (Monte-Carlo) vs manos aleatorias. Consejo heurístico de entrenamiento, no un solver.",
+    "heatWeak": "débil",
+    "heatStrong": "fuerte",
+    "heatSuited": "del mismo palo",
+    "heatOffsuit": "de distinto palo",
+    "heatEstRange": "rango estimado (IA)"
   },
   "scen": {
     "rfi": "Apertura (nadie subió)",
@@ -1035,7 +1045,20 @@
     "closeBtn": "Cerrar",
     "handHistory": "Historial de manos",
     "actionLog": "Registro de acciones",
-    "outOfChips": "Sin fichas"
+    "outOfChips": "Sin fichas",
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "closeWin": "Cerrar",
+    "eliminated": "Eliminado",
+    "sittingOut": "Ausente",
+    "handLabel": "Mano",
+    "toAct": "por hablar",
+    "allinKey": "All-in — tecla « A »",
+    "waitingPreselect": "Esperando — preselección",
+    "undoTip": "Deshacer la última acción introducida (Retroceso ⌫)",
+    "undoBtn": "Deshacer",
+    "reviveTip": "Recrea este spot exacto como sandbox jugable — los rivales mantienen su rango, sus cartas se sacan al azar dentro",
+    "betSizeTip": "{{label}} bote — tecla « {{key}} »"
   },
   "htr": {
     "settings": "Ajustes del ejercicio",

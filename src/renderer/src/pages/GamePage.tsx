@@ -291,6 +291,7 @@ function computeSidePots(seats: Seat[]): {amount:number; eligible:number[]}[] {
 function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards }: {
   seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void
 }) {
+  const { t } = useTranslation()
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
   const initial = seat.name[0].toUpperCase()
   const hasCard0 = seat.holeCards[0] !== null
@@ -307,7 +308,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
               style={{background:`linear-gradient(135deg,${bgL}22,${bgD})`}}>{initial}</div>
             <div className="flex-1 min-w-0">
               <p className="text-[9px] font-bold text-red-900/50 truncate">{seat.name}</p>
-              <p className="text-[7px] text-red-900/40">Éliminé</p>
+              <p className="text-[7px] text-red-900/40">{t('sess.eliminated')}</p>
             </div>
           </div>
           {onRebuy && (
@@ -400,7 +401,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         </div>
         {seat.isSittingOut&&(
           <div className="mx-2 mb-1.5 px-2 py-0.5 rounded text-center text-[8px] font-bold uppercase tracking-widest border text-amber-300/70 bg-amber-900/15 border-amber-700/25">
-            Absent
+            {t('sess.sittingOut')}
           </div>
         )}
         {seat.lastAction&&!seat.isSittingOut&&(
@@ -937,7 +938,7 @@ export function HandHistoryModal({ records, onClose, onRevive }: {
                 cards are re-drawn from the range their line implies at this step. */}
             {onRevive && (
               <button onClick={() => onRevive(record, stepIdx)}
-                title="Recrée cette situation exacte en simulation jouable — les adversaires gardent leur range, leurs cartes sont retirées au hasard dedans"
+                title={t('sess.reviveTip')}
                 className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-black uppercase tracking-[0.18em] text-[11px] transition-all hover:scale-[1.03]"
                 style={{ background: 'linear-gradient(135deg,#a78bff,#6d4ed6,#3c2a72)', color: '#0a0716', boxShadow: '0 0 22px rgba(140,110,255,0.45)' }}>
                 ⚡ Revive situation
@@ -3469,14 +3470,14 @@ export default function GamePage(): JSX.Element {
         )}
         {manualMode && (
           <button onClick={undoManual} disabled={manualUndoDepth === 0}
-            title="Annuler la dernière action saisie (touche Retour ⌫)"
+            title={t('sess.undoTip')}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-widest transition-all disabled:opacity-30 enabled:hover:bg-white/10"
             style={{ borderColor: 'rgba(240,192,96,0.4)', background: 'rgba(255,255,255,0.05)', color: '#f0c878' }}>
-            <ArrowLeft size={11}/> Annuler{manualUndoDepth > 0 ? ` (${manualUndoDepth})` : ''} <span className="opacity-50">⌫</span>
+            <ArrowLeft size={11}/> {t('sess.undoBtn')}{manualUndoDepth > 0 ? ` (${manualUndoDepth})` : ''} <span className="opacity-50">⌫</span>
           </button>
         )}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Main</span>
+          <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">{t('sess.handLabel')}</span>
           <span className="text-[10px] font-bold text-[#c9a227]">#{gs.handNum}</span>
           <span className="text-[8px] px-2 py-0.5 rounded border border-white/10 text-white/40 font-bold uppercase tracking-widest">
             {t('phase.' + gs.phase)}
@@ -3573,11 +3574,11 @@ export default function GamePage(): JSX.Element {
         {/* Window controls — desktop only (hidden on web) */}
         {isElectron && (
           <div className="app-drag-none flex items-center gap-2 pl-1">
-            <button onClick={() => window.api?.minimizeWindow()} title="Réduire"
+            <button onClick={() => window.api?.minimizeWindow()} title={t('sess.minimize')}
               className="w-3.5 h-3.5 rounded-full bg-yellow-400/70 hover:bg-yellow-400 transition-colors"/>
-            <button onClick={() => window.api?.maximizeWindow()} title="Agrandir"
+            <button onClick={() => window.api?.maximizeWindow()} title={t('sess.maximize')}
               className="w-3.5 h-3.5 rounded-full bg-green-400/70 hover:bg-green-400 transition-colors"/>
-            <button onClick={() => window.api?.closeWindow()} title="Fermer"
+            <button onClick={() => window.api?.closeWindow()} title={t('sess.closeWin')}
               className="w-3.5 h-3.5 rounded-full bg-red-400/70 hover:bg-red-400 transition-colors"/>
           </div>
         )}
@@ -3774,7 +3775,7 @@ export default function GamePage(): JSX.Element {
                 <div className="absolute z-20 pointer-events-none flex flex-col items-center"
                   style={{ left: pos.left, top: `calc(${pos.top} - 7.5%)`, transform: 'translate(-50%,-50%)' }}>
                   <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[#f0c878] mb-0.5 animate-pulse"
-                    style={{ textShadow: '0 0 8px rgba(240,192,96,0.7)' }}>à parler</span>
+                    style={{ textShadow: '0 0 8px rgba(240,192,96,0.7)' }}>{t('sess.toAct')}</span>
                   <svg width="26" height="16" viewBox="0 0 26 16" className="animate-bounce" style={{ filter: 'drop-shadow(0 2px 4px rgba(240,180,70,0.6))' }}>
                     <path d="M13 16 L2 3 Q13 8 24 3 Z" fill="#f0c060" stroke="#fff3c0" strokeWidth="0.8"/>
                   </svg>
@@ -3969,12 +3970,12 @@ export default function GamePage(): JSX.Element {
                           ['Pot', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / bbAmt) * bbAmt), 'P'],
                         ] as [string, number, string][]).map(([label, amt, key]) => (
                           <button key={label} onClick={() => setHeroBetAmt(amt)}
-                            title={key ? `${label} pot — touche « ${key} »` : label}
+                            title={key ? t('sess.betSizeTip', { label, key }) : label}
                             className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-white/5 border border-white/10 text-white/45 hover:text-[#c9a227] hover:border-[#c9a227]/30 transition-all">
                             {label}{key && <span className="ml-0.5 opacity-50">{key}</span>}
                           </button>
                         ))}
-                        <button onClick={() => setHeroBetAmt(heroMaxTo)} title="All-in — touche « A »"
+                        <button onClick={() => setHeroBetAmt(heroMaxTo)} title={t('sess.allinKey')}
                           className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-900/20 border border-purple-700/30 text-purple-400 hover:bg-purple-900/30 transition-all">
                           All-in <span className="opacity-50">A</span>
                         </button>
@@ -4017,7 +4018,7 @@ export default function GamePage(): JSX.Element {
                   <div className="w-full flex items-center gap-3">
                     <div className="flex items-center gap-2 mr-1">
                       <div className="w-2 h-2 rounded-full bg-[#00d4ff] animate-ping opacity-60"/>
-                      <p className="text-[9px] text-white/35 uppercase tracking-widest whitespace-nowrap">En attente — pré-sélection</p>
+                      <p className="text-[9px] text-white/35 uppercase tracking-widest whitespace-nowrap">{t('sess.waitingPreselect')}</p>
                     </div>
                     <button onClick={() => setPreAction(preAction==='fold'?'none':'fold')}
                       className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all

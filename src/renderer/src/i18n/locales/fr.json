@@ -117,7 +117,12 @@
     "pro3": "Scénario sur mesure (recrée n'importe quel spot)",
     "pro4": "Coach tournoi avancé (ICM, re-shove, bulle)",
     "pro5": "Historique complet + replay illimité",
-    "pro6": "Support prioritaire"
+    "pro6": "Support prioritaire",
+    "betaOffered": "Pendant la bêta, le Pro est offert.",
+    "gateSimTitle": "Simulation",
+    "gateSimDesc": "Le banc de test qui mesure l'EV du coach sur des milliers de mains. Réservé aux membres Pro.",
+    "gateScenTitle": "Scénario sur mesure",
+    "gateScenDesc": "Recrée n'importe quel spot (cartes, board, tapis) pour tester le coach. Réservé aux membres Pro."
   },
   "lobby": {
     "launchTraining": "Lancer un entraînement",
@@ -652,7 +657,12 @@
     "handFlow": "Déroulé du coup",
     "reshoveLabel": "TAPIS (RE-SHOVE)",
     "footerPreflop": "Range adaptée au nombre de joueurs en jeu + équité estimée par simulation. Conseil d'entraînement, pas un solveur.",
-    "footerPostflop": "Équité estimée par simulation (Monte-Carlo) vs mains aléatoires. Conseil heuristique d'entraînement, pas un solveur."
+    "footerPostflop": "Équité estimée par simulation (Monte-Carlo) vs mains aléatoires. Conseil heuristique d'entraînement, pas un solveur.",
+    "heatWeak": "faible",
+    "heatStrong": "forte",
+    "heatSuited": "assorti",
+    "heatOffsuit": "dépareillé",
+    "heatEstRange": "range estimée (IA)"
   },
   "scen": {
     "rfi": "Ouverture (personne n'a relancé)",
@@ -1035,7 +1045,20 @@
     "closeBtn": "Fermer",
     "handHistory": "Historique des mains",
     "actionLog": "Journal des actions",
-    "outOfChips": "Plus de jetons"
+    "outOfChips": "Plus de jetons",
+    "minimize": "Réduire",
+    "maximize": "Agrandir",
+    "closeWin": "Fermer",
+    "eliminated": "Éliminé",
+    "sittingOut": "Absent",
+    "handLabel": "Main",
+    "toAct": "à parler",
+    "allinKey": "All-in — touche « A »",
+    "waitingPreselect": "En attente — pré-sélection",
+    "undoTip": "Annuler la dernière action saisie (touche Retour ⌫)",
+    "undoBtn": "Annuler",
+    "reviveTip": "Recrée cette situation exacte en simulation jouable — les adversaires gardent leur range, leurs cartes sont retirées au hasard dedans",
+    "betSizeTip": "{{label}} pot — touche « {{key}} »"
   },
   "htr": {
     "settings": "Réglages de l'exercice",

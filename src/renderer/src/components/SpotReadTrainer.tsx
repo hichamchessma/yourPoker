@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Play, ChevronLeft, Trophy, Check } from 'lucide-react'
@@ -11,13 +11,15 @@ const KIND_KEY: Record<QKind, string> = { texture: 'spotread.stepTexture', range
 const KIND_ORDER: QKind[] = ['texture', 'rangehit', 'equity', 'bucket']
 
 export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [phase, setPhase] = useState<'setup' | 'quiz' | 'result'>('setup')
   const [context, setContext] = useState<SpotContext>('cash')
   const [numHands, setNumHands] = useState(8)
 
   const [spot, setSpot] = useState<TrainerSpot | null>(null)
-  const [questions, setQuestions] = useState<SpotQuestion[]>([])
+  // Questions are DERIVED from the spot (deterministic) — keyed on i18n.language too
+  // so the prompts/explanations re-translate live when the language switches.
+  const questions = useMemo<SpotQuestion[]>(() => (spot ? buildQuestions(spot) : []), [spot, i18n.language])
   const [qi, setQi] = useState(0)
   const [picked, setPicked] = useState<string | null>(null)
   const [handNo, setHandNo] = useState(0)
@@ -43,7 +45,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
     kindRef.current = { texture: { c: 0, t: 0 }, rangehit: { c: 0, t: 0 }, equity: { c: 0, t: 0 }, bucket: { c: 0, t: 0 } }
     bagRef.current = []; nextSpotRef.current = null
     const s = takeSpot(context)
-    setSpot(s); setQuestions(buildQuestions(s)); setQi(0); setPicked(null); setHandNo(0); setPhase('quiz')
+    setSpot(s); setQi(0); setPicked(null); setHandNo(0); setPhase('quiz')
   }
 
   function answer(id: string) {
@@ -62,7 +64,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
     if (qi + 1 < questions.length) { setQi(qi + 1); return }
     if (handNo + 1 >= numHands) { setPhase('result'); return }
     const s = takeSpot(context)
-    setSpot(s); setQuestions(buildQuestions(s)); setQi(0); setHandNo(h => h + 1)
+    setSpot(s); setQi(0); setHandNo(h => h + 1)
   }
 
   // ── SETUP ──

@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Lock, Sparkles, ArrowRight } from 'lucide-react'
 
 // Full-page lock shown when a Free user opens a Pro feature. Sends them to /pricing.
 export default function ProGate({ title, desc }: { title: string; desc: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   return (
     <div className="h-full w-full flex items-center justify-center p-6"
@@ -19,9 +21,9 @@ export default function ProGate({ title, desc }: { title: string; desc: string }
         <button onClick={() => navigate('/pricing')}
           className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black uppercase tracking-wide transition-all hover:brightness-110"
           style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)', color: '#0a0a0a' }}>
-          <Sparkles size={16} /> Passer Pro <ArrowRight size={16} />
+          <Sparkles size={16} /> {t('pricing.goPro')} <ArrowRight size={16} />
         </button>
-        <p className="text-[10px] text-white/30 mt-3">Pendant la bêta, le Pro est offert.</p>
+        <p className="text-[10px] text-white/30 mt-3">{t('pricing.betaOffered')}</p>
       </motion.div>
     </div>
   )

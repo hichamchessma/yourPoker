@@ -82,7 +82,7 @@ export default function RangeAssistant({
   representedView?: RangeView | null
   representedMeta?: { move: string; effect: string } | null
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
@@ -165,7 +165,10 @@ export default function RangeAssistant({
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
     return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, strongDraw: a.strongDraw, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier, aggressors, cappedRange, callPressure])
+    // i18n.language: the reasons/sizing/madeHand are built with t() INSIDE this memo,
+    // so they must rebuild when the language changes (otherwise the coach panel stays
+    // frozen in the previous language while the chrome around it switches).
+  }, [i18n.language, isPreflop, scenario, heroKey, boardSig, pot, toCall, activePlayers, inPosition, position, aggression, barrels, effStack, numAllIn, raiserBehindJam, raiseToBB, reRaiseRatio, icmTighten, icmPressure, closingAction, potOddsPre, villainTier, aggressors, cappedRange, callPressure])
 
   // "How a pro reasons about the price" — POSTFLOP only. Pre-flop the decision is a
   // RANGE call (domination / realizability), not a pot-odds one: a hand can clear the

@@ -117,7 +117,12 @@
     "pro3": "Custom scenario (recreate any spot)",
     "pro4": "Advanced tournament coach (ICM, re-shove, bubble)",
     "pro5": "Full history + unlimited replay",
-    "pro6": "Priority support"
+    "pro6": "Priority support",
+    "betaOffered": "During the beta, Pro is free.",
+    "gateSimTitle": "Simulation",
+    "gateSimDesc": "The test bench that measures the coach's EV over thousands of hands. Pro members only.",
+    "gateScenTitle": "Custom scenario",
+    "gateScenDesc": "Re-create any spot (cards, board, stacks) to test the coach. Pro members only."
   },
   "lobby": {
     "launchTraining": "Start a training",
@@ -652,7 +657,12 @@
     "handFlow": "Hand flow",
     "reshoveLabel": "SHOVE (RE-SHOVE)",
     "footerPreflop": "Range adapted to the number of players in the hand + equity estimated by simulation. Training advice, not a solver.",
-    "footerPostflop": "Equity estimated by simulation (Monte-Carlo) vs random hands. Heuristic training advice, not a solver."
+    "footerPostflop": "Equity estimated by simulation (Monte-Carlo) vs random hands. Heuristic training advice, not a solver.",
+    "heatWeak": "weak",
+    "heatStrong": "strong",
+    "heatSuited": "suited",
+    "heatOffsuit": "offsuit",
+    "heatEstRange": "estimated range (AI)"
   },
   "scen": {
     "rfi": "Open (no one raised)",
@@ -1035,7 +1045,20 @@
     "closeBtn": "Close",
     "handHistory": "Hand history",
     "actionLog": "Action log",
-    "outOfChips": "Out of chips"
+    "outOfChips": "Out of chips",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "closeWin": "Close",
+    "eliminated": "Eliminated",
+    "sittingOut": "Away",
+    "handLabel": "Hand",
+    "toAct": "to act",
+    "allinKey": "All-in — press « A »",
+    "waitingPreselect": "Waiting — pre-selection",
+    "undoTip": "Undo the last entered action (Backspace ⌫)",
+    "undoBtn": "Undo",
+    "reviveTip": "Re-create this exact spot as a playable sandbox — opponents keep their range, their cards are drawn at random within it",
+    "betSizeTip": "{{label}} pot — press « {{key}} »"
   },
   "htr": {
     "settings": "Exercise settings",

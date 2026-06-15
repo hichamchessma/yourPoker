@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { GRID_RANKS, cellKey } from '../lib/preflopRanges'
 import type { RangeView } from '../lib/rangeEstimator'
 
@@ -21,6 +22,7 @@ export default function RangeHeatmap({
   onCellClick?: (key: string) => void   // when set, cells become clickable
   selectedKey?: string | null           // highlighted (clicked) cell
 }) {
+  const { t } = useTranslation()
   const s = width / 300            // scale factor — fonts scale with the grid
   const f = (px: number) => Math.round(px * s)
   return (
@@ -75,8 +77,8 @@ export default function RangeHeatmap({
       </div>
 
       <div className="flex items-center justify-between text-white/30" style={{ marginTop: f(6), fontSize: f(7.5) }}>
-        <span>● faible → ● forte · <span className="text-white/45">s</span> assorti · <span className="text-white/45">o</span> dépareillé</span>
-        <span>range estimée (IA)</span>
+        <span>● {t('coach.heatWeak')} → ● {t('coach.heatStrong')} · <span className="text-white/45">s</span> {t('coach.heatSuited')} · <span className="text-white/45">o</span> {t('coach.heatOffsuit')}</span>
+        <span>{t('coach.heatEstRange')}</span>
       </div>
     </div>
   )
