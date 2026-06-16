@@ -53,6 +53,7 @@ export default function HandTrainerPage() {
   const [numHands, setNumHands] = useState(20)
   const [scenFilter, setScenFilter] = useState<'open' | 'vsopen' | 'mixed'>('mixed')
   const [custom, setCustom] = useState<Custom | null>(null)
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null) // hovered landing choice → preview the matching quadrant
 
   // quiz state
   const [questions, setQuestions] = useState<Question[]>([])
@@ -186,19 +187,22 @@ export default function HandTrainerPage() {
               className="w-full max-w-6xl mt-10">
               <p className="text-center text-white/50 mb-6 text-sm">{t('trainer.howTrain')}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-                <OptionCard icon={<Target size={28} />} title={t('trainer.standard')}
+                <OptionCard idx={0} onHover={setPreviewIdx} icon={<Target size={28} />} title={t('trainer.standard')}
                   desc={t('trainer.standardD')}
                   onClick={() => { setMode('standard'); setScreen('setup') }} accent="#00d4ff" />
-                <OptionCard icon={<Sliders size={28} />} title={t('trainer.custom')}
+                <OptionCard idx={1} onHover={setPreviewIdx} icon={<Sliders size={28} />} title={t('trainer.custom')}
                   desc={t('trainer.customD')}
                   onClick={openEditor} accent="#c9a227" />
-                <OptionCard icon={<ScanEye size={28} />} title={t('trainer.spotRead')}
+                <OptionCard idx={2} onHover={setPreviewIdx} icon={<ScanEye size={28} />} title={t('trainer.spotRead')}
                   desc={t('trainer.spotReadD')}
                   onClick={() => setScreen('spotread')} accent="#2dd4bf" />
-                <OptionCard icon={<Zap size={28} />} title={t('trainer.decision')}
+                <OptionCard idx={3} onHover={setPreviewIdx} icon={<Zap size={28} />} title={t('trainer.decision')}
                   desc={t('trainer.decisionD')}
                   onClick={() => setScreen('decision')} accent="#f0a830" />
               </div>
+
+              {/* Hover preview — the matching 1/4 of the split photo pops in the centre */}
+              <ChoicePreview idx={previewIdx} />
             </motion.div>
           )}
 
@@ -476,10 +480,51 @@ function QuizBackground({ reveal, correct }: { reveal: boolean; correct: boolean
 }
 
 // ── Landing option card ───────────────────────────────────────────────────────
-function OptionCard({ icon, title, desc, onClick, accent }: { icon: React.ReactNode; title: string; desc: string; onClick: () => void; accent: string }) {
+// Hover preview: the split photo (backgroundPokerTraining2.png) is a 2×2 grid; each
+// landing choice maps to one quadrant. On hover we pop that quarter into the centre.
+const QUADRANTS = [
+  { pos: '0% 0%', accent: '#00d4ff' },   // 0 standard  → top-left
+  { pos: '100% 0%', accent: '#c9a227' }, // 1 custom    → top-right
+  { pos: '0% 100%', accent: '#2dd4bf' }, // 2 spot-read → bottom-left
+  { pos: '100% 100%', accent: '#f0a830' }, // 3 decision → bottom-right
+]
+function ChoicePreview({ idx }: { idx: number | null }) {
+  return (
+    <AnimatePresence>
+      {idx !== null && QUADRANTS[idx] && (
+        <motion.div key="preview" className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.82, y: 22, filter: 'blur(10px)' }}
+            animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, scale: 0.9, y: 12, filter: 'blur(8px)' }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="relative rounded-2xl overflow-hidden"
+            style={{
+              width: 'min(58vw, 760px)', aspectRatio: '704 / 384',
+              border: `1px solid ${QUADRANTS[idx].accent}99`,
+              boxShadow: `0 24px 70px -18px rgba(0,0,0,0.85), 0 0 60px -10px ${QUADRANTS[idx].accent}66`,
+            }}>
+            <div className="absolute inset-0" style={{
+              backgroundImage: 'url(/assets/backgroundPokerTraining2.png)',
+              backgroundSize: '200% 200%', backgroundPosition: QUADRANTS[idx].pos,
+            }} />
+            {/* subtle inner vignette + accent top line for that premium framing */}
+            <div className="absolute inset-0" style={{ boxShadow: 'inset 0 0 60px rgba(0,0,0,0.45)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: `linear-gradient(90deg, transparent, ${QUADRANTS[idx].accent}, transparent)` }} />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function OptionCard({ icon, title, desc, onClick, accent, idx, onHover }: { icon: React.ReactNode; title: string; desc: string; onClick: () => void; accent: string; idx?: number; onHover?: (i: number | null) => void }) {
   const { t } = useTranslation()
   return (
     <button onClick={onClick}
+      onMouseEnter={() => idx !== undefined && onHover?.(idx)}
+      onMouseLeave={() => onHover?.(null)}
       className="group relative text-left rounded-2xl border p-5 overflow-hidden transition-all duration-200 hover:-translate-y-1"
       style={{ borderColor: accent + '4d', background: 'rgba(9,13,24,0.74)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', boxShadow: '0 12px 34px -14px rgba(0,0,0,0.75)' }}>
       {/* accent top line */}
