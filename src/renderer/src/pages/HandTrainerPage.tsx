@@ -151,7 +151,7 @@ export default function HandTrainerPage() {
           initial={{ scale: 1.06 }}
           animate={{ scale: [1.06, 1.15, 1.06], x: ['0%', '-2.5%', '0%'], y: ['0%', '-1.8%', '0%'] }}
           transition={{ duration: 40, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ backgroundImage: 'url(/assets/backgroundPokerTraining.png)', backgroundSize: 'cover', backgroundPosition: 'center', filter: 'saturate(1.08) contrast(1.03)' }} />
+          style={{ backgroundImage: 'url(/assets/backgroundPokerTraining.webp)', backgroundSize: 'cover', backgroundPosition: 'center', filter: 'saturate(1.08) contrast(1.03)' }} />
         {/* Readability gradient (darker where the content sits) */}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(6,10,22,0.50) 0%, rgba(6,10,22,0.74) 48%, rgba(4,6,14,0.92) 100%)' }} />
         {/* Brand radial + vignette for depth */}
@@ -492,21 +492,21 @@ function ChoicePreview({ idx }: { idx: number | null }) {
   return (
     <AnimatePresence>
       {idx !== null && QUADRANTS[idx] && (
-        <motion.div key="preview" className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none"
+        <motion.div key="preview" className="fixed inset-0 z-40 flex items-end justify-center pointer-events-none pb-[6vh]"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
           <motion.div
-            initial={{ opacity: 0, scale: 0.82, y: 22, filter: 'blur(10px)' }}
+            initial={{ opacity: 0, scale: 0.84, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, scale: 0.9, y: 12, filter: 'blur(8px)' }}
+            exit={{ opacity: 0, scale: 0.92, y: 14, filter: 'blur(8px)' }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="relative rounded-2xl overflow-hidden"
             style={{
-              width: 'min(58vw, 760px)', aspectRatio: '704 / 384',
+              width: 'min(46vw, 620px)', aspectRatio: '704 / 384',
               border: `1px solid ${QUADRANTS[idx].accent}99`,
               boxShadow: `0 24px 70px -18px rgba(0,0,0,0.85), 0 0 60px -10px ${QUADRANTS[idx].accent}66`,
             }}>
             <div className="absolute inset-0" style={{
-              backgroundImage: 'url(/assets/backgroundPokerTraining2.png)',
+              backgroundImage: 'url(/assets/backgroundPokerTraining2.webp)',
               backgroundSize: '200% 200%', backgroundPosition: QUADRANTS[idx].pos,
             }} />
             {/* subtle inner vignette + accent top line for that premium framing */}
