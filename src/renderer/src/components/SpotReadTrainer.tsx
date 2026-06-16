@@ -70,7 +70,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
   // ── SETUP ──
   if (phase === 'setup') {
     return (
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mt-4 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-6">
         <button onClick={onBack} className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white/70 uppercase tracking-widest mb-4"><ChevronLeft size={13} /> {t('spotread.back')}</button>
         <h2 className="font-black uppercase tracking-widest text-sm mb-1" style={{ color: ACCENT }}>{t('spotread.title')}</h2>
         <p className="text-[11px] text-white/40 mb-5 leading-relaxed">{t('spotread.intro')}</p>
@@ -141,7 +141,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
   const reveal = picked !== null
   const correctOpt = q.options.find(o => o.correct)
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl mt-4">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-5xl mt-3">
       {/* header */}
       <div className="flex items-center justify-between mb-3">
         <button onClick={onBack} className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white/70 uppercase tracking-widest"><ChevronLeft size={13} /> {t('spotread.quit')}</button>
@@ -152,10 +152,14 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <SpotTable spot={spot} />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(340px,440px)] gap-4 items-start">
+        {/* LEFT — the spot table */}
+        <div className="min-w-0"><SpotTable spot={spot} /></div>
 
+        {/* RIGHT — progress + question + answers (side-by-side so nothing scrolls) */}
+        <div className="min-w-0">
       {/* step indicator */}
-      <div className="flex items-center gap-1.5 mt-3 mb-2">
+      <div className="flex items-center gap-1.5 mb-2">
         {questions.map((qq, i) => (
           <div key={i} className="flex-1 flex items-center gap-1.5">
             <div className="h-1 flex-1 rounded-full" style={{ background: i < qi ? ACCENT : i === qi ? ACCENT + '99' : 'rgba(255,255,255,0.1)' }} />
@@ -167,7 +171,7 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
       {/* question */}
       <AnimatePresence mode="wait">
         <motion.div key={`${handNo}-${qi}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-          className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mt-1">
+          className="rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-md p-4">
           <p className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{ color: ACCENT }}>{q.title}</p>
           <p className="text-[13px] text-white/85 font-semibold mb-3 leading-snug">{q.prompt}</p>
           <div className="grid grid-cols-1 gap-2">
@@ -210,6 +214,8 @@ export default function SpotReadTrainer({ onBack }: { onBack: () => void }) {
           )}
         </motion.div>
       </AnimatePresence>
+        </div>
+      </div>
     </motion.div>
   )
 }

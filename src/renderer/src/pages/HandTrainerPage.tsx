@@ -162,6 +162,9 @@ export default function HandTrainerPage() {
         {/* Faint gold counter-glow bottom-right */}
         <motion.div className="absolute rounded-full" style={{ right: '-12%', bottom: '-18%', width: '50%', height: '50%', background: 'radial-gradient(circle, rgba(201,162,39,0.18), transparent 70%)', filter: 'blur(80px)' }}
           animate={{ opacity: [0.08, 0.18, 0.08] }} transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 1 }} />
+        {/* On the WORKING screens (not the landing) the photo calms right down to a
+            faint ambience so every panel/text stays crisp and readable. */}
+        <div className="absolute inset-0 transition-opacity duration-500" style={{ background: 'rgba(5,7,15,0.84)', opacity: screen === 'landing' ? 0 : 1 }} />
       </div>
 
       <div className="relative z-10 app-drag flex items-center justify-between px-6 py-3 border-b border-white/5">
@@ -179,12 +182,12 @@ export default function HandTrainerPage() {
         <div className="app-drag-none"><WindowControls /></div>
       </div>
 
-      <div className="relative z-10 flex-1 overflow-y-auto p-6 flex items-start justify-center">
+      <div className="relative z-10 flex-1 overflow-y-auto px-4 py-3 flex items-start justify-center">
         <AnimatePresence mode="wait">
           {/* ── LANDING ── */}
           {screen === 'landing' && (
             <motion.div key="landing" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="w-full max-w-6xl mt-10">
+              className="w-full max-w-6xl mt-4">
               <p className="text-center text-white/50 mb-6 text-sm">{t('trainer.howTrain')}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                 <OptionCard idx={0} onHover={setPreviewIdx} icon={<Target size={28} />} title={t('trainer.standard')}
@@ -219,7 +222,7 @@ export default function HandTrainerPage() {
           {/* ── SETUP ── */}
           {screen === 'setup' && (
             <motion.div key="setup" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="w-full max-w-md mt-10 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+              className="w-full max-w-md mt-4 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-6">
               <h2 className="text-[#00d4ff] font-black uppercase tracking-widest text-sm mb-1">{t('htr.settings')}</h2>
               <p className="text-[10px] text-white/35 mb-5">{mode === 'custom' ? t('htr.customRanges') : t('htr.standardRanges')}</p>
 
@@ -263,7 +266,7 @@ export default function HandTrainerPage() {
           {/* ── RESULT ── */}
           {screen === 'result' && (
             <motion.div key="result" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              className="w-full max-w-md mt-12 rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center">
+              className="w-full max-w-md mt-6 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-8 text-center">
               <Trophy size={40} className="mx-auto text-[#c9a227] mb-2" />
               <h2 className="text-white/80 font-black uppercase tracking-widest text-sm">{t('htr.result')}</h2>
               <p className="text-5xl font-black text-[#00d4ff] font-mono my-3">{score}<span className="text-white/30 text-2xl">/{questions.length}</span></p>

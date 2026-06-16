@@ -77,7 +77,7 @@ export default function DecisionTrainer({ onBack }: { onBack: () => void }) {
   // ── SETUP ──
   if (phase === 'setup') {
     return (
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mt-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mt-4 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-6">
         <button onClick={onBack} className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white/70 uppercase tracking-widest mb-4"><ChevronLeft size={13} /> {t('decision.back')}</button>
         <h2 className="font-black uppercase tracking-widest text-sm mb-1" style={{ color: ACCENT }}>{t('decision.title')}</h2>
         <p className="text-[11px] text-white/40 mb-5 leading-relaxed">{t('decision.intro')}</p>
