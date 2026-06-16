@@ -480,12 +480,21 @@ function OptionCard({ icon, title, desc, onClick, accent }: { icon: React.ReactN
   const { t } = useTranslation()
   return (
     <button onClick={onClick}
-      className="text-left rounded-2xl border p-6 transition-all hover:scale-[1.02] hover:bg-white/[0.04]"
-      style={{ borderColor: accent + '40', background: accent + '0d' }}>
-      <span style={{ color: accent }}>{icon}</span>
-      <h3 className="text-white font-black uppercase tracking-wide mt-3 text-sm" style={{ color: accent }}>{title}</h3>
-      <p className="text-white/45 text-[12px] mt-1.5 leading-relaxed">{desc}</p>
-      <div className="mt-4 flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: accent }}>{t('trainer.choose')} <Play size={11} /></div>
+      className="group relative text-left rounded-2xl border p-5 overflow-hidden transition-all duration-200 hover:-translate-y-1"
+      style={{ borderColor: accent + '4d', background: 'rgba(9,13,24,0.74)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', boxShadow: '0 12px 34px -14px rgba(0,0,0,0.75)' }}>
+      {/* accent top line */}
+      <span className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)`, opacity: 0.75 }} />
+      {/* accent wash, brighter on hover */}
+      <span className="absolute inset-0 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity duration-300" style={{ background: `radial-gradient(130% 85% at 50% -10%, ${accent}1f, transparent 62%)` }} />
+      {/* glow ring on hover */}
+      <span className="absolute inset-0 rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ boxShadow: `0 0 0 1px ${accent}99, 0 16px 44px -10px ${accent}55` }} />
+      <div className="relative">
+        <span className="inline-flex items-center justify-center rounded-xl mb-3 transition-transform duration-200 group-hover:scale-110"
+          style={{ width: 48, height: 48, color: accent, background: accent + '1f', border: `1px solid ${accent}55` }}>{icon}</span>
+        <h3 className="font-black uppercase tracking-wide text-sm" style={{ color: accent }}>{title}</h3>
+        <p className="text-white/65 text-[12px] mt-1.5 leading-relaxed">{desc}</p>
+        <div className="mt-4 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-transform duration-200 group-hover:translate-x-1" style={{ color: accent }}>{t('trainer.choose')} <Play size={11} /></div>
+      </div>
     </button>
   )
 }
