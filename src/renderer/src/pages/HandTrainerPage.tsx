@@ -567,68 +567,69 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-3xl"
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl"
       onMouseUp={() => (painting.current = false)} onMouseLeave={() => (painting.current = false)}>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {/* scenario */}
-        <div className="flex gap-1">
-          {(['open', 'vsopen'] as TScenario[]).map(s => (
-            <button key={s} onClick={() => setScenario(s)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border ${scenario === s ? 'bg-[#00d4ff] text-black border-[#00d4ff]' : 'bg-white/5 text-white/50 border-white/10'}`}>{t(SCEN_LABEL[s])}</button>
-          ))}
-        </div>
-        <div className="h-5 w-px bg-white/10" />
-        {/* position */}
-        <div className="flex gap-1 flex-wrap">
-          {POSITIONS.map(p => (
-            <button key={p} onClick={() => setPosition(p)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border ${position === p ? 'bg-[#c9a227] text-black border-[#c9a227]' : 'bg-white/5 text-white/50 border-white/10'}`}>{p}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* brush palette */}
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('htr.brush')}</span>
-        {actions.map(a => (
-          <button key={a} onClick={() => setBrush(a)}
-            className="px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
-            style={brush === a ? { background: ACT[a].color, color: ACT[a].fg, borderColor: ACT[a].color, boxShadow: `0 0 12px ${ACT[a].color}66` } : { background: ACT[a].color + '22', color: ACT[a].color, borderColor: ACT[a].color + '55' }}>
-            {ACT[a].label}
+      <div className="grid grid-cols-1 lg:grid-cols-[210px_1fr] gap-4 items-start">
+        {/* LEFT — all controls + Validate, so the grid never pushes anything off-screen */}
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-3">
+          {/* scenario */}
+          <div className="flex gap-1">
+            {(['open', 'vsopen'] as TScenario[]).map(s => (
+              <button key={s} onClick={() => setScenario(s)} className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border ${scenario === s ? 'bg-[#00d4ff] text-black border-[#00d4ff]' : 'bg-white/5 text-white/50 border-white/10'}`}>{t(SCEN_LABEL[s])}</button>
+            ))}
+          </div>
+          {/* position */}
+          <div className="flex gap-1 flex-wrap">
+            {POSITIONS.map(p => (
+              <button key={p} onClick={() => setPosition(p)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border ${position === p ? 'bg-[#c9a227] text-black border-[#c9a227]' : 'bg-white/5 text-white/50 border-white/10'}`}>{p}</button>
+            ))}
+          </div>
+          {/* brush palette */}
+          <div>
+            <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('htr.brush')}</span>
+            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+              {actions.map(a => (
+                <button key={a} onClick={() => setBrush(a)}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
+                  style={brush === a ? { background: ACT[a].color, color: ACT[a].fg, borderColor: ACT[a].color, boxShadow: `0 0 12px ${ACT[a].color}66` } : { background: ACT[a].color + '22', color: ACT[a].color, borderColor: ACT[a].color + '55' }}>
+                  {ACT[a].label}
+                </button>
+              ))}
+            </div>
+            <button onClick={resetPos} className="mt-2 w-full flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-white/10 bg-white/5 text-white/50 hover:bg-white/10"><RotateCcw size={11} /> {t('htr.resetPos', { pos: position })}</button>
+          </div>
+          {/* legend */}
+          <div className="flex flex-col gap-1.5">
+            {actions.map(a => (
+              <div key={a} className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: ACT[a].color }} /><span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{ACT[a].label}</span></div>
+            ))}
+          </div>
+          {/* VALIDATE */}
+          <button onClick={onValidate} className="mt-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black uppercase tracking-[0.14em] text-[12.5px] transition-all hover:scale-[1.02]" style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
+            <Check size={16} /> {t('htr.validate')}
           </button>
-        ))}
-        <button onClick={resetPos} className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-white/10 bg-white/5 text-white/50 hover:bg-white/10"><RotateCcw size={11} /> {t('htr.resetPos', { pos: position })}</button>
-      </div>
-
-      {/* grid */}
-      <div className="mx-auto" style={{ width: 'min(100%, 560px)' }} onMouseDown={() => (painting.current = true)}>
-        <div className="grid select-none" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
-          {GRID_RANKS.map((_, i) => GRID_RANKS.map((__, j) => {
-            const k = cellKey(i, j)
-            const a = map[k] ?? 'fold'
-            const c = ACT[a]
-            return (
-              <div key={`${i}-${j}`} title={`${k} — ${c.label}`}
-                onMouseDown={() => paint(k)} onMouseEnter={() => { if (painting.current) paint(k) }}
-                className="relative flex items-center justify-center rounded-[3px] cursor-pointer"
-                style={{ aspectRatio: '1', fontSize: 9, fontWeight: 700, background: c.color, color: c.fg }}>
-                {k.replace('s', '').replace('o', '')}
-                {k.endsWith('s') && <span style={{ fontSize: 6, opacity: 0.7, marginLeft: 1 }}>s</span>}
-                {k.endsWith('o') && <span style={{ fontSize: 6, opacity: 0.55, marginLeft: 1 }}>o</span>}
-              </div>
-            )
-          }))}
         </div>
-      </div>
 
-      <div className="flex items-center justify-center gap-4 my-3 flex-wrap">
-        {actions.map(a => (
-          <div key={a} className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: ACT[a].color }} /><span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{ACT[a].label}</span></div>
-        ))}
-      </div>
-
-      <div className="flex justify-center mt-4">
-        <button onClick={onValidate} className="flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-[0.18em] text-sm" style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
-          <Check size={16} /> {t('htr.validate')}
-        </button>
+        {/* RIGHT — the 13×13 grid, capped to the viewport HEIGHT (it's square) so 0 scroll */}
+        <div className="mx-auto" style={{ width: 'min(100%, 64vh)' }} onMouseDown={() => (painting.current = true)}>
+          <div className="grid select-none" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
+            {GRID_RANKS.map((_, i) => GRID_RANKS.map((__, j) => {
+              const k = cellKey(i, j)
+              const a = map[k] ?? 'fold'
+              const c = ACT[a]
+              return (
+                <div key={`${i}-${j}`} title={`${k} — ${c.label}`}
+                  onMouseDown={() => paint(k)} onMouseEnter={() => { if (painting.current) paint(k) }}
+                  className="relative flex items-center justify-center rounded-[3px] cursor-pointer"
+                  style={{ aspectRatio: '1', fontSize: 9, fontWeight: 700, background: c.color, color: c.fg }}>
+                  {k.replace('s', '').replace('o', '')}
+                  {k.endsWith('s') && <span style={{ fontSize: 6, opacity: 0.7, marginLeft: 1 }}>s</span>}
+                  {k.endsWith('o') && <span style={{ fontSize: 6, opacity: 0.55, marginLeft: 1 }}>o</span>}
+                </div>
+              )
+            }))}
+          </div>
+        </div>
       </div>
     </motion.div>
   )
