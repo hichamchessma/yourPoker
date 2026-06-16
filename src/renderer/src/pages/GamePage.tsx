@@ -855,6 +855,9 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   useEffect(() => { autoPlayRef.current = autoPlay }, [autoPlay])
   const stopAuto = () => setAutoPlay(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const selectedRowRef = useRef<HTMLButtonElement>(null)
+  // Keep the selected hand visible in the left list when navigating with ↑/↓.
+  useEffect(() => { selectedRowRef.current?.scrollIntoView({ block: 'nearest' }) }, [selectedId])
 
   const record = records.find(r => r.id === selectedId) ?? null
 
@@ -886,6 +889,19 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
       if (e.key === 'ArrowLeft') { e.preventDefault(); stopAuto(); setStepIdx(i => Math.max(0, i - 1)) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); stopAuto(); setStepIdx(i => Math.min(record.actions.length - 1, i + 1)) }
+      // ↑ / ↓ jump between HANDS in the left list (it's shown most-recent-first), with
+      // wrap-around: ↓ past the bottom → first, ↑ past the top → last.
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault(); stopAuto()
+        const order = [...records].reverse() // visual top→bottom order
+        const cur = order.findIndex(r => r.id === record.id)
+        if (cur >= 0 && order.length > 1) {
+          const n = e.key === 'ArrowUp'
+            ? (cur <= 0 ? order.length - 1 : cur - 1)
+            : (cur >= order.length - 1 ? 0 : cur + 1)
+          setSelectedId(order[n].id)
+        }
+      }
       else if (e.key === 'Escape') { e.preventDefault(); onClose() }
       else if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault() // never scroll the page
@@ -980,7 +996,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
             {[...records].reverse().map(r => {
               const profit = r.heroProfit
               return (
-                <button key={r.id} onClick={() => { stopAuto(); setSelectedId(r.id) }}
+                <button key={r.id} ref={r.id === selectedId ? selectedRowRef : undefined} onClick={() => { stopAuto(); setSelectedId(r.id) }}
                   className={`w-full text-left px-4 py-3 border-b border-white/5 transition-all
                     ${r.id===selectedId?'bg-[#c9a227]/10 border-l-2 border-l-[#c9a227]':'hover:bg-white/5'}`}>
                   <div className="text-[13px] font-bold text-white/80">Main #{r.handNum}</div>
