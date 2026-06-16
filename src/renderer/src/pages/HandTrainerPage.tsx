@@ -142,8 +142,28 @@ export default function HandTrainerPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ background: 'radial-gradient(120% 100% at 50% 0%, #0d1530 0%, #080b18 60%, #05070f 100%)' }}>
-      <div className="app-drag flex items-center justify-between px-6 py-3 border-b border-white/5">
+    <div className="relative h-full w-full flex flex-col overflow-hidden" style={{ background: '#05070f' }}>
+      {/* ── Premium animated background (the training photo) ── */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Slow Ken-Burns drift on the photo */}
+        <motion.div className="absolute inset-0"
+          initial={{ scale: 1.06 }}
+          animate={{ scale: [1.06, 1.15, 1.06], x: ['0%', '-2.5%', '0%'], y: ['0%', '-1.8%', '0%'] }}
+          transition={{ duration: 40, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ backgroundImage: 'url(/assets/backgroundPokerTraining.png)', backgroundSize: 'cover', backgroundPosition: 'center', filter: 'saturate(1.08) contrast(1.03)' }} />
+        {/* Readability gradient (darker where the content sits) */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(6,10,22,0.50) 0%, rgba(6,10,22,0.74) 48%, rgba(4,6,14,0.92) 100%)' }} />
+        {/* Brand radial + vignette for depth */}
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(115% 95% at 50% 30%, transparent 40%, rgba(0,0,0,0.6) 100%)' }} />
+        {/* Pulsing teal glow at the top — alive & stimulating */}
+        <motion.div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: '-28%', width: '70%', height: '60%', background: 'radial-gradient(circle, rgba(0,212,255,0.30), transparent 68%)', filter: 'blur(70px)' }}
+          animate={{ opacity: [0.10, 0.24, 0.10], scale: [1, 1.08, 1] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }} />
+        {/* Faint gold counter-glow bottom-right */}
+        <motion.div className="absolute rounded-full" style={{ right: '-12%', bottom: '-18%', width: '50%', height: '50%', background: 'radial-gradient(circle, rgba(201,162,39,0.18), transparent 70%)', filter: 'blur(80px)' }}
+          animate={{ opacity: [0.08, 0.18, 0.08] }} transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 1 }} />
+      </div>
+
+      <div className="relative z-10 app-drag flex items-center justify-between px-6 py-3 border-b border-white/5">
         <div className="flex items-center gap-3">
           {screen !== 'landing' && (
             <button onClick={() => setScreen(screen === 'quiz' || screen === 'result' ? (mode === 'custom' ? 'setup' : 'setup') : 'landing')}
@@ -158,7 +178,7 @@ export default function HandTrainerPage() {
         <div className="app-drag-none"><WindowControls /></div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 flex items-start justify-center">
+      <div className="relative z-10 flex-1 overflow-y-auto p-6 flex items-start justify-center">
         <AnimatePresence mode="wait">
           {/* ── LANDING ── */}
           {screen === 'landing' && (
