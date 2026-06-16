@@ -68,10 +68,21 @@ export default function HandTrainerPage() {
 
   function buildQuestions(): Question[] {
     const qs: Question[] = []
+    const oi = (p: string) => POSITIONS.indexOf(p) // preflop action order (UTG=0 … BB=6)
     for (let n = 0; n < numHands; n++) {
       const scenario: TScenario = scenFilter === 'mixed' ? (Math.random() < 0.5 ? 'open' : 'vsopen') : scenFilter
-      const position = POSITIONS[Math.floor(Math.random() * POSITIONS.length)]
-      const openerPos = OPENERS[Math.floor(Math.random() * OPENERS.length)]
+      let position: string, openerPos: string
+      if (scenario === 'vsopen') {
+        // The opener MUST act before the hero (you can't face an open from a seat that
+        // acts after you, nor from your own seat). Pick the opener, then a hero seat
+        // strictly later in the action order.
+        openerPos = OPENERS[Math.floor(Math.random() * OPENERS.length)]
+        const later = POSITIONS.filter(p => oi(p) > oi(openerPos))
+        position = later[Math.floor(Math.random() * later.length)]
+      } else {
+        position = POSITIONS[Math.floor(Math.random() * POSITIONS.length)]
+        openerPos = OPENERS[Math.floor(Math.random() * OPENERS.length)]
+      }
       // random distinct cards
       const a = { rank: RANKS[Math.floor(Math.random() * 13)], suit: SUITS[Math.floor(Math.random() * 4)] }
       let b: Card

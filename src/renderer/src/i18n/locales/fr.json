@@ -1194,6 +1194,10 @@
     "won": "+{{n}} BB",
     "lost": "{{n}} BB",
     "preflop": "préflop (tapis)",
-    "reportTitle": "Compte-rendu du tournoi"
+    "reportTitle": "Compte-rendu du tournoi",
+    "tables": "Nombre de tables",
+    "fieldSuffix": "field = {{n}} joueurs",
+    "startBB": "Blinde de départ (BB)",
+    "bbSuffix": "SB = BB/2, puis ça monte"
   }
 }

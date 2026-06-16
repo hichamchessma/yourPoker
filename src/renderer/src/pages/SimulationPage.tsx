@@ -5,7 +5,7 @@ import { FlaskConical, Play, Square, Trophy, TrendingUp, TrendingDown, Coins, Us
 import { playTournament, playMTT, type BlindLevel, type TourConfig, type MTTConfig, type SimSeat } from '../lib/simEngine'
 import { makeSimDecider } from '../lib/simDeciders'
 import { fieldRemaining, placesPaid, payoutTable, prizeForPlace } from '../lib/tournament'
-import { simulateTournament, isInterestingHand, type SimTourResult } from '../lib/simReplay'
+import { simulateTournament, isInterestingHand, buildLevels, type SimTourResult } from '../lib/simReplay'
 import { HandHistoryModal, type HandHistoryRecord } from './GamePage'
 
 function genLevels(startStack: number): BlindLevel[] {
@@ -297,19 +297,22 @@ function MiniCards({ cards }: { cards: ({ rank: string; suit: string } | null)[]
 
 function WatchMode({ t }: { t: TFunction }) {
   const [seats, setSeats] = useState(6)
+  const [numTables, setNumTables] = useState(1)
   const [startStack, setStartStack] = useState(5000)
+  const [startBB, setStartBB] = useState(50)
   const [handsPerLevel, setHandsPerLevel] = useState(10)
   const [botTier, setBotTier] = useState(2)
   const [busy, setBusy] = useState(false)
   const [res, setRes] = useState<SimTourResult | null>(null)
   const [modal, setModal] = useState<{ records: HandHistoryRecord[]; id: number } | null>(null)
+  const field = seats * numTables
 
   function run() {
     setBusy(true); setRes(null)
     setTimeout(() => {
-      const levels = genLevels(startStack)
+      const levels = buildLevels(startBB)
       const players = Array.from({ length: seats }, (_, i): { kind: 'coach' | 'bot'; tier: number } => ({ kind: i === 0 ? 'coach' : 'bot', tier: botTier }))
-      const r = simulateTournament({ players, startStack, levels, handsPerLevel, maxHands: 8000, coachName: t('simw.coach') })
+      const r = simulateTournament({ players, startStack, levels, handsPerLevel, numTables, maxHands: 12000, coachName: t('simw.coach') })
       setRes(r); setBusy(false)
     }, 40)
   }
@@ -325,6 +328,8 @@ function WatchMode({ t }: { t: TFunction }) {
         <p className="text-[11px] uppercase tracking-widest text-[#c9a227] font-bold mb-4">{t('simw.config')}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <WNum label={t('sim.numSeats')} value={seats} set={setSeats} min={2} max={9} suffix={`1 ${t('simw.coach')} + ${seats - 1} bots`} />
+          <WNum label={t('simw.tables')} value={numTables} set={setNumTables} min={1} max={200} suffix={numTables > 1 ? t('simw.fieldSuffix', { n: field }) : t('sim.suffixSeatsSng')} />
+          <WNum label={t('simw.startBB')} value={startBB} set={setStartBB} min={2} max={2000} step={5} suffix={t('simw.bbSuffix')} />
           <WNum label={t('sim.numStack')} value={startStack} set={setStartStack} min={500} max={100000} step={500} suffix={t('sim.suffixChips')} />
           <WNum label={t('sim.numHands')} value={handsPerLevel} set={setHandsPerLevel} min={3} max={40} suffix={t('sim.suffixTurbo')} />
           <label className="flex flex-col gap-1">

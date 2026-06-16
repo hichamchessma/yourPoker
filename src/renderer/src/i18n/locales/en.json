@@ -1194,6 +1194,10 @@
     "won": "+{{n}} BB",
     "lost": "{{n}} BB",
     "preflop": "preflop (all-in)",
-    "reportTitle": "Tournament report"
+    "reportTitle": "Tournament report",
+    "tables": "Number of tables",
+    "fieldSuffix": "field = {{n}} players",
+    "startBB": "Starting blind (BB)",
+    "bbSuffix": "SB = BB/2, then escalates"
   }
 }

@@ -6,8 +6,9 @@
 // (simEngine.playTournament) only measures outcomes; this one keeps the full story.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { HandHistoryRecord, HistoryAction } from '../pages/GamePage'
-import { playHand, type SimSeat, type HandState } from './simEngine'
+import { playHand, type SimSeat, type HandState, type BlindLevel } from './simEngine'
 import { makeSimDecider } from './simDeciders'
+import { fieldRemaining } from './tournament'
 import type { Card } from './rangeEstimator'
 
 // HandHistoryRecord uses GamePage's Card (suit is a glyph union); our deck cards are
@@ -24,19 +25,31 @@ const BOT_NAMES: Record<number, string[]> = {
 export interface SimTourConfig {
   players: { kind: 'coach' | 'bot'; tier: number }[]
   startStack: number
-  levels: { sb: number; bb: number; ante: number }[]
+  levels: BlindLevel[]
   handsPerLevel: number
+  numTables?: number       // >1 → multi-table tournament (field = numTables × players)
   maxHands?: number
   coachName?: string
 }
 export interface SimTourResult {
-  place: number            // 1 = winner of the table
-  totalPlayers: number
+  place: number            // 1 = winner of the field
+  totalPlayers: number     // the whole field (numTables × players)
   hands: number            // hands the coach was dealt into
   coachProfit: number      // final chips − start chips (negative if busted)
   busted: boolean
   records: HandHistoryRecord[]
   stackTimeline: number[]  // coach stack after each of its hands (for a chart)
+}
+
+// Blind structure from a chosen STARTING big blind (same escalation as the sim page).
+export function buildLevels(startBB: number): BlindLevel[] {
+  const lv: BlindLevel[] = []
+  let bb = Math.max(2, Math.round(startBB / 5) * 5 || 2)
+  for (let i = 0; i < 30; i++) {
+    lv.push({ sb: Math.max(1, Math.round(bb / 2)), bb, ante: i >= 2 ? Math.max(1, Math.round(bb / 8)) : 0 })
+    bb = Math.max(bb + 5, Math.round((bb * 1.4) / 5) * 5)
+  }
+  return lv
 }
 
 // A hand is worth surfacing if there was real action the coach took part in — it saw
@@ -142,54 +155,108 @@ function buildRecord(
   }
 }
 
-// ── Single-table tournament with full recording (mirrors playTournament's loop) ───
+// ── Tournament with full recording — single-table OR multi-table (MTT field model) ──
 export function simulateTournament(cfg: SimTourConfig): SimTourResult {
+  const tableSize = cfg.players.length
+  const numTables = Math.max(1, cfg.numTables ?? 1)
   const seats: SimSeat[] = cfg.players.map((p, i) => ({
     id: i, stack: cfg.startStack, kind: p.kind, tier: p.tier, hole: null,
     bet: 0, totalBet: 0, folded: false, allIn: false, position: '', inHand: true,
   }))
+  const coachId = cfg.players.findIndex(p => p.kind === 'coach')
+  const coachTier = (cfg.players.find(p => p.kind === 'bot')?.tier) ?? 2
   const names: Record<number, string> = {}
-  const used = new Set<string>()
-  let bn = 1
-  for (const s of seats) {
-    if (s.kind === 'coach') { names[s.id] = cfg.coachName || 'Coach' }
-    else {
-      const pool = BOT_NAMES[s.tier] ?? BOT_NAMES[2]
-      let nm = pool.find(n => !used.has(n)) ?? `Bot ${bn++}`
-      used.add(nm); names[s.id] = nm
+  // (Re)assign opponent names — called once for a single table, and on each rebalance
+  // in MTT mode (new table = fresh opponents = fresh names).
+  function nameOpponents() {
+    const pool = BOT_NAMES[coachTier] ?? BOT_NAMES[2]
+    let k = 0
+    for (const s of seats) {
+      if (s.kind === 'coach') { names[s.id] = cfg.coachName || 'Coach'; continue }
+      names[s.id] = pool[k % pool.length] + (k >= pool.length ? ' ' + (Math.floor(k / pool.length) + 1) : '')
+      k++
     }
   }
+  nameOpponents()
 
   const decider = makeSimDecider(seats)
   const records: HandHistoryRecord[] = []
   const stackTimeline: number[] = []
-  const coachId = cfg.players.findIndex(p => p.kind === 'coach')
-  const finishOrder: number[] = []
+  const maxHands = cfg.maxHands ?? 12000
   let buttonIdx = 0, hands = 0
-  const maxHands = cfg.maxHands ?? 100000
+  const levelAt = (h: number) => cfg.levels[Math.min(cfg.levels.length - 1, Math.floor(h / cfg.handsPerLevel))]
 
-  while (seats.filter(s => s.inHand).length > 1 && hands < maxHands) {
-    const lvl = cfg.levels[Math.min(cfg.levels.length - 1, Math.floor(hands / cfg.handsPerLevel))]
-    do { buttonIdx = (buttonIdx + 1) % seats.length } while (!seats[buttonIdx].inHand)
+  // Play one hand at the coach's table, recording it if the coach was dealt in.
+  const playAndRecord = (lvl: BlindLevel) => {
+    do { buttonIdx = (buttonIdx + 1) % seats.length } while (!seats[buttonIdx].inHand || seats[buttonIdx].stack <= 0)
     const startStacks: Record<number, number> = {}
     seats.forEach(s => (startStacks[s.id] = s.stack))
-    const coachWasIn = seats[coachId]?.inHand
-
+    const coachWasIn = seats[coachId]?.inHand && seats[coachId].stack > 0
     const hs = playHand(seats, buttonIdx, lvl.sb, lvl.bb, lvl.ante, decider)
     hands++
     if (hs && coachWasIn) {
       records.push(buildRecord(records.length + 1, seats, hs, buttonIdx, startStacks, names, lvl.sb, lvl.bb, lvl.ante))
       stackTimeline.push(seats[coachId].stack)
     }
-    for (const s of seats.filter(s => s.inHand && s.stack <= 0)) { s.inHand = false; finishOrder.push(s.id) }
+    return hs
   }
-  finishOrder.push(...seats.filter(s => s.inHand).map(s => s.id)) // winner(s) last
-  const place = seats.length - finishOrder.indexOf(coachId) // 1 = winner
-  const coachProfit = seats[coachId].stack - cfg.startStack
 
-  return {
-    place, totalPlayers: seats.length, hands: records.length,
-    coachProfit, busted: seats[coachId].stack <= 0,
-    records, stackTimeline,
+  // ── SINGLE TABLE ─────────────────────────────────────────────────────────────
+  if (numTables <= 1) {
+    const finishOrder: number[] = []
+    while (seats.filter(s => s.inHand).length > 1 && hands < maxHands) {
+      playAndRecord(levelAt(hands))
+      for (const s of seats.filter(s => s.inHand && s.stack <= 0)) { s.inHand = false; finishOrder.push(s.id) }
+    }
+    finishOrder.push(...seats.filter(s => s.inHand).map(s => s.id))
+    const place = seats.length - finishOrder.indexOf(coachId)
+    return { place, totalPlayers: tableSize, hands: records.length, coachProfit: seats[coachId].stack - cfg.startStack, busted: seats[coachId].stack <= 0, records, stackTimeline }
   }
+
+  // ── MULTI-TABLE (MTT) — fully simulate the coach's table, model the field's attrition
+  //    (rebalancing the coach to fresh tables at the field's median depth) until the final
+  //    table, which is played to a winner. Mirrors simEngine.playMTT, but recording. ──
+  const field = tableSize * numTables
+  const coach = seats[coachId]
+  let fieldAlive = field
+  // Rebalance: reseat the coach (keeps its stack) at a fresh table of opponents drawn at
+  // the field's typical depth (median < mean), and give them fresh names.
+  const reseat = () => {
+    const median = (field * cfg.startStack / Math.max(1, fieldAlive)) * 0.5
+    for (const s of seats) {
+      s.hole = null; s.bet = 0; s.totalBet = 0; s.folded = false; s.allIn = false; s.inHand = true
+      if (s.id !== coach.id) { s.stack = Math.max(cfg.startStack * 0.15, Math.round(median * (0.35 + Math.random() * 1.3))); s.tier = coachTier }
+    }
+    nameOpponents()
+  }
+
+  while (hands < maxHands && coach.stack > 0) {
+    fieldAlive = Math.min(fieldAlive, Math.max(1, fieldRemaining(field, hands / cfg.handsPerLevel)))
+    if (fieldAlive <= tableSize) {
+      // FINAL TABLE
+      reseat()
+      const ftSize = Math.max(2, Math.round(fieldAlive))
+      for (const s of seats) if (s.id !== coach.id && seats.filter(x => x.inHand).length > ftSize) s.inHand = false
+      const finish: number[] = []
+      while (seats.filter(s => s.inHand).length > 1 && hands < maxHands) {
+        playAndRecord(levelAt(hands))
+        for (const s of seats) if (s.inHand && s.stack <= 0) { s.inHand = false; finish.push(s.id) }
+      }
+      finish.push(...seats.filter(s => s.inHand).map(s => s.id))
+      const ftCount = Math.min(ftSize, seats.length)
+      const place = Math.max(1, ftCount - finish.indexOf(coach.id))
+      return { place, totalPlayers: field, hands: records.length, coachProfit: coach.stack - cfg.startStack, busted: coach.stack <= 0, records, stackTimeline }
+    }
+    // REGULAR PHASE: chip-conserved table down to short-handed, then rebalance.
+    reseat()
+    const breakAt = Math.max(2, Math.ceil(tableSize / 2))
+    while (seats.filter(s => s.inHand).length > breakAt && coach.stack > 0 && hands < maxHands) {
+      fieldAlive = Math.min(fieldAlive, Math.max(1, fieldRemaining(field, hands / cfg.handsPerLevel)))
+      if (fieldAlive <= tableSize) break
+      playAndRecord(levelAt(hands))
+      for (const s of seats) if (s.inHand && s.stack <= 0) s.inHand = false
+    }
+    if (coach.stack <= 0) return { place: Math.round(fieldAlive), totalPlayers: field, hands: records.length, coachProfit: -cfg.startStack, busted: true, records, stackTimeline }
+  }
+  return { place: Math.max(1, Math.round(fieldAlive)), totalPlayers: field, hands: records.length, coachProfit: coach.stack - cfg.startStack, busted: coach.stack <= 0, records, stackTimeline }
 }

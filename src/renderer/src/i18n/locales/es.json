@@ -1194,6 +1194,10 @@
     "won": "+{{n}} BB",
     "lost": "{{n}} BB",
     "preflop": "preflop (all-in)",
-    "reportTitle": "Informe del torneo"
+    "reportTitle": "Informe del torneo",
+    "tables": "Número de mesas",
+    "fieldSuffix": "field = {{n}} jugadores",
+    "startBB": "Ciega inicial (BB)",
+    "bbSuffix": "SB = BB/2, luego sube"
   }
 }
