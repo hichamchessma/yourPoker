@@ -239,8 +239,8 @@ export default function LobbyPage(): JSX.Element {
             </svg>
           </div>
           <div>
-            <span className="font-display font-bold text-white text-sm tracking-wider uppercase">Poker Elite </span>
-            <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Coach</span>
+            <span className="font-display font-bold text-white text-sm tracking-wider uppercase">Your</span>
+            <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Poker</span>
           </div>
         </div>
 

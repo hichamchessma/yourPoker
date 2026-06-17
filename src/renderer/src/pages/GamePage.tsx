@@ -3707,7 +3707,7 @@ export default function GamePage(): JSX.Element {
                 className="text-center flex flex-col items-center gap-4">
                 <div className="text-6xl opacity-60">♠</div>
                 <h2 className="font-display font-bold text-2xl tracking-[0.3em] uppercase text-white/80">
-                  Poker Elite
+                  Your<span className="text-poker-gold">Poker</span>
                 </h2>
                 <p className="text-white/40 text-sm">{t('game.idleStart')}</p>
                 <button

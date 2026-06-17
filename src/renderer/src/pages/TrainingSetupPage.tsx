@@ -96,7 +96,7 @@ function PokerTable({
       <ellipse cx={cx} cy={cy} rx={90} ry={50} fill="none" stroke="rgba(201,162,39,0.18)" strokeWidth="0.8"/>
       {/* Center logo */}
       <text x={cx} y={cy-6} textAnchor="middle" fill="rgba(201,162,39,0.12)" fontSize="32" fontFamily="serif">♠</text>
-      <text x={cx} y={cy+14} textAnchor="middle" fill="rgba(201,162,39,0.08)" fontSize="9" fontFamily="monospace" letterSpacing="3">POKER ELITE</text>
+      <text x={cx} y={cy+14} textAnchor="middle" fill="rgba(201,162,39,0.08)" fontSize="9" fontFamily="monospace" letterSpacing="3">YOURPOKER</text>
 
       {/* Seats */}
       {positions.map((pos, i) => {
@@ -206,8 +206,8 @@ export default function TrainingSetupPage(): JSX.Element {
             <svg viewBox="0 0 24 24" className="w-4 h-4 fill-poker-gold"><path d="M12 2C8 6 4 8 4 12c0 2.5 1.5 4 3.5 4 .8 0 1.5-.2 2.1-.6L9 17H7v2h10v-2h-2l-.6-1.6c.6.4 1.3.6 2.1.6 2 0 3.5-1.5 3.5-4 0-4-4-6-8-10z"/></svg>
           </div>
           <div>
-            <span className="font-display font-bold text-white text-sm tracking-wider uppercase">Poker Elite </span>
-            <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Coach</span>
+            <span className="font-display font-bold text-white text-sm tracking-wider uppercase">Your</span>
+            <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Poker</span>
           </div>
         </div>
         <div className="flex-1"/>

@@ -36,8 +36,8 @@ export default function LandingPage() {
             <Spade size={18} className="text-poker-gold" fill="#c9a227" />
           </div>
           <div className="leading-none">
-            <p className="font-display font-bold tracking-widest uppercase text-sm">Poker Elite</p>
-            <p className="text-poker-gold/70 text-[9px] tracking-[0.3em] uppercase">Coach</p>
+            <p className="font-display font-bold tracking-widest uppercase text-sm">Your<span className="text-poker-gold">Poker</span></p>
+            <p className="text-poker-gold/70 text-[9px] tracking-[0.3em] uppercase">Elite Coaching</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -155,7 +155,7 @@ export default function LandingPage() {
         <p className="flex items-center justify-center gap-2 text-[11px] text-white/35">
           <ShieldCheck size={13} /> {t('landing.footerDisclaimer')}
         </p>
-        <p className="text-[10px] text-white/25 mt-3">© {new Date().getFullYear()} Poker Elite Coach · CGU · Confidentialité · Contact</p>
+        <p className="text-[10px] text-white/25 mt-3">© {new Date().getFullYear()} YourPoker · CGU · Confidentialité · Contact</p>
       </footer>
     </div>
   )

@@ -72,19 +72,11 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
     <div className="w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
       {/* Logo */}
       <div className="p-6 pb-4">
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-16 h-16 relative">
-            {/* Spade logo placeholder */}
-            <div className="w-full h-full rounded-full border-2 border-poker-gold/50 flex items-center justify-center bg-poker-gold/10">
-              <svg viewBox="0 0 24 24" className="w-8 h-8 fill-poker-gold">
-                <path d="M12 2C8 6 4 8 4 12c0 2.5 1.5 4 3.5 4 .8 0 1.5-.2 2.1-.6L9 17H7v2h10v-2h-2l-.6-1.6c.6.4 1.3.6 2.1.6 2 0 3.5-1.5 3.5-4 0-4-4-6-8-10z" />
-              </svg>
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="font-display font-bold text-white text-sm tracking-widest uppercase">Poker Elite</p>
-            <p className="text-poker-gold/70 text-[10px] tracking-[0.25em] uppercase">— Coach —</p>
-          </div>
+        <div className="flex flex-col items-center">
+          {/* YourPoker brand mark (emblem + wordmark) */}
+          <img src="/assets/yourpoker-logo.webp" alt="YourPoker — Elite Coaching" draggable={false}
+            className="w-full rounded-xl border border-poker-gold/20 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)]"
+            style={{ maxWidth: 184 }} />
         </div>
         <div className="mt-3 flex justify-center"><LanguageSwitcher /></div>
         <div className="mt-3 h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />

@@ -374,7 +374,7 @@ export default function AuthPage(): JSX.Element {
             {/* Title */}
             <div className="text-center mb-6">
               <h1 className="font-display text-4xl font-bold text-white tracking-widest uppercase leading-tight">
-                Poker Elite Coach
+                Your<span className="text-poker-gold">Poker</span>
               </h1>
               <p className="text-poker-teal text-xs tracking-[0.35em] uppercase mt-2 font-semibold">
                 {mode === 'signup' ? t('auth.subtitleSignup')
