@@ -3678,6 +3678,19 @@ export default function GamePage(): JSX.Element {
           </div>
         )}
 
+        {/* ── Soft animated cash-game backdrop (cash games only) ── */}
+        {!tournament && !isScenario && !simMode && (
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <motion.div className="absolute inset-0"
+              initial={{ scale: 1.05 }}
+              animate={{ scale: [1.05, 1.14, 1.05], x: ['0%', '-1.6%', '0%'], y: ['0%', '-1.2%', '0%'] }}
+              transition={{ duration: 50, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ backgroundImage: 'url(/assets/cashgame-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.6, filter: 'saturate(0.98) brightness(0.92)' }} />
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(6,9,16,0.36) 0%, rgba(5,8,14,0.48) 45%, rgba(4,6,12,0.66) 100%)' }} />
+            <div className="absolute inset-0" style={{ background: 'radial-gradient(60% 56% at 50% 48%, rgba(0,0,0,0.5) 0%, transparent 72%)' }} />
+          </div>
+        )}
+
         {/* ── TOURNAMENT HUD ── */}
         {tournament && gs.phase !== 'idle' && curLevel && (() => {
           const startChips = tournament.startBB * tourLevels[0].bb

@@ -24,7 +24,7 @@ export default function TopBar(): JSX.Element {
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null
 
   return (
-    <header className="app-drag relative flex items-center gap-3 px-5 h-14 flex-shrink-0 border-b border-white/8"
+    <header className="app-drag relative z-50 flex items-center gap-3 px-5 h-14 flex-shrink-0 border-b border-white/8"
       style={{ background: 'linear-gradient(180deg, rgba(9,14,26,0.96), rgba(6,11,20,0.92))', backdropFilter: 'blur(10px)' }}>
       {/* hairline accent — gold → teal */}
       <div className="absolute top-0 left-0 right-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent, rgba(201,162,39,0.45), rgba(0,212,255,0.35), transparent)' }} />

@@ -195,10 +195,25 @@ export default function TrainingSetupPage(): JSX.Element {
   const TABS = [t('train.tabPlayers'), t('train.tabStack'), t('train.tabBots'), t('train.tabSettings')]
 
   return (
-    <div className="flex flex-col h-full bg-poker-darker overflow-hidden">
+    <div className="relative flex flex-col h-full bg-poker-darker overflow-hidden">
+      {/* ── Soft animated cash-game backdrop ── */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div className="absolute inset-0"
+          initial={{ scale: 1.05 }}
+          animate={{ scale: [1.05, 1.14, 1.05], x: ['0%', '-1.8%', '0%'], y: ['0%', '-1.3%', '0%'] }}
+          transition={{ duration: 48, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ backgroundImage: 'url(/assets/cashgame-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.5, filter: 'saturate(0.95) brightness(0.85)' }} />
+        {/* Readability wash — keeps every label crisp */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(6,10,18,0.62) 0%, rgba(5,8,15,0.78) 50%, rgba(4,6,12,0.9) 100%)' }} />
+        {/* Vignette for depth */}
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(115% 95% at 50% 25%, transparent 38%, rgba(0,0,0,0.62) 100%)' }} />
+        {/* Faint teal top glow — alive */}
+        <motion.div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: '-26%', width: '72%', height: '58%', background: 'radial-gradient(circle, rgba(0,212,255,0.16), transparent 68%)', filter: 'blur(74px)' }}
+          animate={{ opacity: [0.08, 0.18, 0.08], scale: [1, 1.07, 1] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }} />
+      </div>
 
       {/* ── CONTENT ── */}
-      <div className="flex-1 flex overflow-hidden p-4 gap-4 min-h-0">
+      <div className="flex-1 flex overflow-hidden p-4 gap-4 min-h-0 relative z-10">
 
         {/* ── LEFT: TABLE + PRESETS ── */}
         <div className="w-[300px] flex-shrink-0 flex flex-col gap-3 min-h-0">
