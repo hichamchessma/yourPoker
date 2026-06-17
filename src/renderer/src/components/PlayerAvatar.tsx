@@ -138,7 +138,41 @@ function Accessory({ kind, hair }: { kind: Accessory; hair: string }) {
   }
 }
 
-export default function PlayerAvatar({ spec, size = 48 }: { spec: AvatarSpec; size?: number }) {
+export default function PlayerAvatar({
+  spec,
+  size = 48,
+  photo
+}: {
+  spec: AvatarSpec
+  size?: number
+  /** When set, render this image (clipped to a circle) instead of the SVG face. */
+  photo?: string
+}) {
+  if (photo) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          position: 'relative',
+          background: 'radial-gradient(circle at 50% 30%, #0d3a4a, #04141d)',
+          boxShadow: 'inset 0 0 0 2px rgba(0,212,255,0.55), 0 0 10px rgba(0,212,255,0.35)'
+        }}
+      >
+        <img
+          src={photo}
+          alt=""
+          draggable={false}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: '50% 18%', display: 'block' }}
+        />
+        {/* subtle top gloss to seat it on the felt */}
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'radial-gradient(120% 70% at 50% 0%, rgba(255,255,255,0.12), transparent 55%)', pointerEvents: 'none' }} />
+      </div>
+    )
+  }
+
   const id = Math.round((spec.bg[0].charCodeAt(1) + size) * 1000 + spec.skin.charCodeAt(1))
   const longHairBack = spec.hairStyle === 'long' || spec.hairStyle === 'bob' || spec.hairStyle === 'ponytail'
   return (

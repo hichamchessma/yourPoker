@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useMemo, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -54,13 +54,32 @@ interface SidebarProps {
 export default function Sidebar({ activeItem, autoHide = false }: SidebarProps): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { signOut } = useAuthStore()
   const isPro = useIsPro()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [revealed, setRevealed] = useState(false)
 
   const currentPath = location.pathname
+
+  // ── Mascot pointer ──────────────────────────────────────────────────────
+  // A little runner that parks beside the *selected* menu item and dashes to
+  // whatever row the mouse hovers; when the cursor leaves the menu he runs
+  // back to the last selected item (lobby by default).
+  const contentRef = useRef<HTMLDivElement>(null)
+  const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const selectedId = useMemo(
+    () => NAV_ITEMS.find((i) => i.path === currentPath)?.id ?? 'lobby',
+    [currentPath]
+  )
+  const [hoverId, setHoverId] = useState<string | null>(null)
+  const shownId = hoverId ?? selectedId
+  const [markerY, setMarkerY] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    const el = itemRefs.current[shownId]
+    if (el) setMarkerY(el.offsetTop + el.offsetHeight / 2)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownId, isPro, i18n.language, currentPath])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -69,7 +88,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
   }
 
   const content = (
-    <div className="w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
+    <div ref={contentRef} className="relative w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
       {/* Logo */}
       <div className="p-6 pb-4">
         <div className="flex flex-col items-center">
@@ -83,14 +102,16 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto" onMouseLeave={() => setHoverId(null)}>
         {NAV_ITEMS.map((item) => {
           const isActive = activeItem === item.id || currentPath === item.path
 
           return (
             <motion.button
               key={item.id}
+              ref={(el) => { itemRefs.current[item.id] = el }}
               onClick={() => navigate(item.path)}
+              onMouseEnter={() => setHoverId(item.id)}
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.97 }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all duration-200 group relative ${
@@ -117,6 +138,44 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
           )
         })}
       </nav>
+
+      {/* Mascot pointer — runs to the hovered row, parks on the selected one.
+          mix-blend screen melts its near-black backdrop into the dark sidebar
+          for a holographic look; the radial mask feathers the edges. */}
+      {markerY !== null && (
+        <motion.div
+          className="pointer-events-none absolute right-1 z-20 -translate-y-1/2"
+          initial={false}
+          animate={{ top: markerY, opacity: 1 }}
+          transition={{
+            top: { type: 'spring', stiffness: 460, damping: 30, mass: 0.7 },
+            opacity: { duration: 0.3 }
+          }}
+        >
+          {/* soft glow puck under the runner */}
+          <div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.22), transparent 70%)' }}
+          />
+          <motion.img
+            src="/assets/mascot-runner.webp"
+            alt=""
+            draggable={false}
+            animate={{ y: [0, -2.5, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              height: 54,
+              width: 'auto',
+              scaleX: -1,
+              mixBlendMode: 'screen',
+              WebkitMaskImage:
+                'radial-gradient(62% 66% at 50% 46%, #000 52%, transparent 100%)',
+              maskImage: 'radial-gradient(62% 66% at 50% 46%, #000 52%, transparent 100%)',
+              filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5)) drop-shadow(0 0 7px rgba(0,212,255,0.4))'
+            }}
+          />
+        </motion.div>
+      )}
 
       {/* Bottom — upgrade CTA + logout + version */}
       <div className="p-3 space-y-2">

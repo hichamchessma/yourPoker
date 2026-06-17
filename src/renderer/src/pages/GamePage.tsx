@@ -378,7 +378,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
           <div className="relative shrink-0 rounded-full"
             style={{boxShadow:seat.isActive?'0 0 0 2px rgba(0,212,255,0.6)':'0 0 0 1px rgba(255,255,255,0.12)'}}>
-            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero, seat.seatType === 'human')} size={42}/>
+            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero, seat.seatType === 'human')} size={42} photo={seat.isHero ? '/assets/player-avatar.webp' : undefined}/>
             {seat.isActive&&(
               <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#00d4ff] border-2 border-[#040a18]">
                 <div className="w-full h-full rounded-full bg-[#00d4ff] animate-ping opacity-70"/>
