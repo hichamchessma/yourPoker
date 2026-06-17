@@ -3127,6 +3127,24 @@ export default function GamePage(): JSX.Element {
   rangeFilmRef.current = rangeFilmOpen
   // Each time the hovered seat changes (incl. closing), start the new film unpinned.
   useEffect(() => { setFilmPinned(false) }, [hoverSeat])
+  // Fresh-read mirror of filmPinned for the grace timer (which fires async).
+  const filmPinnedRef = useRef(false)
+  useEffect(() => { filmPinnedRef.current = filmPinned }, [filmPinned])
+  // Grace timer: leaving an opponent's cards/panel (or the popup) does NOT close the
+  // film instantly — a 1s window lets the cursor travel between the cards and the
+  // range popup. If it lands on neither (e.g. you moved off the table), it closes.
+  const oppGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelOppGrace = (): void => { if (oppGraceRef.current) { clearTimeout(oppGraceRef.current); oppGraceRef.current = null } }
+  const scheduleOppClose = (seatIdx: number): void => {
+    cancelOppGrace()
+    oppGraceRef.current = setTimeout(() => {
+      oppGraceRef.current = null
+      if (oppPanelHoverRef.current || filmPinnedRef.current) return  // cursor reached the popup, or it's pinned
+      oppPanelHoverRef.current = false; setOppPanelHover(false)
+      setHoverSeat(s => (s === seatIdx ? null : s))
+    }, 1000)
+  }
+  useEffect(() => cancelOppGrace, [])
   // SPACE pins the open film (so leaving its zone won't close it). Only when open and
   // not typing in a field; swallow the key so it doesn't scroll / trigger a button.
   useEffect(() => {
@@ -3827,9 +3845,10 @@ export default function GamePage(): JSX.Element {
                     if (seat.isHero) {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    // Opponent: leaving the cards does NOT close — the film popup stays
-                    // so the cursor can travel into it (closes via the popup / ✕ / Échap).
+                    } else if (entering && e) { cancelOppGrace(); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { scheduleOppClose(seat.idx) }
+                    // Opponent: leaving the cards starts a 1s grace so the cursor can
+                    // travel into the film popup; otherwise the film closes itself.
                   }}
                   onHover={(entering, e) => {
                     // NAME / STACK zone. For the on-turn player in manual mode this
@@ -3844,8 +3863,9 @@ export default function GamePage(): JSX.Element {
                     if (seat.isHero) {
                       if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
                       else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    // Opponent: leaving the name/stack does NOT close (see cards handler).
+                    } else if (entering && e) { cancelOppGrace(); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
+                    else { scheduleOppClose(seat.idx) }
+                    // Opponent: leaving the name/stack starts the same 1s grace.
                   }}
                 />
               )
@@ -4330,8 +4350,8 @@ export default function GamePage(): JSX.Element {
         const heroDead = (hero?.holeCards.filter(Boolean) ?? []) as Card[]
         return (
           <div className="fixed z-[80] pointer-events-auto" style={{ left: x, top: y }}
-            onMouseEnter={() => { oppPanelHoverRef.current = true; setOppPanelHover(true) }}
-            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) closeFilm() }}
+            onMouseEnter={() => { cancelOppGrace(); oppPanelHoverRef.current = true; setOppPanelHover(true) }}
+            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) scheduleOppClose(hoverSeat) }}
             onMouseDown={() => setFilmPinned(true)}>
             <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462}
               pinned={filmPinned} onClose={closeFilm} side={explainSide} deadCards={heroDead} />
