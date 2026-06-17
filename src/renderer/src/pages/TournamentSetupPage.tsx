@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Play, Minus, Plus, Trophy, Users, Coins, Timer, Medal } from 'lucide-react'
@@ -55,8 +56,24 @@ export default function TournamentSetupPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ background: 'radial-gradient(120% 100% at 50% 0%, #1a1206 0%, #0d0a06 60%, #060503 100%)' }}>
-      <div className="app-drag flex items-center justify-between px-6 py-3 border-b border-white/5">
+    <div className="relative h-full w-full flex flex-col overflow-hidden" style={{ background: 'radial-gradient(120% 100% at 50% 0%, #1a1206 0%, #0d0a06 60%, #060503 100%)' }}>
+      {/* ── Soft animated tournament-hall backdrop ── */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div className="absolute inset-0"
+          initial={{ scale: 1.04 }}
+          animate={{ scale: [1.04, 1.13, 1.04], x: ['0%', '-2%', '0%'], y: ['0%', '-1.4%', '0%'] }}
+          transition={{ duration: 46, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ backgroundImage: 'url(/assets/tournament-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.5, filter: 'saturate(0.95) brightness(0.85)' }} />
+        {/* Readability wash — keeps every label crisp */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(13,10,6,0.62) 0%, rgba(10,8,4,0.78) 50%, rgba(6,5,3,0.9) 100%)' }} />
+        {/* Warm vignette for depth */}
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(115% 95% at 50% 25%, transparent 38%, rgba(0,0,0,0.62) 100%)' }} />
+        {/* Faint gold top glow — alive */}
+        <motion.div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: '-26%', width: '72%', height: '58%', background: 'radial-gradient(circle, rgba(240,192,96,0.20), transparent 68%)', filter: 'blur(74px)' }}
+          animate={{ opacity: [0.08, 0.2, 0.08], scale: [1, 1.07, 1] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }} />
+      </div>
+
+      <div className="app-drag flex items-center justify-between px-6 py-3 border-b border-white/5 relative z-10">
         <div className="flex items-center gap-3">
           <Medal className="text-[#f0c060]" size={22} />
           <div>
@@ -67,7 +84,7 @@ export default function TournamentSetupPage() {
         <div className="app-drag-none"><WindowControls /></div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-5">
+      <div className="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-5 relative z-10">
         {/* ── LEFT: parameters ── */}
         <div className="flex flex-col gap-4">
           {/* Field & tables */}

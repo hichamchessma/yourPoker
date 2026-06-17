@@ -3517,7 +3517,24 @@ export default function GamePage(): JSX.Element {
 
   // ─── JSX ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full overflow-hidden select-none" style={{background:'#0c0907'}}>
+    <div className="relative isolate flex flex-col h-full overflow-hidden select-none" style={{background:'#0c0907'}}>
+
+      {/* ── Soft animated tournament-hall backdrop (tournament only). Sits on a
+          negative z-index so it paints over the flat felt-room colour yet stays
+          BEHIND the table, seats and every label — visible only around the table. */}
+      {tournament && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: -1 }}>
+          <motion.div className="absolute inset-0"
+            initial={{ scale: 1.05 }}
+            animate={{ scale: [1.05, 1.14, 1.05], x: ['0%', '-1.6%', '0%'], y: ['0%', '-1.2%', '0%'] }}
+            transition={{ duration: 50, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ backgroundImage: 'url(/assets/tournament-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.42, filter: 'saturate(0.92) brightness(0.8)' }} />
+          {/* Darken so it never fights the felt or text */}
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(8,7,5,0.55) 0%, rgba(8,7,5,0.66) 45%, rgba(5,4,3,0.82) 100%)' }} />
+          {/* Centre vignette — pushes focus onto the table */}
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(70% 60% at 50% 48%, rgba(0,0,0,0.55) 0%, transparent 70%)' }} />
+        </div>
+      )}
 
       {/* ── HEADER (draggable title bar) ── */}
       <header className="app-drag flex items-center gap-3 px-4 py-2 border-b border-white/8 flex-shrink-0 relative z-30"
