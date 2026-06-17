@@ -231,11 +231,12 @@ export default function TournamentSetupPage() {
         </div>
       </div>
 
-      <div className="border-t border-white/5 px-6 py-3 flex items-center">
+      <div className="border-t border-white/5 px-6 py-3 flex items-center relative z-10"
+        style={{ background: 'linear-gradient(180deg, rgba(10,8,4,0.6), rgba(10,8,4,0.92))' }}>
         <p className="text-[10px] text-white/35">{t('tour.footerNote', { n: tableSize, rest: fmt(field - tableSize) })}</p>
         <button onClick={launch}
           className="ml-auto flex items-center gap-2 px-8 py-2.5 rounded-xl font-black uppercase tracking-[0.2em] text-sm transition-all hover:scale-[1.02]"
-          style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227,#8B6810)', color: '#0a0a0a' }}>
+          style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227,#8B6810)', color: '#0a0a0a', boxShadow: '0 0 26px rgba(201,162,39,0.45)' }}>
           <Play size={16} /> {t('tour.launch')}
         </button>
       </div>
