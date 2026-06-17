@@ -662,7 +662,9 @@
     "heatStrong": "forte",
     "heatSuited": "assorti",
     "heatOffsuit": "dépareillé",
-    "heatEstRange": "range estimée (IA)"
+    "heatEstRange": "range estimée (IA)",
+    "heatOutRange": "hors range",
+    "heatFreq": "fréquence"
   },
   "scen": {
     "rfi": "Ouverture (personne n'a relancé)",

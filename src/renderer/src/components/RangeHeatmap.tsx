@@ -2,11 +2,12 @@ import { useTranslation } from 'react-i18next'
 import { GRID_RANKS, cellKey } from '../lib/preflopRanges'
 import type { RangeView } from '../lib/rangeEstimator'
 
-// Heat colour: out-of-range → dark; in-range → dark-gold → bright-gold by frequency.
-function heat(intensity: number): { bg: string; fg: string } {
-  if (intensity < 0.04) return { bg: 'rgba(255,255,255,0.03)', fg: 'rgba(255,255,255,0.18)' }
-  const a = 0.18 + intensity * 0.82
-  return { bg: `rgba(201,162,39,${a})`, fg: intensity > 0.55 ? '#1a1206' : '#e9d9a8' }
+// Heat colour: OUT of the represented range → near-black (clearly "not in their
+// range / folded out"); IN range → dark-gold (rare) → bright-gold (frequent).
+function heat(intensity: number): { bg: string; fg: string; out: boolean } {
+  if (intensity < 0.04) return { bg: 'rgba(0,0,0,0.62)', fg: 'rgba(255,255,255,0.20)', out: true }
+  const a = 0.20 + intensity * 0.80
+  return { bg: `rgba(201,162,39,${a})`, fg: intensity > 0.55 ? '#1a1206' : '#e9d9a8', out: false }
 }
 
 export default function RangeHeatmap({
@@ -68,17 +69,31 @@ export default function RangeHeatmap({
                   transition: 'background-color 450ms ease, color 450ms ease, box-shadow 450ms ease',
                 }}>
                 {key.replace('s', '').replace('o', '')}
-                {key.endsWith('s') && <span style={{ fontSize: f(6.5), fontWeight: 800, marginLeft: 1, color: intensity > 0.45 ? c.fg : '#37d6ef' }}>s</span>}
-                {key.endsWith('o') && <span style={{ fontSize: f(6.5), fontWeight: 700, marginLeft: 1, color: c.fg, opacity: 0.55 }}>o</span>}
+                {key.endsWith('s') && <span style={{ fontSize: f(6.5), fontWeight: 800, marginLeft: 1, color: c.fg, opacity: c.out ? 0.5 : 0.85 }}>s</span>}
+                {key.endsWith('o') && <span style={{ fontSize: f(6.5), fontWeight: 700, marginLeft: 1, color: c.fg, opacity: 0.5 }}>o</span>}
               </div>
             )
           })
         )}
       </div>
 
-      <div className="flex items-center justify-between text-white/30" style={{ marginTop: f(6), fontSize: f(7.5) }}>
-        <span>● {t('coach.heatWeak')} → ● {t('coach.heatStrong')} · <span className="text-white/45">s</span> {t('coach.heatSuited')} · <span className="text-white/45">o</span> {t('coach.heatOffsuit')}</span>
-        <span>{t('coach.heatEstRange')}</span>
+      {/* Legend — real colour swatches so the shading is unambiguous */}
+      <div className="flex items-center justify-between flex-wrap text-white/45" style={{ marginTop: f(6), fontSize: f(7.5), gap: f(6) }}>
+        <div className="flex items-center" style={{ gap: f(6) }}>
+          {/* frequency gradient: dark-gold (rare) → bright-gold (frequent) */}
+          <span className="flex items-center" style={{ gap: f(3) }}>
+            <span>{t('coach.heatWeak')}</span>
+            <span style={{ display: 'inline-block', width: f(34), height: f(8), borderRadius: f(2), background: 'linear-gradient(90deg, rgba(201,162,39,0.30), rgba(201,162,39,1))', border: '1px solid rgba(201,162,39,0.4)' }} />
+            <span>{t('coach.heatStrong')}</span>
+            <span className="text-white/30">({t('coach.heatFreq')})</span>
+          </span>
+          {/* out of range swatch */}
+          <span className="flex items-center" style={{ gap: f(3) }}>
+            <span style={{ display: 'inline-block', width: f(9), height: f(9), borderRadius: f(2), background: 'rgba(0,0,0,0.62)', border: '1px solid rgba(255,255,255,0.15)' }} />
+            <span>{t('coach.heatOutRange')}</span>
+          </span>
+        </div>
+        <span><span className="text-white/60">s</span> {t('coach.heatSuited')} · <span className="text-white/60">o</span> {t('coach.heatOffsuit')} · {t('coach.heatEstRange')}</span>
       </div>
     </div>
   )

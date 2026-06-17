@@ -662,7 +662,9 @@
     "heatStrong": "fuerte",
     "heatSuited": "del mismo palo",
     "heatOffsuit": "de distinto palo",
-    "heatEstRange": "rango estimado (IA)"
+    "heatEstRange": "rango estimado (IA)",
+    "heatOutRange": "fuera de rango",
+    "heatFreq": "frecuencia"
   },
   "scen": {
     "rfi": "Apertura (nadie subió)",

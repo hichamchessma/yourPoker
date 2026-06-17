@@ -662,7 +662,9 @@
     "heatStrong": "strong",
     "heatSuited": "suited",
     "heatOffsuit": "offsuit",
-    "heatEstRange": "estimated range (AI)"
+    "heatEstRange": "estimated range (AI)",
+    "heatOutRange": "out of range",
+    "heatFreq": "frequency"
   },
   "scen": {
     "rfi": "Open (no one raised)",
