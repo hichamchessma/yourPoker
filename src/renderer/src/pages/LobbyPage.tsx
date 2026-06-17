@@ -6,13 +6,8 @@ import {
   Target, GraduationCap, Medal, FlaskConical, SlidersHorizontal, History,
   Wallet, TrendingUp, Trophy, Spade, ArrowRight, Crown
 } from 'lucide-react'
-import { useAuthStore } from '../store/authStore'
 import { computePlayerStats } from '../lib/playerStats'
-import { getRoster, playersOnline } from '../lib/leaderboard'
-import { useIsPro } from '../lib/entitlements'
-import WindowControls from '../components/layout/WindowControls'
-import SoundToggle from '../components/SoundToggle'
-import LanguageSwitcher from '../components/LanguageSwitcher'
+import { getRoster } from '../lib/leaderboard'
 
 
 function KingCard({ rotation, glow }: { rotation: number; glow: string }) {
@@ -204,10 +199,8 @@ function StatTile({ icon, label, value, accent = '#ffffff' }: { icon: React.Reac
 }
 
 export default function LobbyPage(): JSX.Element {
-  const { user } = useAuthStore()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const isPro = useIsPro()
   const stats = useMemo(() => computePlayerStats(4), [])
 
   // Play-money balance (persisted locally).
@@ -220,73 +213,9 @@ export default function LobbyPage(): JSX.Element {
 
   // Lively community signals
   const topPlayers = useMemo(() => getRoster().slice(0, 3), [])
-  const [online, setOnline] = useState(() => playersOnline())
-  useEffect(() => { const t = setInterval(() => setOnline(playersOnline()), 4000); return () => clearInterval(t) }, [])
-
-  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Joueur'
-  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null
 
   return (
     <div className="flex flex-col h-full bg-poker-darker overflow-hidden">
-
-      {/* ── TOP HEADER ── */}
-      <header className="flex items-center gap-4 px-6 py-3 border-b border-poker-border flex-shrink-0 relative" style={{ background: 'rgba(6,11,20,0.95)' }}>
-        {/* Logo */}
-        <div className="flex items-center gap-2 mr-4">
-          <div className="w-7 h-7 rounded-full bg-poker-gold/20 border border-poker-gold/40 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-poker-gold">
-              <path d="M12 2C8 6 4 8 4 12c0 2.5 1.5 4 3.5 4 .8 0 1.5-.2 2.1-.6L9 17H7v2h10v-2h-2l-.6-1.6c.6.4 1.3.6 2.1.6 2 0 3.5-1.5 3.5-4 0-4-4-6-8-10z" />
-            </svg>
-          </div>
-          <div>
-            <span className="font-display font-bold text-white text-sm tracking-wider uppercase">Your</span>
-            <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Poker</span>
-          </div>
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Players online — social proof */}
-        <div className="hidden sm:flex items-center gap-2 mr-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-          <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" /></span>
-          <span className="text-[11px] text-white/70">{t('lobby.online', { count: online.toLocaleString() })}</span>
-        </div>
-
-        <LanguageSwitcher />
-        <SoundToggle />
-
-        {/* User — click to open profile */}
-        <button onClick={() => navigate('/profile')}
-          className="flex items-center gap-2 pl-2 border-l border-white/10 group">
-          <div className="relative flex-shrink-0">
-            {isPro && (
-              <motion.div initial={{ y: 2, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-                className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10">
-                <Crown size={13} className="text-[#f0d060] drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" fill="#f0d060" />
-              </motion.div>
-            )}
-            <div className={`w-8 h-8 rounded-full overflow-hidden ${isPro ? 'border-2 border-[#c9a227]' : 'border border-poker-gold/30'}`}
-              style={isPro ? { boxShadow: '0 0 10px rgba(201,162,39,0.55)' } : undefined}>
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-poker-gold/20 flex items-center justify-center">
-                  <span className="text-poker-gold font-bold text-sm">{displayName[0].toUpperCase()}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="hidden sm:block text-left">
-            <p className="text-xs font-bold text-white/90 leading-tight group-hover:text-white transition-colors flex items-center gap-1">
-              {displayName}
-              {isPro && <span className="text-[7px] font-black uppercase tracking-wider px-1 py-0.5 rounded text-[#1a1206]" style={{ background: 'linear-gradient(135deg,#f0d060,#c9a227)' }}>Pro</span>}
-            </p>
-            <p className="text-[9px] text-white/35 group-hover:text-poker-teal transition-colors">{t('lobby.viewProfile')}</p>
-          </div>
-        </button>
-
-        <WindowControls />
-      </header>
 
       {/* ── CONTENT ── */}
       <div className="flex-1 flex overflow-hidden">

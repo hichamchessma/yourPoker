@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Minus, Plus, Star, Zap, Crown, Shield, RotateCcw } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
-import WindowControls from '../components/layout/WindowControls'
 
 // ── Types ──────────────────────────────────────────────────────────
 type SlotType = 'bot' | 'human' | 'empty'
@@ -143,7 +142,6 @@ export default function TrainingSetupPage(): JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Joueur'
-  const avatarUrl = user?.user_metadata?.avatar_url || null
 
   const [activeTab, setActiveTab] = useState(0)
   const [numPlayers, setNumPlayers] = useState(6)
@@ -198,31 +196,6 @@ export default function TrainingSetupPage(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full bg-poker-darker overflow-hidden">
-
-      {/* ── HEADER ── */}
-      <header className="flex items-center gap-4 px-6 py-3 border-b border-poker-border flex-shrink-0 relative" style={{ background: 'rgba(6,11,20,0.95)' }}>
-        <div className="flex items-center gap-2 mr-4">
-          <div className="w-7 h-7 rounded-full bg-poker-gold/20 border border-poker-gold/40 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-poker-gold"><path d="M12 2C8 6 4 8 4 12c0 2.5 1.5 4 3.5 4 .8 0 1.5-.2 2.1-.6L9 17H7v2h10v-2h-2l-.6-1.6c.6.4 1.3.6 2.1.6 2 0 3.5-1.5 3.5-4 0-4-4-6-8-10z"/></svg>
-          </div>
-          <div>
-            <span className="font-display font-bold text-white text-sm tracking-wider uppercase">Your</span>
-            <span className="font-display font-bold text-poker-teal text-sm tracking-wider uppercase">Poker</span>
-          </div>
-        </div>
-        <div className="flex-1"/>
-        <div className="flex items-center gap-2 pl-2 border-l border-white/10">
-          <div className="w-8 h-8 rounded-full overflow-hidden border border-poker-gold/30 flex-shrink-0">
-            {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover"/> : (
-              <div className="w-full h-full bg-poker-gold/20 flex items-center justify-center">
-                <span className="text-poker-gold font-bold text-sm">{displayName[0].toUpperCase()}</span>
-              </div>
-            )}
-          </div>
-          <p className="hidden sm:block text-xs font-bold text-white/90 leading-tight">{displayName}</p>
-        </div>
-        <WindowControls/>
-      </header>
 
       {/* ── CONTENT ── */}
       <div className="flex-1 flex overflow-hidden p-4 gap-4 min-h-0">
