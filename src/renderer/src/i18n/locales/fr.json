@@ -664,7 +664,8 @@
     "heatOffsuit": "dépareillé",
     "heatEstRange": "range estimée (IA)",
     "heatOutRange": "hors range",
-    "heatFreq": "fréquence"
+    "heatFreq": "fréquence",
+    "heatAbandoned": "abandonnée en main"
   },
   "scen": {
     "rfi": "Ouverture (personne n'a relancé)",

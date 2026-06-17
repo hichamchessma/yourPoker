@@ -664,7 +664,8 @@
     "heatOffsuit": "offsuit",
     "heatEstRange": "estimated range (AI)",
     "heatOutRange": "out of range",
-    "heatFreq": "frequency"
+    "heatFreq": "frequency",
+    "heatAbandoned": "folded out in hand"
   },
   "scen": {
     "rfi": "Open (no one raised)",

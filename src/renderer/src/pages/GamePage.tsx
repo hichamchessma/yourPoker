@@ -919,6 +919,14 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const [hoverXY, setHoverXY] = useState<{ x: number; y: number } | null>(null)
   const stepRanges = useMemo(() => (record ? reconstructRanges(record, stepIdx) : {}), [record?.id, stepIdx])
+  // Reference range = each player's range at the END of pre-flop (their plausible
+  // starting range). Lets the heatmap tell apart hands ABANDONED in-hand (were in the
+  // pre-flop range, the line cut them) from hands OUT from the start (never in range).
+  const startRanges = useMemo(() => {
+    if (!record) return {}
+    const flop = record.actions.findIndex(a => a.seatIdx === -1 && a.phase === 'flop')
+    return reconstructRanges(record, flop >= 0 ? flop : record.actions.length - 1)
+  }, [record?.id])
 
   useEffect(() => {
     if (logRef.current) {
@@ -1298,7 +1306,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
         if (y < 8) y = 8
         return (
           <div className="fixed z-[60] pointer-events-none" style={{ left: x, top: y }}>
-            <RangeHeatmap view={view} move={meta.move} effect={meta.effect}
+            <RangeHeatmap view={view} startView={startRanges[hoverIdx] ? rangeView(startRanges[hoverIdx]) : undefined} move={meta.move} effect={meta.effect}
               name={pl.isHero ? t('sess.youRepRange') : pl.name} heroKey={heroKey}/>
           </div>
         )

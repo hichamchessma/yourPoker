@@ -2,16 +2,23 @@ import { useTranslation } from 'react-i18next'
 import { GRID_RANKS, cellKey } from '../lib/preflopRanges'
 import type { RangeView } from '../lib/rangeEstimator'
 
-// Heat colour: OUT of the represented range → near-black (clearly "not in their
-// range / folded out"); IN range → dark-gold (rare) → bright-gold (frequent).
-function heat(intensity: number): { bg: string; fg: string; out: boolean } {
-  if (intensity < 0.04) return { bg: 'rgba(0,0,0,0.62)', fg: 'rgba(255,255,255,0.20)', out: true }
-  const a = 0.20 + intensity * 0.80
-  return { bg: `rgba(201,162,39,${a})`, fg: intensity > 0.55 ? '#1a1206' : '#e9d9a8', out: false }
+// Three tiers, told apart by colour:
+//   • IN the current range  → dark-gold (rare) → bright-gold (frequent)
+//   • ABANDONED in-hand     → dim red/maroon  (was plausible pre-flop, the line cut it)
+//   • OUT from the start    → near-black       (never in their range)
+// `start` = the cell's weight in the reference (end-of-pre-flop) range; when no
+// reference is given (live panel / film) we fall back to two tiers (gold / black).
+function heat(intensity: number, start: number | undefined): { bg: string; fg: string; out: boolean } {
+  if (intensity >= 0.04) {
+    const a = 0.20 + intensity * 0.80
+    return { bg: `rgba(201,162,39,${a})`, fg: intensity > 0.55 ? '#1a1206' : '#e9d9a8', out: false }
+  }
+  if (start !== undefined && start >= 0.04) return { bg: 'rgba(176,52,42,0.34)', fg: 'rgba(255,176,166,0.55)', out: true } // abandoned in-hand
+  return { bg: 'rgba(0,0,0,0.62)', fg: 'rgba(255,255,255,0.20)', out: true } // out from the start
 }
 
 export default function RangeHeatmap({
-  view, move, effect, name, heroKey, style, width = 300, onCellClick, selectedKey,
+  view, move, effect, name, heroKey, style, width = 300, onCellClick, selectedKey, startView,
 }: {
   view: RangeView
   move: string
@@ -22,6 +29,7 @@ export default function RangeHeatmap({
   width?: number
   onCellClick?: (key: string) => void   // when set, cells become clickable
   selectedKey?: string | null           // highlighted (clicked) cell
+  startView?: RangeView                  // reference (end-of-preflop) range → 3-tier colouring
 }) {
   const { t } = useTranslation()
   const s = width / 300            // scale factor — fonts scale with the grid
@@ -47,7 +55,7 @@ export default function RangeHeatmap({
           GRID_RANKS.map((__, j) => {
             const key = cellKey(i, j)
             const intensity = view.cells[key] ?? 0
-            const c = heat(intensity)
+            const c = heat(intensity, startView?.cells[key])
             const isHero = !!heroKey && key === heroKey
             const isSel = !!selectedKey && key === selectedKey
             return (
@@ -87,7 +95,14 @@ export default function RangeHeatmap({
             <span>{t('coach.heatStrong')}</span>
             <span className="text-white/30">({t('coach.heatFreq')})</span>
           </span>
-          {/* out of range swatch */}
+          {/* abandoned-in-hand swatch (only meaningful with a reference range) */}
+          {startView && (
+            <span className="flex items-center" style={{ gap: f(3) }}>
+              <span style={{ display: 'inline-block', width: f(9), height: f(9), borderRadius: f(2), background: 'rgba(176,52,42,0.45)', border: '1px solid rgba(176,52,42,0.6)' }} />
+              <span>{t('coach.heatAbandoned')}</span>
+            </span>
+          )}
+          {/* out-from-the-start swatch */}
           <span className="flex items-center" style={{ gap: f(3) }}>
             <span style={{ display: 'inline-block', width: f(9), height: f(9), borderRadius: f(2), background: 'rgba(0,0,0,0.62)', border: '1px solid rgba(255,255,255,0.15)' }} />
             <span>{t('coach.heatOutRange')}</span>

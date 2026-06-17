@@ -664,7 +664,8 @@
     "heatOffsuit": "de distinto palo",
     "heatEstRange": "rango estimado (IA)",
     "heatOutRange": "fuera de rango",
-    "heatFreq": "frecuencia"
+    "heatFreq": "frecuencia",
+    "heatAbandoned": "abandonada en mano"
   },
   "scen": {
     "rfi": "Apertura (nadie subió)",
