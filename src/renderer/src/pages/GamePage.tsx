@@ -5,7 +5,8 @@ import i18n from '../i18n'
 const tc = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye, FastForward } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye, FastForward, RotateCw } from 'lucide-react'
+import { useDevice } from '../lib/useDevice'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonToken, TableSVG, Room, type RoomVariant } from '../components/tableVisuals'
 import RangeAssistant from '../components/RangeAssistant'
@@ -292,8 +293,8 @@ function computeSidePots(seats: Seat[]): {amount:number; eligible:number[]}[] {
 
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void
 }) {
   const { t } = useTranslation()
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
@@ -336,7 +337,8 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
       <div className={`flex relative mb-0.5 transition-all duration-500 ${seat.isFolded?'opacity-20 grayscale':''}`}
         style={{height:80,overflow:'visible',minWidth:80}}
         onMouseEnter={onHoverCards ? (e) => onHoverCards(true, e) : undefined}
-        onMouseLeave={onHoverCards ? () => onHoverCards(false) : undefined}>
+        onMouseLeave={onHoverCards ? () => onHoverCards(false) : undefined}
+        onClick={onTapCards}>
         <AnimatePresence>
           {hasCard0 && (
             <motion.div key="c0" initial={{y:-30,opacity:0,scale:0.6}} animate={{y:0,opacity:1,scale:1}}
@@ -1342,6 +1344,10 @@ export default function GamePage(): JSX.Element {
   const setActiveFormat = useLiveSession(s => s.setActive)
   const sessionFormat: LiveFormat | null = cfg.scenario ? null : (tournament ? 'tournament' : 'cash')
   const [confirmLeavePath, setConfirmLeavePath] = useState<string | null>(null)
+
+  // ─── Mobile: touch + orientation. On a touch device the range/coach open on TAP
+  //     instead of hover; the table needs landscape so portrait shows a rotate prompt.
+  const { isTouch, isPhone, isPortrait } = useDevice()
   const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed, tournament.antes) : []), [tournament])
   const [tourLevelIdx, setTourLevelIdx] = useState(0)
   const tourRef = useRef({ levelIdx: 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60, playersLeft: tournament?.field ?? 0, finalTable: false, busted: false, place: 0 })
@@ -3623,6 +3629,24 @@ export default function GamePage(): JSX.Element {
         onLeave={() => { const p = confirmLeavePath; setConfirmLeavePath(null); if (p) navigate(p) }}
       />
 
+      {/* Phone in portrait — the table needs landscape. Prompt a rotation. */}
+      {isPhone && isPortrait && (
+        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center gap-5 px-8 text-center"
+          style={{ background: 'rgba(4,6,12,0.97)' }}>
+          <motion.div animate={{ rotate: [0, 0, 90, 90, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', times: [0, 0.2, 0.45, 0.75, 1] }}>
+            <RotateCw size={58} className="text-[#00d4ff]" />
+          </motion.div>
+          <div>
+            <h2 className="text-lg font-black text-white">{t('game.rotateTitle')}</h2>
+            <p className="mt-1.5 text-[13px] text-white/55 max-w-xs mx-auto">{t('game.rotateBody')}</p>
+          </div>
+          <button onClick={() => navigate('/lobby')}
+            className="mt-2 text-[12px] text-white/45 underline underline-offset-2 hover:text-white/70">
+            {t('game.quit')}
+          </button>
+        </div>
+      )}
+
       {/* ── HEADER (draggable title bar) ── */}
       <header className="app-drag flex items-center gap-3 px-4 py-2 border-b border-white/8 flex-shrink-0 relative z-30"
         style={{background:'rgba(5,8,16,0.97)'}}>
@@ -3767,7 +3791,8 @@ export default function GamePage(): JSX.Element {
       </header>
 
       {/* ── TABLE AREA ── */}
-      <div className="flex-1 relative overflow-hidden min-h-0">
+      <div className="flex-1 relative overflow-hidden min-h-0"
+        onClick={isTouch ? () => { setHoverSeat(null); cancelOppGrace() } : undefined}>
         <Room variant={roomVariant}/>
 
         {/* ── Soft animated tournament-hall backdrop (tournament only) ──
@@ -3930,7 +3955,7 @@ export default function GamePage(): JSX.Element {
                   turnPaused={gs.paused || coachOpen || manualMode || rangeFilmOpen}
                   hideTimer={manualMode}
                   onRebuy={!tournament && seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
-                  onHoverCards={(entering, e) => {
+                  onHoverCards={isTouch ? undefined : (entering, e) => {
                     // CARDS zone → range / coach only (and close the bet panel if it
                     // was open for this on-turn seat, so cards = range, never bets).
                     if (entering && manualModeRef.current && gsRef.current.actQueue[0] === seat.idx) setManualPanel(null)
@@ -3942,7 +3967,7 @@ export default function GamePage(): JSX.Element {
                     // Opponent: leaving the cards starts a 1s grace so the cursor can
                     // travel into the film popup; otherwise the film closes itself.
                   }}
-                  onHover={(entering, e) => {
+                  onHover={isTouch ? undefined : (entering, e) => {
                     // NAME / STACK zone. For the on-turn player in manual mode this
                     // reveals the BET panel only (and hides the range). Otherwise it
                     // behaves like a normal range/coach hover.
@@ -3959,6 +3984,14 @@ export default function GamePage(): JSX.Element {
                     else { scheduleOppClose(seat.idx) }
                     // Opponent: leaving the name/stack starts the same 1s grace.
                   }}
+                  onTapCards={isTouch ? (e) => {
+                    // Touch: tap the cards to toggle the range (opponents) / coach (hero).
+                    // Tapping the same seat again — or empty felt — closes it.
+                    e.stopPropagation()
+                    cancelOppGrace()
+                    setHoverSeat(s => (s === seat.idx ? null : seat.idx))
+                    setHoverPos({ x: e.clientX, y: e.clientY })
+                  } : undefined}
                 />
               )
             })}

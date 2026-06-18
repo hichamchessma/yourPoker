@@ -603,6 +603,8 @@
     "handDone": "Hand over",
     "quit": "Quit",
     "quitSim": "Quit simulation",
+    "rotateTitle": "Rotate your phone",
+    "rotateBody": "The table plays in landscape. Turn your phone sideways to continue.",
     "pause": "Pause",
     "resume": "Resume",
     "rejouer": "Replay",

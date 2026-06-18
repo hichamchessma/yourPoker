@@ -603,6 +603,8 @@
     "handDone": "Main terminée",
     "quit": "Quitter",
     "quitSim": "Quitter la simulation",
+    "rotateTitle": "Tourne ton téléphone",
+    "rotateBody": "La table se joue en mode paysage. Mets ton téléphone à l'horizontale pour continuer.",
     "pause": "Pause",
     "resume": "Reprendre",
     "rejouer": "Rejouer",

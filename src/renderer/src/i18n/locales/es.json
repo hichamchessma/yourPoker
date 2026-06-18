@@ -603,6 +603,8 @@
     "handDone": "Mano terminada",
     "quit": "Salir",
     "quitSim": "Salir de la simulación",
+    "rotateTitle": "Gira tu teléfono",
+    "rotateBody": "La mesa se juega en horizontal. Pon tu teléfono de lado para continuar.",
     "pause": "Pausa",
     "resume": "Reanudar",
     "rejouer": "Repetir",
