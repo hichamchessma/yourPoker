@@ -1604,12 +1604,17 @@ export default function GamePage(): JSX.Element {
   }
 
   // Collect every live bet on the table into the pot, staggered so the stacks
-  // visibly file in one after another before merging.
-  function collectBetsToPot(seats: Seat[]) {
+  // visibly file in one after another before merging. Returns the time (ms) until
+  // the LAST collected stack lands in the pot, so callers can sequence the payout
+  // AFTER the collection finishes (never overlapping the two animations).
+  const COLLECT_FLIGHT_MS = 600   // matches the 'collect' flight transition (0.6s)
+  function collectBetsToPot(seats: Seat[]): number {
     let delay = 0
+    let lastStart = -1
     seats.forEach(s => {
-      if (s.bet > 0) { fireStackToPot(s.idx, s.bet, seats.length, delay); delay += 110 }
+      if (s.bet > 0) { fireStackToPot(s.idx, s.bet, seats.length, delay); lastStart = delay; delay += 110 }
     })
+    return lastStart < 0 ? 0 : lastStart + COLLECT_FLIGHT_MS
   }
 
   function fireStackToWinner(toSeatIdx: number, amount: number, total: number, startDelay = 0) {
@@ -2093,10 +2098,12 @@ export default function GamePage(): JSX.Element {
   }
 
   function foldWin(seatIdx: number, state: GState): GState {
-    // Pull any live bets into the pot, then push the whole pot to the winner.
+    // Pull any live bets into the pot FIRST, then — once they've merged — push the
+    // whole pot to the winner. Sequencing on the collect duration avoids the chips
+    // flying to the centre and to the winner at the same time.
     const potTotal = state.pot
-    collectBetsToPot(state.seats)
-    fireStackToWinner(seatIdx, potTotal, state.seats.length, 350)
+    const collectMs = collectBetsToPot(state.seats)
+    fireStackToWinner(seatIdx, potTotal, state.seats.length, (collectMs > 0 ? collectMs + 140 : 200))
     // In the Revive sandbox the point is to ANALYSE: even when everyone folds (no
     // showdown), reveal EVERY player's cards — the lone winner who never had to show
     // AND the folders — so you can see exactly what you were up against.
@@ -2166,15 +2173,16 @@ export default function GamePage(): JSX.Element {
 
   function endStreet(state: GState): void {
     // Slide every committed bet into the central pot, then reset the bets.
-    collectBetsToPot(state.seats)
+    const collectMs = collectBetsToPot(state.seats)
     const seats = state.seats.map(s => ({ ...s, bet: 0, lastAction: null, isActive: false }))
     const newState = { ...state, seats, currentBet: 0, minRaise: bbAmt }
 
     if (newState.phase === 'river' || newState.phase === 'showdown') {
-      // Clear the front bets now so they merge into the pot, then reveal.
+      // Clear the front bets now so they merge into the pot, then reveal — but only
+      // AFTER the collected stacks have landed, so the payout never overlaps them.
       setGs(newState); gsRef.current = newState
       const gen = flowGenRef.current
-      setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(gsRef.current) }, fastFwdRef.current ? 60 : 650)
+      setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(gsRef.current) }, fastFwdRef.current ? 60 : Math.max(650, collectMs + 140))
     } else {
       const nextPhase: Phase =
         newState.phase === 'preflop' ? 'flop' :
