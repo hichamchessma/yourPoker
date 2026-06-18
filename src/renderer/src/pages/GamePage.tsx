@@ -293,8 +293,8 @@ function computeSidePots(seats: Seat[]): {amount:number; eligible:number[]}[] {
 
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42 }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void; avatarSize?:number
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42, compact=false }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void; avatarSize?:number; compact?:boolean
 }) {
   const { t } = useTranslation()
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
@@ -360,7 +360,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
       </div>
 
       {/* Info panel — hovering here (name / stack) shows the BET panel in manual mode */}
-      <div className={`relative rounded-2xl border backdrop-blur-md overflow-hidden min-w-[115px] transition-all duration-500
+      <div className={`relative rounded-2xl border backdrop-blur-md overflow-hidden transition-all duration-500 ${compact?'min-w-[86px]':'min-w-[115px]'}
         ${seat.isActive?'border-[#00d4ff]/55 shadow-[0_0_20px_rgba(0,212,255,0.28)]'
         :isWinner?'border-[#c9a227]/80 shadow-[0_0_30px_rgba(201,162,39,0.65)]'
         :isLoser?'border-white/5':'border-white/10'}`}
@@ -381,7 +381,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
               style={{ animation:`turnDrain ${turnSeconds}s linear forwards`, animationPlayState: turnPaused ? 'paused' : 'running' }}/>
           </div>
         )}
-        <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
+        <div className={`flex items-center ${compact?'gap-1.5 px-1.5 pt-1 pb-1':'gap-2 px-2.5 pt-1.5 pb-1'}`}>
           <div className="relative shrink-0 rounded-full"
             style={{boxShadow:seat.isActive?'0 0 0 2px rgba(0,212,255,0.6)':'0 0 0 1px rgba(255,255,255,0.12)'}}>
             <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero, seat.seatType === 'human')} size={avatarSize} photo={seat.isHero ? '/assets/player-avatar.webp' : undefined}/>
@@ -1586,9 +1586,9 @@ export default function GamePage(): JSX.Element {
 
     // Ellipse radii in percent of container — seats sit just outside the felt.
     // Tighter on a compact (phone-landscape) table so the scaled-down panels don't clip.
-    const rx = compactTable ? 44 : 45
-    const ry = compactTable ? 31 : 40
-    const cx = 50, cy = compactTable ? 42 : 49
+    const rx = compactTable ? 45 : 45
+    const ry = compactTable ? 39 : 40
+    const cx = 50, cy = compactTable ? 47 : 49
     const x = cx + rx * Math.cos(angle)
     const y = cy + ry * Math.sin(angle)
     return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }
@@ -3653,7 +3653,7 @@ export default function GamePage(): JSX.Element {
       )}
 
       {/* ── HEADER (draggable title bar) ── */}
-      <header className={`app-drag flex items-center border-b border-white/8 flex-shrink-0 relative z-30 ${compactTable ? 'gap-1.5 px-2 py-1' : 'gap-3 px-4 py-2'}`}
+      <header className={`app-drag flex items-center border-b border-white/8 flex-shrink-0 relative z-30 ${compactTable ? 'gap-1 px-2 py-0' : 'gap-3 px-4 py-2'}`}
         style={{background:'rgba(5,8,16,0.97)'}}>
         <button onClick={() => {
             if (simMode) { exitSim(); return }
@@ -3848,13 +3848,37 @@ export default function GamePage(): JSX.Element {
               <span className={`text-[12px] font-black font-mono ${accent ? 'text-[#f0c060]' : 'text-white/85'}`}>{value}</span>
             </div>
           )
+          const timer = coachOpen ? t('game.hudPause') : `${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`
+          // Phone: a slim full-width strip pinned ABOVE the seats so it never covers a
+          // player. Desktop keeps the rich floating pill.
+          if (compactTable) {
+            const Mini = ({ l, v, accent }: { l: string; v: string; accent?: boolean }) => (
+              <span className="flex items-baseline gap-0.5 whitespace-nowrap">
+                <span className="text-[6px] uppercase tracking-wider text-white/35 font-bold">{l}</span>
+                <span className={`text-[8px] font-black font-mono ${accent ? 'text-[#f0c060]' : 'text-white/85'}`}>{v}</span>
+              </span>
+            )
+            return (
+              <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-around px-2 py-1"
+                style={{ background: 'linear-gradient(180deg, rgba(14,10,3,0.94) 35%, rgba(14,10,3,0))' }}>
+                <Mini l={t('game.hudLevel')} v={`${tourLevelIdx + 1}`} accent />
+                <Mini l={t('game.hudBlinds')} v={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}`} />
+                <Mini l={t('game.hudNextLevel')} v={timer} />
+                <Mini l={t('game.hudPlayers')} v={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
+                <Mini l={t('game.hudYourStack')} v={`${Math.round(heroStack / curLevel.bb)}bb`} accent />
+                <Mini l={t('game.hudPlace')} v={t('tour.placeN', { n: rank.toLocaleString() })} />
+                <span className={`text-[8px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/55'}`}>
+                  {itm ? t('game.hudItm', { prize: prizeForPlace(rank, tourPayouts()).toLocaleString() }) : toBubble <= 5 ? t('game.hudBubble', { n: toBubble }) : t('game.hudPaid', { n: places })}
+                </span>
+              </div>
+            )
+          }
           return (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10"
-              style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)',
-                ...(compactTable ? { transform: 'translateX(-50%) scale(0.55)', transformOrigin: 'top center' } : {}) }}>
+              style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
               <Cell label={t('game.hudLevel')} value={`${tourLevelIdx + 1}`} accent />
               <Cell label={t('game.hudBlinds')} value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
-              <Cell label={t('game.hudNextLevel')} value={coachOpen ? t('game.hudPause') : `${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
+              <Cell label={t('game.hudNextLevel')} value={timer} />
               <Cell label={t('game.hudPlayers')} value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
               <Cell label={t('game.hudAvgStack')} value={`${Math.round(avgStack / curLevel.bb)} BB`} />
               <Cell label={t('game.hudYourStack')} value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
@@ -3954,7 +3978,8 @@ export default function GamePage(): JSX.Element {
                 <SeatPanel
                   key={seat.idx}
                   seat={seat}
-                  avatarSize={compactTable ? (seat.isHero ? 60 : 50) : 42}
+                  compact={compactTable}
+                  avatarSize={compactTable ? (seat.isHero ? 56 : 46) : 42}
                   style={{ left: pos.left, top: pos.top, transform: compactTable ? `${pos.transform} scale(0.66)` : pos.transform }}
                   isWinner={isWinner}
                   isShowdown={isShowdown}

@@ -116,17 +116,17 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
 
   const content = (
     <div ref={contentRef} className="relative w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
-      {/* Logo (smaller on touch so the drawer fits a short landscape height) */}
-      <div className={isTouch ? 'p-3 pb-2' : 'p-6 pb-4'}>
-        <div className="flex flex-col items-center">
-          {/* YourPoker brand mark (emblem + wordmark) */}
-          <img src="/assets/yourpoker-logo.webp" alt="YourPoker — Elite Coaching" draggable={false}
-            className="w-full rounded-xl border border-poker-gold/20 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)]"
-            style={{ maxWidth: isTouch ? 120 : 184 }} />
+      {/* Logo (much smaller on touch so all menu items fit a short landscape height) */}
+      <div className={isTouch ? 'px-3 pt-2 pb-1.5 flex items-center gap-2' : 'p-6 pb-4'}>
+        <img src="/assets/yourpoker-logo.webp" alt="YourPoker — Elite Coaching" draggable={false}
+          className={`rounded-xl border border-poker-gold/20 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)] ${isTouch ? '' : 'w-full'}`}
+          style={{ maxWidth: isTouch ? 96 : 184 }} />
+        <div className={isTouch ? '' : 'flex flex-col items-center mt-3 w-full'}>
+          <div className={isTouch ? '' : 'flex justify-center'}><LanguageSwitcher /></div>
+          {!isTouch && <div className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />}
         </div>
-        <div className={`${isTouch ? 'mt-2' : 'mt-3'} flex justify-center`}><LanguageSwitcher /></div>
-        <div className={`${isTouch ? 'mt-2' : 'mt-3'} h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent`} />
       </div>
+      {isTouch && <div className="mx-3 h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />}
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto" onMouseLeave={() => setHoverId(null)}>
@@ -141,7 +141,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
               onMouseEnter={() => setHoverId(item.id)}
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.97 }}
-              className={`w-full flex items-center gap-3 px-4 ${isTouch ? 'py-2' : 'py-3'} rounded-lg text-left transition-all duration-200 group relative ${
+              className={`w-full flex items-center gap-3 px-4 ${isTouch ? 'py-1.5' : 'py-3'} rounded-lg text-left transition-all duration-200 group relative ${
                 isActive
                   ? 'bg-poker-teal/15 text-poker-teal'
                   : 'text-white/50 hover:text-white/80 hover:bg-white/5'
@@ -205,7 +205,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
       )}
 
       {/* Bottom — upgrade CTA + logout + version */}
-      <div className="p-3 space-y-2">
+      <div className={isTouch ? 'p-2 space-y-1' : 'p-3 space-y-2'}>
         {isPro ? (
           <div className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#c9a227]/10 border border-[#c9a227]/30 text-[#c9a227]">
             <Crown size={13} /> <span className="text-[10px] font-black uppercase tracking-widest">{t('nav.proMember')}</span>
