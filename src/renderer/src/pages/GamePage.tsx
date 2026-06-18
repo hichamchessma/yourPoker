@@ -3911,7 +3911,7 @@ export default function GamePage(): JSX.Element {
             {/* Community cards */}
             {gs.phase !== 'idle' && gs.phase !== 'dealing' && (
               <div className="absolute left-1/2 -translate-x-1/2" style={{top:'34%',transform:'translate(-50%,-50%)'}}>
-                <div className="flex gap-2 items-end">
+                <div className={`flex items-end ${compactTable ? 'gap-1' : 'gap-2'}`}>
                   {gs.community.map((card, i) => (
                     <AnimatePresence key={i}>
                       {card ? (
@@ -3919,10 +3919,10 @@ export default function GamePage(): JSX.Element {
                           initial={{y:-40,opacity:0,scale:0.5,rotateY:90}}
                           animate={{y:0,opacity:1,scale:1,rotateY:0}}
                           transition={{type:'spring',stiffness:300,damping:25,delay:i*0.08}}>
-                          <PlayingCard rank={card.rank} suit={card.suit} w={62} h={88}/>
+                          <PlayingCard rank={card.rank} suit={card.suit} w={compactTable?40:62} h={compactTable?56:88}/>
                         </motion.div>
                       ) : (
-                        <EmptySlot key={`empty-${i}`} w={62} h={88}/>
+                        <EmptySlot key={`empty-${i}`} w={compactTable?40:62} h={compactTable?56:88}/>
                       )}
                     </AnimatePresence>
                   ))}
@@ -3935,8 +3935,9 @@ export default function GamePage(): JSX.Element {
                 still sit in front of players until the street ends. */}
             {gs.phase !== 'idle' && gs.pot > 0 && (
               <div className="absolute left-1/2 -translate-x-1/2" style={{top:`${POT_POS.y}%`,transform:'translate(-50%,-50%)'}}>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/70 border border-[#c9a227]/30 backdrop-blur-sm">
-                  {collectedPot > 0 && <ChipStack amount={collectedPot} sz={20} maxVisible={6}/>}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/70 border border-[#c9a227]/30 backdrop-blur-sm"
+                  style={compactTable ? { transform: 'scale(0.66)' } : undefined}>
+                  {collectedPot > 0 && <ChipStack amount={collectedPot} sz={compactTable?14:20} maxVisible={6}/>}
                   <div className="flex flex-col leading-none">
                     <span className="text-[7px] text-white/40 uppercase tracking-widest">Pot total</span>
                     <span className="text-[13px] font-bold text-[#c9a227] font-mono">${gs.pot.toLocaleString()}</span>
@@ -4054,7 +4055,7 @@ export default function GamePage(): JSX.Element {
                   transform: 'translate(-50%,-50%)',
                   zIndex: 15,
                 }}>
-                  <DealerButtonToken size={34}/>
+                  <DealerButtonToken size={compactTable?22:34}/>
                 </div>
               )
             })()}
@@ -4074,8 +4075,8 @@ export default function GamePage(): JSX.Element {
                     transform: 'translate(-50%,-50%)',
                     zIndex: 12,
                   }}>
-                  <ChipStack amount={seat.bet} sz={17} maxVisible={5}/>
-                  <span className="text-[9px] font-mono text-[#c9a227] font-bold bg-black/55 px-1 rounded">${seat.bet.toLocaleString()}</span>
+                  <ChipStack amount={seat.bet} sz={compactTable?11:17} maxVisible={5}/>
+                  <span className={`font-mono text-[#c9a227] font-bold bg-black/55 px-1 rounded ${compactTable?'text-[7px]':'text-[9px]'}`}>${seat.bet.toLocaleString()}</span>
                 </motion.div>
               )
             })}
@@ -4088,7 +4089,7 @@ export default function GamePage(): JSX.Element {
                 initial={{ left:`${flight.fromX}%`, top:`${flight.fromY}%`, x:'-50%', y:'-50%', opacity:0.95, scale:0.95 }}
                 animate={{ left:`${flight.toX}%`, top:`${flight.toY}%`, x:'-50%', y:'-50%', opacity:flight.kind==='payout'?1:0.9, scale:1 }}
                 transition={{ duration: flight.kind==='payout'?0.7:0.6, ease:'easeInOut' }}>
-                <FlyingStack amount={flight.amount} sz={17}/>
+                <FlyingStack amount={flight.amount} sz={compactTable?11:17}/>
               </motion.div>
             ))}
 
@@ -4119,7 +4120,8 @@ export default function GamePage(): JSX.Element {
           )}
 
           {/* Action buttons — fixed height so the bar never jumps between states */}
-          <div className={`flex items-center gap-3 ${compactTable ? 'px-2 py-1.5 min-h-[52px]' : 'px-4 py-3 min-h-[92px]'}`}>
+          <div className={`flex items-center gap-3 px-4 ${compactTable ? 'py-1' : 'py-3 min-h-[92px]'}`}
+            style={compactTable ? { transform: 'scale(0.8)', transformOrigin: 'bottom center' } : undefined}>
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"/>
