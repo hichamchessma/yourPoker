@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useLiveSession } from '../../store/liveSessionStore'
+import { useDevice } from '../../lib/useDevice'
 import { LeaveTableModal } from '../SessionDialogs'
 import { useIsPro } from '../../lib/entitlements'
 import ProBadge from '../ProBadge'
@@ -71,6 +72,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
   // Leave guard: a live cash/tournament table is in progress → confirm before
   // navigating away (the session is already checkpointed and stays resumable).
   const activeFormat = useLiveSession(s => s.activeFormat)
+  const { isTouch } = useDevice()
   const [pendingNav, setPendingNav] = useState<string | null>(null)
   const go = (path: string): void => {
     if (activeFormat && currentPath === '/game' && path !== '/game') setPendingNav(path)
@@ -298,6 +300,11 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
 
   // Normal pages: the menu is always docked.
   if (!autoHide) return <>{leaveModal}{content}</>
+
+  // Immersive surfaces on TOUCH: the hover-to-reveal edge strip is unusable with a
+  // finger, so we drop it entirely — navigation goes through the in-table Quit button
+  // (which saves & resumes the session). Mouse users keep the edge reveal below.
+  if (isTouch) return leaveModal
 
   // Game table: the menu hides for immersion and reveals on a left-edge hover with a
   // laser sweep. A thin glowing strip + pulsing handle shows it's there.

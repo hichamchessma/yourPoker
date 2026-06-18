@@ -25,13 +25,15 @@ function read(): DeviceInfo {
   const h = window.innerHeight
   const coarse = window.matchMedia('(pointer: coarse)').matches
   const portrait = h >= w
-  // Phone / tablet are decided on VIEWPORT WIDTH (aligned with the Tailwind `md:`
-  // breakpoint at 768px). Deliberately NOT min(w,h): a wide-but-short desktop window
-  // (e.g. 1920×700) must stay "desktop", not be mistaken for a phone.
+  // A phone is a COARSE-POINTER device whose SHORTER side is < 768px — true in both
+  // portrait AND landscape (a phone in landscape is wide but only ~400px tall). The
+  // `coarse` gate keeps wide-but-short DESKTOP windows (mouse) out, so they stay
+  // "desktop" and never regress to the mobile chrome.
+  const minSide = Math.min(w, h)
   return {
     isTouch: coarse,
-    isPhone: w < 768,
-    isTablet: w >= 768 && w < 1024,
+    isPhone: coarse && minSide < 768,
+    isTablet: coarse && minSide >= 768 && minSide < 1024,
     isPortrait: portrait,
     isLandscape: !portrait,
     width: w,

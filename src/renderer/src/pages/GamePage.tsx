@@ -1586,9 +1586,9 @@ export default function GamePage(): JSX.Element {
 
     // Ellipse radii in percent of container — seats sit just outside the felt.
     // Tighter on a compact (phone-landscape) table so the scaled-down panels don't clip.
-    const rx = compactTable ? 43 : 45
-    const ry = compactTable ? 33 : 40
-    const cx = 50, cy = compactTable ? 45 : 49
+    const rx = compactTable ? 44 : 45
+    const ry = compactTable ? 31 : 40
+    const cx = 50, cy = compactTable ? 42 : 49
     const x = cx + rx * Math.cos(angle)
     const y = cy + ry * Math.sin(angle)
     return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }
@@ -4098,8 +4098,16 @@ export default function GamePage(): JSX.Element {
 
       {/* ── HERO CONTROLS ── */}
       {gs.phase !== 'idle' && (
-        <div className="flex-shrink-0 border-t border-white/8 relative z-20"
-          style={{background:'rgba(4,7,16,0.98)', minHeight: compactTable ? 60 : 100}}>
+        <div className={compactTable
+            ? 'absolute bottom-0 left-0 right-0 z-20'
+            : 'flex-shrink-0 border-t border-white/8 relative z-20'}
+          style={{
+            background: compactTable
+              ? 'linear-gradient(to top, rgba(3,6,13,0.97) 62%, rgba(3,6,13,0))'
+              : 'rgba(4,7,16,0.98)',
+            minHeight: compactTable ? undefined : 100,
+            paddingTop: compactTable ? 18 : undefined
+          }}>
 
           {/* Sit-out notice (cards/name/stack are already shown on the table seat) */}
           {hero && sitOutPending && (
