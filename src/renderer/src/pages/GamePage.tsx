@@ -3620,10 +3620,10 @@ export default function GamePage(): JSX.Element {
         style={{background:'rgba(5,8,16,0.97)'}}>
         <button onClick={() => {
             if (simMode) { exitSim(); return }
-            const dest = tournament ? '/tournament' : isScenario ? '/setup' : '/training'
-            // Live cash/tournament hand in progress → confirm + keep the session.
-            if (sessionFormat && gsRef.current.phase !== 'idle') setConfirmLeavePath(dest)
-            else navigate(dest)
+            // Quit always returns to the lobby. Live cash/tournament hand in progress
+            // → confirm first; the session stays checkpointed and resumable.
+            if (sessionFormat && gsRef.current.phase !== 'idle') setConfirmLeavePath('/lobby')
+            else navigate('/lobby')
           }}
           className="app-drag-none flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors">
           <ArrowLeft size={15}/>
