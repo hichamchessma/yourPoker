@@ -25,10 +25,13 @@ function read(): DeviceInfo {
   const h = window.innerHeight
   const coarse = window.matchMedia('(pointer: coarse)').matches
   const portrait = h >= w
+  // Phone / tablet are decided on VIEWPORT WIDTH (aligned with the Tailwind `md:`
+  // breakpoint at 768px). Deliberately NOT min(w,h): a wide-but-short desktop window
+  // (e.g. 1920×700) must stay "desktop", not be mistaken for a phone.
   return {
     isTouch: coarse,
-    isPhone: Math.min(w, h) < 768,
-    isTablet: Math.min(w, h) >= 768 && Math.min(w, h) < 1024,
+    isPhone: w < 768,
+    isTablet: w >= 768 && w < 1024,
     isPortrait: portrait,
     isLandscape: !portrait,
     width: w,
