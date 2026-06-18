@@ -293,8 +293,8 @@ function computeSidePots(seats: Seat[]): {amount:number; eligible:number[]}[] {
 
 
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42 }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void; avatarSize?:number
 }) {
   const { t } = useTranslation()
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
@@ -384,7 +384,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
         <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
           <div className="relative shrink-0 rounded-full"
             style={{boxShadow:seat.isActive?'0 0 0 2px rgba(0,212,255,0.6)':'0 0 0 1px rgba(255,255,255,0.12)'}}>
-            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero, seat.seatType === 'human')} size={42} photo={seat.isHero ? '/assets/player-avatar.webp' : undefined}/>
+            <PlayerAvatar spec={avatarForSeat(seat.level, seat.idx, seat.isHero, seat.seatType === 'human')} size={avatarSize} photo={seat.isHero ? '/assets/player-avatar.webp' : undefined}/>
             {seat.isActive&&(
               <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#00d4ff] border-2 border-[#040a18]">
                 <div className="w-full h-full rounded-full bg-[#00d4ff] animate-ping opacity-70"/>
@@ -3936,8 +3936,8 @@ export default function GamePage(): JSX.Element {
             {gs.phase !== 'idle' && gs.pot > 0 && (
               <div className="absolute left-1/2 -translate-x-1/2" style={{top:`${POT_POS.y}%`,transform:'translate(-50%,-50%)'}}>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/70 border border-[#c9a227]/30 backdrop-blur-sm"
-                  style={compactTable ? { transform: 'scale(0.66)' } : undefined}>
-                  {collectedPot > 0 && <ChipStack amount={collectedPot} sz={compactTable?14:20} maxVisible={6}/>}
+                  style={compactTable ? { transform: 'scale(0.56)' } : undefined}>
+                  {collectedPot > 0 && <ChipStack amount={collectedPot} sz={compactTable?10:20} maxVisible={6}/>}
                   <div className="flex flex-col leading-none">
                     <span className="text-[7px] text-white/40 uppercase tracking-widest">Pot total</span>
                     <span className="text-[13px] font-bold text-[#c9a227] font-mono">${gs.pot.toLocaleString()}</span>
@@ -3954,6 +3954,7 @@ export default function GamePage(): JSX.Element {
                 <SeatPanel
                   key={seat.idx}
                   seat={seat}
+                  avatarSize={compactTable ? (seat.isHero ? 60 : 50) : 42}
                   style={{ left: pos.left, top: pos.top, transform: compactTable ? `${pos.transform} scale(0.66)` : pos.transform }}
                   isWinner={isWinner}
                   isShowdown={isShowdown}
@@ -4055,7 +4056,7 @@ export default function GamePage(): JSX.Element {
                   transform: 'translate(-50%,-50%)',
                   zIndex: 15,
                 }}>
-                  <DealerButtonToken size={compactTable?22:34}/>
+                  <DealerButtonToken size={compactTable?17:34}/>
                 </div>
               )
             })()}
@@ -4075,7 +4076,7 @@ export default function GamePage(): JSX.Element {
                     transform: 'translate(-50%,-50%)',
                     zIndex: 12,
                   }}>
-                  <ChipStack amount={seat.bet} sz={compactTable?11:17} maxVisible={5}/>
+                  <ChipStack amount={seat.bet} sz={compactTable?9:17} maxVisible={5}/>
                   <span className={`font-mono text-[#c9a227] font-bold bg-black/55 px-1 rounded ${compactTable?'text-[7px]':'text-[9px]'}`}>${seat.bet.toLocaleString()}</span>
                 </motion.div>
               )
@@ -4089,7 +4090,7 @@ export default function GamePage(): JSX.Element {
                 initial={{ left:`${flight.fromX}%`, top:`${flight.fromY}%`, x:'-50%', y:'-50%', opacity:0.95, scale:0.95 }}
                 animate={{ left:`${flight.toX}%`, top:`${flight.toY}%`, x:'-50%', y:'-50%', opacity:flight.kind==='payout'?1:0.9, scale:1 }}
                 transition={{ duration: flight.kind==='payout'?0.7:0.6, ease:'easeInOut' }}>
-                <FlyingStack amount={flight.amount} sz={compactTable?11:17}/>
+                <FlyingStack amount={flight.amount} sz={compactTable?9:17}/>
               </motion.div>
             ))}
 
@@ -4120,8 +4121,8 @@ export default function GamePage(): JSX.Element {
           )}
 
           {/* Action buttons — fixed height so the bar never jumps between states */}
-          <div className={`flex items-center gap-3 px-4 ${compactTable ? 'py-1' : 'py-3 min-h-[92px]'}`}
-            style={compactTable ? { transform: 'scale(0.8)', transformOrigin: 'bottom center' } : undefined}>
+          <div className={`flex items-center gap-3 px-4 ${compactTable ? 'py-0.5' : 'py-3 min-h-[92px]'}`}
+            style={compactTable ? { transform: 'scale(0.66)', transformOrigin: 'bottom center' } : undefined}>
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"/>

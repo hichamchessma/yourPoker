@@ -76,7 +76,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
   const [pendingNav, setPendingNav] = useState<string | null>(null)
   const go = (path: string): void => {
     if (activeFormat && currentPath === '/game' && path !== '/game') setPendingNav(path)
-    else { navigate(path); onCloseDrawer?.() }
+    else { navigate(path); onCloseDrawer?.(); setRevealed(false) }
   }
 
   // ── Mascot pointer ──────────────────────────────────────────────────────
@@ -116,16 +116,16 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
 
   const content = (
     <div ref={contentRef} className="relative w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
-      {/* Logo */}
-      <div className="p-6 pb-4">
+      {/* Logo (smaller on touch so the drawer fits a short landscape height) */}
+      <div className={isTouch ? 'p-3 pb-2' : 'p-6 pb-4'}>
         <div className="flex flex-col items-center">
           {/* YourPoker brand mark (emblem + wordmark) */}
           <img src="/assets/yourpoker-logo.webp" alt="YourPoker — Elite Coaching" draggable={false}
             className="w-full rounded-xl border border-poker-gold/20 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.8)]"
-            style={{ maxWidth: 184 }} />
+            style={{ maxWidth: isTouch ? 120 : 184 }} />
         </div>
-        <div className="mt-3 flex justify-center"><LanguageSwitcher /></div>
-        <div className="mt-3 h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />
+        <div className={`${isTouch ? 'mt-2' : 'mt-3'} flex justify-center`}><LanguageSwitcher /></div>
+        <div className={`${isTouch ? 'mt-2' : 'mt-3'} h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent`} />
       </div>
 
       {/* Navigation */}
@@ -141,7 +141,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
               onMouseEnter={() => setHoverId(item.id)}
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.97 }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all duration-200 group relative ${
+              className={`w-full flex items-center gap-3 px-4 ${isTouch ? 'py-2' : 'py-3'} rounded-lg text-left transition-all duration-200 group relative ${
                 isActive
                   ? 'bg-poker-teal/15 text-poker-teal'
                   : 'text-white/50 hover:text-white/80 hover:bg-white/5'
@@ -301,10 +301,33 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
   // Normal pages: the menu is always docked.
   if (!autoHide) return <>{leaveModal}{content}</>
 
-  // Immersive surfaces on TOUCH: the hover-to-reveal edge strip is unusable with a
-  // finger, so we drop it entirely — navigation goes through the in-table Quit button
-  // (which saves & resumes the session). Mouse users keep the edge reveal below.
-  if (isTouch) return leaveModal
+  // Immersive surfaces on TOUCH: replace the hover-to-reveal edge strip (unusable with
+  // a finger) with a clearly-visible edge tab that opens the menu as a proper drawer.
+  if (isTouch) {
+    return (
+      <>
+        {leaveModal}
+        <button onClick={() => setRevealed(true)} aria-label="Menu"
+          className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-7 h-14 rounded-r-xl bg-poker-teal/20 border border-l-0 border-poker-teal/45 text-poker-teal active:bg-poker-teal/35"
+          style={{ boxShadow: '0 0 14px -4px rgba(0,212,255,0.6)' }}>
+          <ChevronRight size={16} />
+        </button>
+        <AnimatePresence>
+          {revealed && (
+            <>
+              <motion.div key="bg" className="fixed inset-0 z-[90]" style={{ background: 'rgba(0,0,0,0.6)' }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setRevealed(false)} />
+              <motion.div key="panel" className="fixed left-0 top-0 bottom-0 z-[100] shadow-2xl shadow-black/60"
+                initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
+                transition={{ type: 'tween', duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>
+                {content}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </>
+    )
+  }
 
   // Game table: the menu hides for immersion and reveals on a left-edge hover with a
   // laser sweep. A thin glowing strip + pulsing handle shows it's there.
