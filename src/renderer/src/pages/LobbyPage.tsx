@@ -217,14 +217,14 @@ export default function LobbyPage(): JSX.Element {
   return (
     <div className="flex flex-col h-full bg-poker-darker overflow-hidden">
 
-      {/* ── CONTENT ── */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* ── CONTENT ── (stacks vertically + scrolls on phone, side-by-side on md+) */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
 
         {/* ── CENTER ── */}
-        <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4 min-w-0">
+        <div className="flex-none md:flex-1 flex flex-col p-4 gap-4 min-w-0 md:overflow-hidden">
 
           {/* Hero */}
-          <div className="flex-1 relative rounded-2xl overflow-hidden min-h-0" style={{ background: 'radial-gradient(ellipse at 50% 35%, #0d2a4a 0%, #071020 50%, #04080e 100%)' }}>
+          <div className="flex-1 relative rounded-2xl overflow-hidden min-h-[240px] md:min-h-0" style={{ background: 'radial-gradient(ellipse at 50% 35%, #0d2a4a 0%, #071020 50%, #04080e 100%)' }}>
             {/* ── ENHANCED BACKGROUND ── */}
             <svg className="absolute inset-0 w-full h-full" viewBox="0 0 600 350" preserveAspectRatio="xMidYMid slice">
               <defs>
@@ -340,7 +340,7 @@ export default function LobbyPage(): JSX.Element {
           {/* Quick-launch shortcuts to the trainers */}
           <div className="flex-shrink-0">
             <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold mb-2 px-1">{t('lobby.launchTraining')}</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <ShortcutCard icon={<Target size={16} />} title={t('lobby.scHandTrainer')} accent="#00d4ff"
                 desc={t('lobby.scHandTrainerD')} onClick={() => navigate('/handtrainer')} />
               <ShortcutCard icon={<GraduationCap size={16} />} title={t('lobby.scCash')} accent="#22c55e"
@@ -357,8 +357,8 @@ export default function LobbyPage(): JSX.Element {
           </div>
         </div>
 
-        {/* ── RIGHT PANEL ── */}
-        <aside className="w-64 flex-shrink-0 border-l border-poker-border flex flex-col gap-3 p-3 overflow-y-auto" style={{ background: 'rgba(6,11,20,0.6)' }}>
+        {/* ── RIGHT PANEL ── (full-width below the hero on phone, side rail on md+) */}
+        <aside className="w-full md:w-64 flex-shrink-0 border-t md:border-t-0 md:border-l border-poker-border flex flex-col gap-3 p-3 md:overflow-y-auto" style={{ background: 'rgba(6,11,20,0.6)' }}>
 
           {/* Balance / Solde */}
           <div className="glass-card p-4">

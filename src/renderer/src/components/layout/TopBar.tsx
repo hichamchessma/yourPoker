@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
-import { Crown } from 'lucide-react'
+import { Crown, Menu } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useIsPro } from '../../lib/entitlements'
 import { playersOnline } from '../../lib/leaderboard'
@@ -13,7 +13,7 @@ import WindowControls from './WindowControls'
 // Persistent top bar shown on every menu page (via AppLayout): players-online social
 // proof, language + sound, and the profile chip with the Pro crown — so the crown and
 // controls stay visible no matter which page you're on.
-export default function TopBar(): JSX.Element {
+export default function TopBar({ onMenu }: { onMenu?: () => void }): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -28,6 +28,14 @@ export default function TopBar(): JSX.Element {
       style={{ background: 'linear-gradient(180deg, rgba(9,14,26,0.96), rgba(6,11,20,0.92))', backdropFilter: 'blur(10px)' }}>
       {/* hairline accent — gold → teal */}
       <div className="absolute top-0 left-0 right-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent, rgba(201,162,39,0.45), rgba(0,212,255,0.35), transparent)' }} />
+
+      {/* Hamburger — phone only (opens the sidebar drawer) */}
+      {onMenu && (
+        <button onClick={onMenu} aria-label="Menu"
+          className="app-drag-none flex items-center justify-center w-9 h-9 -ml-1 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+          <Menu size={22} />
+        </button>
+      )}
 
       {/* Players online — social proof (stays on every page) */}
       <div className="app-drag-none hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 shadow-[0_0_18px_-8px_rgba(16,185,129,0.6)]">

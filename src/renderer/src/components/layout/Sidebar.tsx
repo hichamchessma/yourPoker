@@ -51,9 +51,13 @@ interface SidebarProps {
   activeItem?: string
   /** On the game table we hide the menu and reveal it on a left-edge hover (immersion). */
   autoHide?: boolean
+  /** Phone: render as an off-canvas drawer toggled by the TopBar hamburger. */
+  drawer?: boolean
+  drawerOpen?: boolean
+  onCloseDrawer?: () => void
 }
 
-export default function Sidebar({ activeItem, autoHide = false }: SidebarProps): JSX.Element {
+export default function Sidebar({ activeItem, autoHide = false, drawer = false, drawerOpen = false, onCloseDrawer }: SidebarProps): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
   const { t, i18n } = useTranslation()
@@ -70,7 +74,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
   const [pendingNav, setPendingNav] = useState<string | null>(null)
   const go = (path: string): void => {
     if (activeFormat && currentPath === '/game' && path !== '/game') setPendingNav(path)
-    else navigate(path)
+    else { navigate(path); onCloseDrawer?.() }
   }
 
   // ── Mascot pointer ──────────────────────────────────────────────────────
@@ -261,6 +265,36 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
       </div>
     </div>
   )
+
+  // Phone: off-canvas drawer with a dimmed backdrop, slides in from the left.
+  if (drawer) {
+    return (
+      <>
+        {leaveModal}
+        <AnimatePresence>
+          {drawerOpen && (
+            <>
+              <motion.div
+                key="drawer-backdrop"
+                className="fixed inset-0 z-[90]"
+                style={{ background: 'rgba(0,0,0,0.6)' }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={onCloseDrawer}
+              />
+              <motion.div
+                key="drawer-panel"
+                className="fixed left-0 top-0 bottom-0 z-[100] shadow-2xl shadow-black/60"
+                initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
+                transition={{ type: 'tween', duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {content}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </>
+    )
+  }
 
   // Normal pages: the menu is always docked.
   if (!autoHide) return <>{leaveModal}{content}</>
