@@ -605,6 +605,8 @@
     "quitSim": "Salir de la simulación",
     "rotateTitle": "Gira tu teléfono",
     "rotateBody": "La mesa se juega en horizontal. Pon tu teléfono de lado para continuar.",
+    "hoverPlayer": "Pasa sobre un jugador",
+    "tapPlayer": "Toca un jugador",
     "pause": "Pausa",
     "resume": "Reanudar",
     "rejouer": "Repetir",

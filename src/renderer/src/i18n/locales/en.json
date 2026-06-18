@@ -605,6 +605,8 @@
     "quitSim": "Quit simulation",
     "rotateTitle": "Rotate your phone",
     "rotateBody": "The table plays in landscape. Turn your phone sideways to continue.",
+    "hoverPlayer": "Hover a player",
+    "tapPlayer": "Tap a player",
     "pause": "Pause",
     "resume": "Resume",
     "rejouer": "Replay",

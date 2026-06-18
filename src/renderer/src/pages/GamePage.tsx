@@ -3653,7 +3653,7 @@ export default function GamePage(): JSX.Element {
       )}
 
       {/* ── HEADER (draggable title bar) ── */}
-      <header className="app-drag flex items-center gap-3 px-4 py-2 border-b border-white/8 flex-shrink-0 relative z-30"
+      <header className={`app-drag flex items-center border-b border-white/8 flex-shrink-0 relative z-30 ${compactTable ? 'gap-1.5 px-2 py-1' : 'gap-3 px-4 py-2'}`}
         style={{background:'rgba(5,8,16,0.97)'}}>
         <button onClick={() => {
             if (simMode) { exitSim(); return }
@@ -3751,9 +3751,9 @@ export default function GamePage(): JSX.Element {
 
         {/* Range Vision is always on now — hover any in-hand player for their range,
             hover your own profile for range + full coach advice (no button). */}
-        {gs.phase !== 'idle' && (
+        {gs.phase !== 'idle' && !compactTable && (
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#c9a227]/30 bg-[#c9a227]/10 text-[#c9a227]/80 text-[9px] font-bold uppercase tracking-widest">
-            <Eye size={11}/> Survole un joueur
+            <Eye size={11}/> {isTouch ? t('game.tapPlayer') : t('game.hoverPlayer')}
           </span>
         )}
 
@@ -4099,7 +4099,7 @@ export default function GamePage(): JSX.Element {
       {/* ── HERO CONTROLS ── */}
       {gs.phase !== 'idle' && (
         <div className="flex-shrink-0 border-t border-white/8 relative z-20"
-          style={{background:'rgba(4,7,16,0.98)', minHeight: 100}}>
+          style={{background:'rgba(4,7,16,0.98)', minHeight: compactTable ? 60 : 100}}>
 
           {/* Sit-out notice (cards/name/stack are already shown on the table seat) */}
           {hero && sitOutPending && (
@@ -4111,7 +4111,7 @@ export default function GamePage(): JSX.Element {
           )}
 
           {/* Action buttons — fixed height so the bar never jumps between states */}
-          <div className="flex items-center gap-3 px-4 py-3 min-h-[92px]">
+          <div className={`flex items-center gap-3 ${compactTable ? 'px-2 py-1.5 min-h-[52px]' : 'px-4 py-3 min-h-[92px]'}`}>
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"/>
@@ -4480,7 +4480,10 @@ export default function GamePage(): JSX.Element {
         const explainSide: 'left' | 'right' = x > window.innerWidth / 2 ? 'left' : 'right'
         const heroDead = (hero?.holeCards.filter(Boolean) ?? []) as Card[]
         return (
-          <div className="fixed z-[80] pointer-events-auto" style={{ left: x, top: y }}
+          <div className="fixed z-[80] pointer-events-auto"
+            style={compactTable
+              ? { left: '50%', top: '50%', transform: 'translate(-50%,-50%) scale(0.56)', transformOrigin: 'center' }
+              : { left: x, top: y }}
             onMouseEnter={() => { cancelOppGrace(); oppPanelHoverRef.current = true; setOppPanelHover(true) }}
             onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) scheduleOppClose(hoverSeat) }}
             onMouseDown={() => setFilmPinned(true)}>
@@ -4493,8 +4496,9 @@ export default function GamePage(): JSX.Element {
       {/* ── HERO coach hover-card: range représentée + conseil complet (no click) ── */}
       <AnimatePresence>
         {coachOpen && hero && (
-          <div className="fixed inset-x-0 top-[3vh] z-[70] flex justify-center pointer-events-none">
+          <div className={`fixed inset-x-0 z-[70] flex justify-center pointer-events-none ${compactTable ? 'top-[1vh]' : 'top-[3vh]'}`}>
             <div className="pointer-events-auto"
+              style={compactTable ? { transform: 'scale(0.6)', transformOrigin: 'top center' } : undefined}
               onMouseEnter={() => { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); heroPanelHoverRef.current = true; setHeroPanelHover(true) }}
               onMouseLeave={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(s => (s === hero.idx ? null : s)) }}>
               <RangeAssistant
