@@ -87,7 +87,7 @@ export default function TournamentSetupPage() {
           animate={{ opacity: [0.08, 0.2, 0.08], scale: [1, 1.07, 1] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }} />
       </div>
 
-      <div className="app-drag flex items-center justify-between px-6 py-3 border-b border-white/5 relative z-10">
+      <div className="app-drag flex items-center justify-between px-3 sm:px-6 py-3 border-b border-white/5 relative z-10">
         <div className="flex items-center gap-3">
           <Medal className="text-[#f0c060]" size={22} />
           <div>
@@ -98,7 +98,7 @@ export default function TournamentSetupPage() {
         <div className="app-drag-none"><WindowControls /></div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-5 relative z-10">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-5 relative z-10">
         {/* ── LEFT: parameters ── */}
         <div className="flex flex-col gap-4">
           {/* Field & tables */}
@@ -245,7 +245,7 @@ export default function TournamentSetupPage() {
         </div>
       </div>
 
-      <div className="border-t border-white/5 px-6 py-3 flex items-center relative z-10"
+      <div className="border-t border-white/5 px-3 sm:px-6 py-3 flex items-center relative z-10"
         style={{ background: 'linear-gradient(180deg, rgba(10,8,4,0.6), rgba(10,8,4,0.92))' }}>
         <p className="text-[10px] text-white/35">{t('tour.footerNote', { n: tableSize, rest: fmt(field - tableSize) })}</p>
         <button onClick={launch}

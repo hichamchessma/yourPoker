@@ -225,7 +225,7 @@ export default function SetupPositionPage() {
   return (
     <div className="h-full w-full flex flex-col" style={{ background: 'radial-gradient(120% 100% at 50% 0%, #0c1424 0%, #070b14 60%, #05080f 100%)' }}>
       {/* Header */}
-      <div className="app-drag flex items-center justify-between px-6 py-3 border-b border-white/5">
+      <div className="app-drag flex items-center justify-between px-3 sm:px-6 py-3 border-b border-white/5">
         <div>
           <h1 className="text-lg font-black text-[#c9a227] uppercase tracking-[0.2em]">{t('spos.header')}</h1>
           <p className="text-[10px] text-white/35 uppercase tracking-widest">{t('spos.headerSub')}</p>
@@ -233,7 +233,7 @@ export default function SetupPositionPage() {
         <div className="app-drag-none"><WindowControls /></div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5">
         {/* ── LEFT: table + street + board + hand ── */}
         <div className="flex flex-col gap-4">
           {/* Street stepper */}

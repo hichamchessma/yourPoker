@@ -128,7 +128,7 @@ export default function SimulationPage(): JSX.Element {
   )
 
   return (
-    <div className="h-full overflow-y-auto px-8 py-7 text-white">
+    <div className="h-full overflow-y-auto px-4 sm:px-8 py-5 sm:py-7 text-white">
       <div className="flex items-center gap-3 mb-1">
         <FlaskConical className="text-[#c9a227]" size={26} />
         <h1 className="text-2xl font-black tracking-tight">{t('sim.title')}</h1>

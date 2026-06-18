@@ -226,14 +226,14 @@ export default function TrainingSetupPage(): JSX.Element {
           animate={{ opacity: [0.08, 0.18, 0.08], scale: [1, 1.07, 1] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }} />
       </div>
 
-      {/* ── CONTENT ── */}
-      <div className="flex-1 flex overflow-hidden p-4 gap-4 min-h-0 relative z-10">
+      {/* ── CONTENT ── (stacks + scrolls on phone, two columns on md+) */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden p-3 md:p-4 gap-3 md:gap-4 min-h-0 relative z-10">
 
         {/* ── LEFT: TABLE + PRESETS ── */}
-        <div className="w-[300px] flex-shrink-0 flex flex-col gap-3 min-h-0">
+        <div className="w-full md:w-[300px] flex-shrink-0 flex flex-col gap-3 min-h-0">
 
           {/* Table */}
-          <div className="flex-1 glass-card overflow-hidden relative flex flex-col min-h-0">
+          <div className="flex-1 glass-card overflow-hidden relative flex flex-col min-h-[280px] md:min-h-0">
             <div className="p-3 border-b border-white/5 flex-shrink-0">
               <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest text-center">{t('train.tablePreview')}</p>
             </div>
@@ -291,9 +291,9 @@ export default function TrainingSetupPage(): JSX.Element {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 glass-card overflow-y-auto min-h-0">
+          <div className="flex-1 glass-card md:overflow-y-auto min-h-0">
             <AnimatePresence mode="wait">
-              <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="p-4 h-full">
+              <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="p-4 md:h-full">
 
                 {/* TAB 0 — JOUEURS */}
                 {activeTab === 0 && (
@@ -569,8 +569,8 @@ export default function TrainingSetupPage(): JSX.Element {
           </motion.button>
         </div>
 
-        {/* ── RIGHT: SUMMARY PANEL ── */}
-        <aside className="w-52 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+        {/* ── RIGHT: SUMMARY PANEL ── (full-width below on phone) */}
+        <aside className="w-full md:w-52 flex-shrink-0 flex flex-col gap-3 md:overflow-y-auto">
 
           {/* Coach's Corner */}
           <div className="glass-card p-3">
