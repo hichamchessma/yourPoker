@@ -1590,7 +1590,10 @@ export default function GamePage(): JSX.Element {
     const ry = compactTable ? 39 : 40
     const cx = 50, cy = compactTable ? 47 : 49
     const x = cx + rx * Math.cos(angle)
-    const y = cy + ry * Math.sin(angle)
+    let y = cy + ry * Math.sin(angle)
+    // Phone: lift the hero (offset 0, bottom-centre) clear of the floating action
+    // bar so its stack/cards are never hidden when it's their turn to act.
+    if (compactTable && offset === 0) y -= 9
     return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }
   }
 
@@ -3858,18 +3861,27 @@ export default function GamePage(): JSX.Element {
                 <span className={`text-[8px] font-black font-mono ${accent ? 'text-[#f0c060]' : 'text-white/85'}`}>{v}</span>
               </span>
             )
+            const status = (
+              <span className={`text-[8px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/55'}`}>
+                {itm ? t('game.hudItm', { prize: prizeForPlace(rank, tourPayouts()).toLocaleString() }) : toBubble <= 5 ? t('game.hudBubble', { n: toBubble }) : t('game.hudPaid', { n: places })}
+              </span>
+            )
+            // Grouped: Level/Blinds/Next on the left, Players centred, Stack/Place/ITM
+            // on the right — so the strip reads as 3 · players · 3.
             return (
-              <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-around px-2 py-1"
+              <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-1"
                 style={{ background: 'linear-gradient(180deg, rgba(14,10,3,0.94) 35%, rgba(14,10,3,0))' }}>
-                <Mini l={t('game.hudLevel')} v={`${tourLevelIdx + 1}`} accent />
-                <Mini l={t('game.hudBlinds')} v={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}`} />
-                <Mini l={t('game.hudNextLevel')} v={timer} />
+                <div className="flex items-center gap-2.5">
+                  <Mini l={t('game.hudLevel')} v={`${tourLevelIdx + 1}`} accent />
+                  <Mini l={t('game.hudBlinds')} v={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}`} />
+                  <Mini l={t('game.hudNextLevel')} v={timer} />
+                </div>
                 <Mini l={t('game.hudPlayers')} v={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
-                <Mini l={t('game.hudYourStack')} v={`${Math.round(heroStack / curLevel.bb)}bb`} accent />
-                <Mini l={t('game.hudPlace')} v={t('tour.placeN', { n: rank.toLocaleString() })} />
-                <span className={`text-[8px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/55'}`}>
-                  {itm ? t('game.hudItm', { prize: prizeForPlace(rank, tourPayouts()).toLocaleString() }) : toBubble <= 5 ? t('game.hudBubble', { n: toBubble }) : t('game.hudPaid', { n: places })}
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <Mini l={t('game.hudYourStack')} v={`${Math.round(heroStack / curLevel.bb)}bb`} accent />
+                  <Mini l={t('game.hudPlace')} v={t('tour.placeN', { n: rank.toLocaleString() })} />
+                  {status}
+                </div>
               </div>
             )
           }

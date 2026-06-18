@@ -96,7 +96,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
     const el = itemRefs.current[shownId]
     if (el) setMarkerY(el.offsetTop + el.offsetHeight / 2)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownId, isPro, i18n.language, currentPath])
+  }, [shownId, isPro, i18n.language, currentPath, revealed, drawerOpen])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
