@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Play, Minus, Plus, Trophy, Users, Coins, Timer, Medal } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { useLiveSession } from '../store/liveSessionStore'
+import { ResumeSessionModal } from '../components/SessionDialogs'
 import WindowControls from '../components/layout/WindowControls'
 import {
   type Speed, LEVEL_MINUTES_OPTIONS, blindStructure, placesPaid, payoutTable,
@@ -23,6 +25,12 @@ export default function TournamentSetupPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Hero'
+
+  // A paused tournament can be resumed before configuring a new one.
+  const saved = useLiveSession(s => s.tournament)
+  const clearResumable = useLiveSession(s => s.clearResumable)
+  const [showResume, setShowResume] = useState(!!saved)
+  const resumeSession = () => { if (saved) navigate('/game', { state: { ...saved.cfg, resume: saved } }) }
 
   const [field, setField] = useState(180)
   const [tableSize, setTableSize] = useState(9)
@@ -57,6 +65,12 @@ export default function TournamentSetupPage() {
 
   return (
     <div className="relative h-full w-full flex flex-col overflow-hidden" style={{ background: 'radial-gradient(120% 100% at 50% 0%, #1a1206 0%, #0d0a06 60%, #060503 100%)' }}>
+      <ResumeSessionModal
+        open={showResume && !!saved}
+        label={saved?.label ?? ''}
+        onResume={resumeSession}
+        onNew={() => { clearResumable('tournament'); setShowResume(false) }}
+      />
       {/* ── Soft animated tournament-hall backdrop ── */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div className="absolute inset-0"

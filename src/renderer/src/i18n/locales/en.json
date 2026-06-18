@@ -1,4 +1,17 @@
 {
+  "resume": {
+    "leaveTitle": "Leave the table?",
+    "leaveBody": "Your session is paused and saved. You'll be able to pick it up right where you left off.",
+    "leaveStay": "Stay",
+    "leaveConfirm": "Leave & save",
+    "title": "Resume your session?",
+    "subtitle": "A game in progress is waiting for you.",
+    "resumeBtn": "Resume session",
+    "newBtn": "New game",
+    "newNote": "The previous session will be permanently overwritten.",
+    "tourLabel": "Lvl {{lvl}} · {{bb}} BB · {{place}} / {{field}}",
+    "cashLabel": "{{stack}} chips · hand #{{hand}}"
+  },
   "nav": {
     "lobby": "Home (Lobby)",
     "handTrainer": "Hand Trainer",

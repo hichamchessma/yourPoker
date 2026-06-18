@@ -17,6 +17,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
+import { useLiveSession } from '../../store/liveSessionStore'
+import { LeaveTableModal } from '../SessionDialogs'
 import { useIsPro } from '../../lib/entitlements'
 import ProBadge from '../ProBadge'
 import LanguageSwitcher from '../LanguageSwitcher'
@@ -62,6 +64,15 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
 
   const currentPath = location.pathname
 
+  // Leave guard: a live cash/tournament table is in progress → confirm before
+  // navigating away (the session is already checkpointed and stays resumable).
+  const activeFormat = useLiveSession(s => s.activeFormat)
+  const [pendingNav, setPendingNav] = useState<string | null>(null)
+  const go = (path: string): void => {
+    if (activeFormat && currentPath === '/game' && path !== '/game') setPendingNav(path)
+    else navigate(path)
+  }
+
   // ── Mascot pointer ──────────────────────────────────────────────────────
   // A little runner that parks beside the *selected* menu item and dashes to
   // whatever row the mouse hovers; when the cursor leaves the menu he runs
@@ -87,6 +98,16 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
     navigate('/auth', { replace: true })
   }
 
+  // Rendered OUTSIDE the (transform-animated) autoHide wrapper — a position:fixed
+  // child of a transformed ancestor would anchor to that ancestor, not the viewport.
+  const leaveModal = (
+    <LeaveTableModal
+      open={pendingNav !== null}
+      onStay={() => setPendingNav(null)}
+      onLeave={() => { const p = pendingNav; setPendingNav(null); if (p) navigate(p) }}
+    />
+  )
+
   const content = (
     <div ref={contentRef} className="relative w-[220px] flex-shrink-0 h-full bg-poker-darker border-r border-poker-border flex flex-col">
       {/* Logo */}
@@ -110,7 +131,7 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
             <motion.button
               key={item.id}
               ref={(el) => { itemRefs.current[item.id] = el }}
-              onClick={() => navigate(item.path)}
+              onClick={() => go(item.path)}
               onMouseEnter={() => setHoverId(item.id)}
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.97 }}
@@ -242,12 +263,13 @@ export default function Sidebar({ activeItem, autoHide = false }: SidebarProps):
   )
 
   // Normal pages: the menu is always docked.
-  if (!autoHide) return content
+  if (!autoHide) return <>{leaveModal}{content}</>
 
   // Game table: the menu hides for immersion and reveals on a left-edge hover with a
   // laser sweep. A thin glowing strip + pulsing handle shows it's there.
   return (
     <>
+      {leaveModal}
       <div className="fixed left-0 top-0 bottom-0 w-4 z-40" onMouseEnter={() => setRevealed(true)}>
         <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-poker-teal to-transparent opacity-70" style={{ boxShadow: '0 0 8px #00d4ff' }} />
         <motion.div className="absolute left-0 top-1/2 -translate-y-1/2"

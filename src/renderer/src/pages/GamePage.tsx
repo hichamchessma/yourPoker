@@ -27,6 +27,8 @@ import {
   placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
 } from '../lib/tournament'
 import { saveSession } from '../lib/historyStore'
+import { useLiveSession, type ResumableSession, type LiveFormat } from '../store/liveSessionStore'
+import { LeaveTableModal } from '../components/SessionDialogs'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Suit = '♠' | '♥' | '♦' | '♣'
@@ -56,6 +58,8 @@ interface GameConfig {
   scenario?: ScenarioCfg
   playLive?: boolean
   tournament?: TournamentCfg
+  /** Present when re-entering a paused cash/tournament session (see liveSessionStore). */
+  resume?: ResumableSession
 }
 // MTT config coming from TournamentSetupPage.
 interface TournamentCfg {
@@ -1331,6 +1335,13 @@ export default function GamePage(): JSX.Element {
 
   // ─── Tournament (MTT) — escalating blinds + field model ────────────────────
   const tournament = cfg.tournament
+
+  // ─── Live-session resume (cash / tournament only) ──────────────────────────
+  const saveResumable = useLiveSession(s => s.saveResumable)
+  const clearResumable = useLiveSession(s => s.clearResumable)
+  const setActiveFormat = useLiveSession(s => s.setActive)
+  const sessionFormat: LiveFormat | null = cfg.scenario ? null : (tournament ? 'tournament' : 'cash')
+  const [confirmLeavePath, setConfirmLeavePath] = useState<string | null>(null)
   const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed, tournament.antes) : []), [tournament])
   const [tourLevelIdx, setTourLevelIdx] = useState(0)
   const tourRef = useRef({ levelIdx: 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60, playersLeft: tournament?.field ?? 0, finalTable: false, busted: false, place: 0 })
@@ -1518,13 +1529,41 @@ export default function GamePage(): JSX.Element {
   // Auto-start a tournament once on mount (the player already clicked "Lancer").
   const tourStartedRef = useRef(false)
   useEffect(() => {
-    if (!tournament) return
+    if (!tournament || cfg.resume) return   // a resumed table starts via the resume effect
     const t = setTimeout(() => {
       if (tourStartedRef.current) return
       tourStartedRef.current = true
       startHand(createSeats(), 0, 0)
     }, 300)
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Clear the live-game flag on unmount (it's raised at the first checkpoint, so the
+  // guard only fires once a hand has actually started — never on an idle table).
+  useEffect(() => {
+    return () => setActiveFormat(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Resume a paused session: rebuild the table from the saved clean state and start
+  // the next hand (cash & tournament). Tournament clock is re-seeded first.
+  const resumedRef = useRef(false)
+  useEffect(() => {
+    const r = cfg.resume
+    if (!r) return
+    const tm = setTimeout(() => {
+      if (resumedRef.current) return
+      resumedRef.current = true
+      if (tournament && r.tour) {
+        tourRef.current = { ...tourRef.current, ...(r.tour.ref as typeof tourRef.current) }
+        tourStartedRef.current = true
+        setTourLevelIdx(tourRef.current.levelIdx)
+        setTourHud({ playersLeft: tourRef.current.playersLeft, secondsLeft: tourRef.current.secondsLeft })
+      }
+      startHand(r.seats as Seat[], r.dealerIdx, r.prevHandNum)
+    }, 320)
+    return () => clearTimeout(tm)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1657,6 +1696,8 @@ export default function GamePage(): JSX.Element {
   function persistTournament(place: number, prize: number) {
     if (!tournament || savedSessionRef.current) return
     savedSessionRef.current = true
+    clearResumable('tournament')   // the tournament is over — nothing left to resume
+    setActiveFormat(null)
     saveSession('tournament',
       { title: t('sess.tourTitle', { buyIn: tournament.buyIn, n: tournament.field }),
         subtitle: `${place === 1 ? t('sess.tourWinner') : t('sess.tourElim', { place })} · ${prize > 0 ? `+$${prize.toLocaleString()}` : t('sess.tourNoPrize')}`,
@@ -2509,8 +2550,38 @@ export default function GamePage(): JSX.Element {
   }
 
   // ─── Hand start ──────────────────────────────────────────────────────────
+  // Snapshot the table at a clean hand boundary so the session can be resumed later.
+  function checkpointSession(prevSeats: Seat[], dealerIdx: number, prevHandNum: number): void {
+    if (!sessionFormat) return
+    setActiveFormat(sessionFormat)   // a hand is starting → guard exits from here on
+    const baseCfg = { ...cfg } as Record<string, unknown>
+    delete baseCfg.resume
+    const heroS = prevSeats.find(s => s.isHero)?.stack ?? 0
+    let label: string
+    if (tournament) {
+      const lvlIdx = tourRef.current.levelIdx
+      const bbA = tourLevels[Math.min(lvlIdx, tourLevels.length - 1)]?.bb ?? (cfg.bb ?? 2)
+      const startChips = tournament.startBB * (tourLevels[0]?.bb ?? 1)
+      const avg = (tournament.field * startChips) / Math.max(1, tourRef.current.playersLeft)
+      const place = estimateRank(heroS, avg, tourRef.current.playersLeft)
+      label = t('resume.tourLabel', { lvl: lvlIdx + 1, bb: Math.round(heroS / bbA), place, field: tournament.field })
+    } else {
+      label = t('resume.cashLabel', { stack: heroS.toLocaleString(), hand: prevHandNum + 1 })
+    }
+    saveResumable(sessionFormat, {
+      cfg: baseCfg,
+      seats: prevSeats.map(s => ({ ...s })),
+      dealerIdx, prevHandNum,
+      tour: tournament ? { ref: { ...tourRef.current } } : undefined,
+      label, savedAt: Date.now(),
+    })
+  }
+
   function startHand(prevSeats: Seat[], dealerIdx: number, prevHandNum: number) {
     const handNum = prevHandNum + 1
+    // ── Checkpoint a resumable cash/tournament session at this clean hand boundary
+    //    (prevSeats hold start-of-hand stacks, before any blinds/antes are posted). ──
+    if (sessionFormat && !simModeRef.current) checkpointSession(prevSeats, dealerIdx, prevHandNum)
     const deck = shuffle(mkDeck())
     const seats = updateSeatsForHand(prevSeats, dealerIdx)
 
@@ -3537,10 +3608,23 @@ export default function GamePage(): JSX.Element {
   return (
     <div className="relative flex flex-col h-full overflow-hidden select-none" style={{background:'#0c0907'}}>
 
+      {/* Leave-table confirmation (cash/tournament). Session is already checkpointed. */}
+      <LeaveTableModal
+        open={confirmLeavePath !== null}
+        onStay={() => setConfirmLeavePath(null)}
+        onLeave={() => { const p = confirmLeavePath; setConfirmLeavePath(null); if (p) navigate(p) }}
+      />
+
       {/* ── HEADER (draggable title bar) ── */}
       <header className="app-drag flex items-center gap-3 px-4 py-2 border-b border-white/8 flex-shrink-0 relative z-30"
         style={{background:'rgba(5,8,16,0.97)'}}>
-        <button onClick={() => (simMode ? exitSim() : navigate(tournament ? '/tournament' : isScenario ? '/setup' : '/training'))}
+        <button onClick={() => {
+            if (simMode) { exitSim(); return }
+            const dest = tournament ? '/tournament' : isScenario ? '/setup' : '/training'
+            // Live cash/tournament hand in progress → confirm + keep the session.
+            if (sessionFormat && gsRef.current.phase !== 'idle') setConfirmLeavePath(dest)
+            else navigate(dest)
+          }}
           className="app-drag-none flex items-center gap-1.5 text-white/40 hover:text-white/70 transition-colors">
           <ArrowLeft size={15}/>
           <span className="text-[10px] uppercase tracking-widest font-bold">{simMode ? t('game.quitSim') : t('game.quit')}</span>

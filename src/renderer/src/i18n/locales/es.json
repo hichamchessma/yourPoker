@@ -1,4 +1,17 @@
 {
+  "resume": {
+    "leaveTitle": "¿Salir de la mesa?",
+    "leaveBody": "Tu sesión se pausa y se guarda. Podrás retomarla justo donde la dejaste.",
+    "leaveStay": "Quedarme",
+    "leaveConfirm": "Salir y guardar",
+    "title": "¿Reanudar tu sesión?",
+    "subtitle": "Una partida en curso te espera.",
+    "resumeBtn": "Reanudar sesión",
+    "newBtn": "Nueva partida",
+    "newNote": "La sesión anterior se sobrescribirá definitivamente.",
+    "tourLabel": "Niv {{lvl}} · {{bb}} BB · {{place}}.º / {{field}}",
+    "cashLabel": "{{stack}} fichas · mano #{{hand}}"
+  },
   "nav": {
     "lobby": "Inicio (Lobby)",
     "handTrainer": "Hand Trainer",

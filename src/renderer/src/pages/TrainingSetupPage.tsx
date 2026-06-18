@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Minus, Plus, Star, Zap, Crown, Shield, RotateCcw } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { useLiveSession } from '../store/liveSessionStore'
+import { ResumeSessionModal } from '../components/SessionDialogs'
 
 // ── Types ──────────────────────────────────────────────────────────
 type SlotType = 'bot' | 'human' | 'empty'
@@ -143,6 +145,12 @@ export default function TrainingSetupPage(): JSX.Element {
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Joueur'
 
+  // A paused cash session can be resumed before configuring a new one.
+  const savedSession = useLiveSession(s => s.cash)
+  const clearResumable = useLiveSession(s => s.clearResumable)
+  const [showResume, setShowResume] = useState(!!savedSession)
+  const resumeSession = () => { if (savedSession) navigate('/game', { state: { ...savedSession.cfg, resume: savedSession } }) }
+
   const [activeTab, setActiveTab] = useState(0)
   const [numPlayers, setNumPlayers] = useState(6)
   const [selectedSeat, setSelectedSeat] = useState(0)
@@ -196,6 +204,12 @@ export default function TrainingSetupPage(): JSX.Element {
 
   return (
     <div className="relative flex flex-col h-full bg-poker-darker overflow-hidden">
+      <ResumeSessionModal
+        open={showResume && !!savedSession}
+        label={savedSession?.label ?? ''}
+        onResume={resumeSession}
+        onNew={() => { clearResumable('cash'); setShowResume(false) }}
+      />
       {/* ── Soft animated cash-game backdrop ── */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div className="absolute inset-0"

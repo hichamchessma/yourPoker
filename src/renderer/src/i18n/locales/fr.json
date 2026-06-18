@@ -1,4 +1,17 @@
 {
+  "resume": {
+    "leaveTitle": "Quitter la table ?",
+    "leaveBody": "Ta session est mise en pause et sauvegardée. Tu pourras la reprendre exactement là où tu t'es arrêté.",
+    "leaveStay": "Rester",
+    "leaveConfirm": "Quitter & sauvegarder",
+    "title": "Reprendre ta session ?",
+    "subtitle": "Une partie en cours t'attend.",
+    "resumeBtn": "Reprendre la session",
+    "newBtn": "Nouvelle partie",
+    "newNote": "L'ancienne session sera définitivement écrasée.",
+    "tourLabel": "Niv {{lvl}} · {{bb}} BB · {{place}}e / {{field}}",
+    "cashLabel": "{{stack}} jetons · main #{{hand}}"
+  },
   "nav": {
     "lobby": "Accueil (Lobby)",
     "handTrainer": "Hand Trainer",
