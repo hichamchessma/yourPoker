@@ -1347,7 +1347,10 @@ export default function GamePage(): JSX.Element {
 
   // ─── Mobile: touch + orientation. On a touch device the range/coach open on TAP
   //     instead of hover; the table needs landscape so portrait shows a rotate prompt.
-  const { isTouch, isPhone, isPortrait } = useDevice()
+  const { isTouch, isPhone, isPortrait, height: viewportH } = useDevice()
+  // A phone in LANDSCAPE is wide (~850px) so width-based isPhone is false there — the
+  // table must compact based on the short viewport HEIGHT instead.
+  const compactTable = isTouch && viewportH < 540
   const tourLevels = useMemo(() => (tournament ? blindStructure(tournament.speed, tournament.antes) : []), [tournament])
   const [tourLevelIdx, setTourLevelIdx] = useState(0)
   const tourRef = useRef({ levelIdx: 0, secondsLeft: (tournament?.levelMinutes ?? 5) * 60, playersLeft: tournament?.field ?? 0, finalTable: false, busted: false, place: 0 })
@@ -1581,9 +1584,11 @@ export default function GamePage(): JSX.Element {
     const offset = ((idx - heroLocal) + total) % total
     const angle = (offset / total) * 2 * Math.PI + Math.PI / 2
 
-    // Ellipse radii in percent of container — seats sit just outside the felt
-    const rx = 45, ry = 40
-    const cx = 50, cy = 49
+    // Ellipse radii in percent of container — seats sit just outside the felt.
+    // Tighter on a compact (phone-landscape) table so the scaled-down panels don't clip.
+    const rx = compactTable ? 43 : 45
+    const ry = compactTable ? 33 : 40
+    const cx = 50, cy = compactTable ? 45 : 49
     const x = cx + rx * Math.cos(angle)
     const y = cy + ry * Math.sin(angle)
     return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }
@@ -3845,7 +3850,8 @@ export default function GamePage(): JSX.Element {
           )
           return (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10"
-              style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
+              style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)',
+                ...(compactTable ? { transform: 'translateX(-50%) scale(0.55)', transformOrigin: 'top center' } : {}) }}>
               <Cell label={t('game.hudLevel')} value={`${tourLevelIdx + 1}`} accent />
               <Cell label={t('game.hudBlinds')} value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
               <Cell label={t('game.hudNextLevel')} value={coachOpen ? t('game.hudPause') : `${Math.floor(tourHud.secondsLeft / 60)}:${String(tourHud.secondsLeft % 60).padStart(2, '0')}`} />
@@ -3947,7 +3953,7 @@ export default function GamePage(): JSX.Element {
                 <SeatPanel
                   key={seat.idx}
                   seat={seat}
-                  style={{ left: pos.left, top: pos.top, transform: pos.transform }}
+                  style={{ left: pos.left, top: pos.top, transform: compactTable ? `${pos.transform} scale(0.66)` : pos.transform }}
                   isWinner={isWinner}
                   isShowdown={isShowdown}
                   turnSeconds={decisionTimer}
