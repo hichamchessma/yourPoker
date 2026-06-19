@@ -7,19 +7,26 @@ import { useDevice } from '../lib/useDevice'
 export default function AppLayout(): JSX.Element {
   const path = useLocation().pathname
   const { isPhone } = useDevice()
-  // The lobby is the ONLY page with a docked / always-visible menu. Every other view
-  // (game, hand trainer, setups, leaderboard, profile, history…) auto-hides the
-  // sidebar behind the left-edge crochet so the content gets the full width.
-  const isLobby = path === '/lobby'
-  // The two full-screen surfaces own their chrome (no top bar).
+  // The immersive playing/training surfaces (live table + Hand Trainer) hide the menu
+  // behind the left-edge crochet for maximum space and own their own top chrome.
   const immersiveSurface = path === '/game' || path === '/handtrainer'
-  const showTopBar = !immersiveSurface
 
-  // Lobby on phone keeps the hamburger drawer; its drawer auto-closes on navigation.
+  // Phone menu pages: the sidebar collapses into a hamburger drawer (auto-closes on nav).
   const [drawerOpen, setDrawerOpen] = useState(false)
   useEffect(() => { setDrawerOpen(false) }, [path])
 
-  if (isLobby && isPhone) {
+  if (immersiveSurface) {
+    return (
+      <div className="flex h-screen w-screen overflow-hidden bg-poker-darker">
+        <Sidebar autoHide />
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden"><Outlet /></div>
+        </main>
+      </div>
+    )
+  }
+
+  if (isPhone) {
     return (
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-poker-darker">
         <TopBar onMenu={() => setDrawerOpen(true)} />
@@ -29,25 +36,12 @@ export default function AppLayout(): JSX.Element {
     )
   }
 
-  if (isLobby) {
-    return (
-      <div className="flex h-screen w-screen overflow-hidden bg-poker-darker">
-        <Sidebar />
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <TopBar />
-          <div className="flex-1 overflow-hidden"><Outlet /></div>
-        </main>
-      </div>
-    )
-  }
-
-  // Everywhere else: the sidebar auto-hides behind the edge crochet (frees the whole
-  // width), with the top bar kept on non-immersive pages.
+  // Desktop menu pages (lobby, setups, leaderboard, profile, history): docked menu.
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-poker-darker">
-      <Sidebar autoHide />
+      <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
-        {showTopBar && <TopBar />}
+        <TopBar />
         <div className="flex-1 overflow-hidden"><Outlet /></div>
       </main>
     </div>
