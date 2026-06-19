@@ -1592,8 +1592,9 @@ export default function GamePage(): JSX.Element {
     const x = cx + rx * Math.cos(angle)
     let y = cy + ry * Math.sin(angle)
     // Phone: lift the hero (offset 0, bottom-centre) clear of the floating action
-    // bar so its stack/cards are never hidden when it's their turn to act.
-    if (compactTable && offset === 0) y -= 9
+    // bar (taller when it's their turn, with the bet presets) so the stack/cards
+    // are never hidden.
+    if (compactTable && offset === 0) y -= 14
     return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }
   }
 
@@ -2601,6 +2602,13 @@ export default function GamePage(): JSX.Element {
 
   function startHand(prevSeats: Seat[], dealerIdx: number, prevHandNum: number) {
     const handNum = prevHandNum + 1
+    // Touch: a tapped-open range/coach must NOT linger into the next hand (there's no
+    // mouse-leave to close it), so reset the hover state at every new hand.
+    if (isTouch) {
+      cancelOppGrace()
+      setHoverSeat(null); setOppPanelHover(false); oppPanelHoverRef.current = false
+      setFilmPinned(false); setHeroPanelHover(false); heroPanelHoverRef.current = false
+    }
     // ── Checkpoint a resumable cash/tournament session at this clean hand boundary
     //    (prevSeats hold start-of-hand stacks, before any blinds/antes are posted). ──
     if (sessionFormat && !simModeRef.current) checkpointSession(prevSeats, dealerIdx, prevHandNum)
@@ -4530,7 +4538,7 @@ export default function GamePage(): JSX.Element {
         return (
           <div className="fixed z-[80] pointer-events-auto"
             style={compactTable
-              ? { left: '50%', top: '50%', transform: 'translate(-50%,-50%) scale(0.56)', transformOrigin: 'center' }
+              ? { left: '50%', top: '50%', transform: 'translate(-50%,-50%) scale(0.48)', transformOrigin: 'center' }
               : { left: x, top: y }}
             onMouseEnter={() => { cancelOppGrace(); oppPanelHoverRef.current = true; setOppPanelHover(true) }}
             onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) scheduleOppClose(hoverSeat) }}
@@ -4544,9 +4552,9 @@ export default function GamePage(): JSX.Element {
       {/* ── HERO coach hover-card: range représentée + conseil complet (no click) ── */}
       <AnimatePresence>
         {coachOpen && hero && (
-          <div className={`fixed inset-x-0 z-[70] flex justify-center pointer-events-none ${compactTable ? 'top-[1vh]' : 'top-[3vh]'}`}>
+          <div className={`fixed inset-x-0 z-[70] flex justify-center pointer-events-none ${compactTable ? 'top-0' : 'top-[3vh]'}`}>
             <div className="pointer-events-auto"
-              style={compactTable ? { transform: 'scale(0.6)', transformOrigin: 'top center' } : undefined}
+              style={compactTable ? { transform: 'scale(0.48)', transformOrigin: 'top center' } : undefined}
               onMouseEnter={() => { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); heroPanelHoverRef.current = true; setHeroPanelHover(true) }}
               onMouseLeave={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(s => (s === hero.idx ? null : s)) }}>
               <RangeAssistant
