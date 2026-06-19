@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Play, Minus, Plus, Trophy, Users, Coins, Timer, Medal } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useLiveSession } from '../store/liveSessionStore'
+import { useDevice } from '../lib/useDevice'
 import { ResumeSessionModal } from '../components/SessionDialogs'
 import WindowControls from '../components/layout/WindowControls'
 import {
@@ -26,6 +27,7 @@ export default function TournamentSetupPage() {
   const { user } = useAuthStore()
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Hero'
 
+  const { reduceFx } = useDevice()
   // A paused tournament can be resumed before configuring a new one.
   const saved = useLiveSession(s => s.tournament)
   const clearResumable = useLiveSession(s => s.clearResumable)
@@ -75,8 +77,8 @@ export default function TournamentSetupPage() {
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div className="absolute inset-0"
           initial={{ scale: 1.04 }}
-          animate={{ scale: [1.04, 1.13, 1.04], x: ['0%', '-2%', '0%'], y: ['0%', '-1.4%', '0%'] }}
-          transition={{ duration: 46, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reduceFx ? { scale: 1.08 } : { scale: [1.04, 1.13, 1.04], x: ['0%', '-2%', '0%'], y: ['0%', '-1.4%', '0%'] }}
+          transition={reduceFx ? { duration: 0.4 } : { duration: 46, repeat: Infinity, ease: 'easeInOut' }}
           style={{ backgroundImage: 'url(/assets/tournament-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.5, filter: 'saturate(0.95) brightness(0.85)' }} />
         {/* Readability wash — keeps every label crisp */}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(13,10,6,0.62) 0%, rgba(10,8,4,0.78) 50%, rgba(6,5,3,0.9) 100%)' }} />
@@ -84,7 +86,7 @@ export default function TournamentSetupPage() {
         <div className="absolute inset-0" style={{ background: 'radial-gradient(115% 95% at 50% 25%, transparent 38%, rgba(0,0,0,0.62) 100%)' }} />
         {/* Faint gold top glow — alive */}
         <motion.div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: '-26%', width: '72%', height: '58%', background: 'radial-gradient(circle, rgba(240,192,96,0.20), transparent 68%)', filter: 'blur(74px)' }}
-          animate={{ opacity: [0.08, 0.2, 0.08], scale: [1, 1.07, 1] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }} />
+          animate={reduceFx ? { opacity: 0.12 } : { opacity: [0.08, 0.2, 0.08], scale: [1, 1.07, 1] }} transition={reduceFx ? { duration: 0.4 } : { duration: 8, repeat: Infinity, ease: 'easeInOut' }} />
       </div>
 
       <div className="app-drag flex items-center justify-between px-3 sm:px-6 py-3 border-b border-white/5 relative z-10">

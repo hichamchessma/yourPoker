@@ -15,15 +15,18 @@ export interface DeviceInfo {
   isLandscape: boolean
   width: number
   height: number
+  /** Skip heavy looping animations (touch device, or OS "reduce motion"): saves battery/heat. */
+  reduceFx: boolean
 }
 
 function read(): DeviceInfo {
   if (typeof window === 'undefined') {
-    return { isTouch: false, isPhone: false, isTablet: false, isPortrait: false, isLandscape: true, width: 1280, height: 800 }
+    return { isTouch: false, isPhone: false, isTablet: false, isPortrait: false, isLandscape: true, width: 1280, height: 800, reduceFx: false }
   }
   const w = window.innerWidth
   const h = window.innerHeight
   const coarse = window.matchMedia('(pointer: coarse)').matches
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const portrait = h >= w
   // A phone is a COARSE-POINTER device whose SHORTER side is < 768px — true in both
   // portrait AND landscape (a phone in landscape is wide but only ~400px tall). The
@@ -37,7 +40,8 @@ function read(): DeviceInfo {
     isPortrait: portrait,
     isLandscape: !portrait,
     width: w,
-    height: h
+    height: h,
+    reduceFx: coarse || reducedMotion
   }
 }
 

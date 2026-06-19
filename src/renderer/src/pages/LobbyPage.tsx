@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { computePlayerStats } from '../lib/playerStats'
 import { getRoster } from '../lib/leaderboard'
+import { useDevice } from '../lib/useDevice'
 
 
 function KingCard({ rotation, glow }: { rotation: number; glow: string }) {
@@ -201,6 +202,7 @@ function StatTile({ icon, label, value, accent = '#ffffff' }: { icon: React.Reac
 export default function LobbyPage(): JSX.Element {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { reduceFx } = useDevice()
   const stats = useMemo(() => computePlayerStats(4), [])
 
   // Play-money balance (persisted locally).
@@ -317,20 +319,20 @@ export default function LobbyPage(): JSX.Element {
               <div className="relative" style={{ width: 400, height: 300 }}>
                 {/* A card — behind, tilted left */}
                 <motion.div className="absolute" style={{ left: 55, top: 15, zIndex: 1 }}
-                  animate={{ y: [-8, 8, -8] }}
-                  transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}>
+                  animate={reduceFx ? { y: 0 } : { y: [-8, 8, -8] }}
+                  transition={reduceFx ? { duration: 0 } : { duration: 7, repeat: Infinity, ease: 'easeInOut' }}>
                   <AceCard rotation={-14} glow="rgba(0,212,255,0.6)" />
                 </motion.div>
                 {/* K card — in front, tilted right */}
                 <motion.div className="absolute" style={{ right: 55, top: 15, zIndex: 2 }}
-                  animate={{ y: [8, -8, 8] }}
-                  transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}>
+                  animate={reduceFx ? { y: 0 } : { y: [8, -8, 8] }}
+                  transition={reduceFx ? { duration: 0 } : { duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}>
                   <KingCard rotation={13} glow="rgba(201,162,39,0.6)" />
                 </motion.div>
                 {/* 3 chip piles — spread across cards */}
                 <motion.div className="absolute" style={{ bottom: 4, left: '50%', transform: 'translateX(-50%)', zIndex: 3 }}
-                  animate={{ y: [-5, 5, -5] }}
-                  transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}>
+                  animate={reduceFx ? { y: 0 } : { y: [-5, 5, -5] }}
+                  transition={reduceFx ? { duration: 0 } : { duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}>
                   <ChipStack />
                 </motion.div>
               </div>

@@ -72,7 +72,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
   // Leave guard: a live cash/tournament table is in progress → confirm before
   // navigating away (the session is already checkpointed and stays resumable).
   const activeFormat = useLiveSession(s => s.activeFormat)
-  const { isTouch } = useDevice()
+  const { isTouch, reduceFx } = useDevice()
   const [pendingNav, setPendingNav] = useState<string | null>(null)
   const go = (path: string): void => {
     if (activeFormat && currentPath === '/game' && path !== '/game') setPendingNav(path)
@@ -188,8 +188,8 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
             src="/assets/mascot-runner.webp"
             alt=""
             draggable={false}
-            animate={{ y: [0, -2.5, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            animate={reduceFx ? { y: 0 } : { y: [0, -2.5, 0] }}
+            transition={reduceFx ? { duration: 0 } : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
             style={{
               height: 54,
               width: 'auto',
@@ -337,7 +337,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
       <div className="fixed left-0 top-0 bottom-0 w-4 z-40" onMouseEnter={() => setRevealed(true)}>
         <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-poker-teal to-transparent opacity-70" style={{ boxShadow: '0 0 8px #00d4ff' }} />
         <motion.div className="absolute left-0 top-1/2 -translate-y-1/2"
-          animate={{ opacity: [0.45, 1, 0.45] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+          animate={reduceFx ? { opacity: 0.8 } : { opacity: [0.45, 1, 0.45] }} transition={reduceFx ? { duration: 0 } : { duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
           <div className="flex items-center justify-center w-5 h-12 rounded-r-lg bg-poker-teal/15 border border-l-0 border-poker-teal/40 text-poker-teal">
             <ChevronRight size={14} />
           </div>

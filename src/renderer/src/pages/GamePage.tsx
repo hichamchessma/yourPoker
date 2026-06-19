@@ -1355,7 +1355,7 @@ export default function GamePage(): JSX.Element {
 
   // ─── Mobile: touch + orientation. On a touch device the range/coach open on TAP
   //     instead of hover; the table needs landscape so portrait shows a rotate prompt.
-  const { isTouch, isPhone, isPortrait, height: viewportH } = useDevice()
+  const { isTouch, isPhone, isPortrait, height: viewportH, reduceFx } = useDevice()
   // A phone in LANDSCAPE is wide (~850px) so width-based isPhone is false there — the
   // table must compact based on the short viewport HEIGHT instead.
   const compactTable = isTouch && viewportH < 540
@@ -3827,8 +3827,8 @@ export default function GamePage(): JSX.Element {
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             <motion.div className="absolute inset-0"
               initial={{ scale: 1.05 }}
-              animate={{ scale: [1.05, 1.14, 1.05], x: ['0%', '-1.6%', '0%'], y: ['0%', '-1.2%', '0%'] }}
-              transition={{ duration: 50, repeat: Infinity, ease: 'easeInOut' }}
+              animate={reduceFx ? { scale: 1.08 } : { scale: [1.05, 1.14, 1.05], x: ['0%', '-1.6%', '0%'], y: ['0%', '-1.2%', '0%'] }}
+              transition={reduceFx ? { duration: 0.4 } : { duration: 50, repeat: Infinity, ease: 'easeInOut' }}
               style={{ backgroundImage: 'url(/assets/tournament-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.6, filter: 'saturate(0.98) brightness(0.92)' }} />
             {/* Gentle wash so it stays soft and never fights the felt or text */}
             <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(8,7,5,0.34) 0%, rgba(8,7,5,0.46) 45%, rgba(5,4,3,0.66) 100%)' }} />
@@ -3842,8 +3842,8 @@ export default function GamePage(): JSX.Element {
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             <motion.div className="absolute inset-0"
               initial={{ scale: 1.05 }}
-              animate={{ scale: [1.05, 1.14, 1.05], x: ['0%', '-1.6%', '0%'], y: ['0%', '-1.2%', '0%'] }}
-              transition={{ duration: 50, repeat: Infinity, ease: 'easeInOut' }}
+              animate={reduceFx ? { scale: 1.08 } : { scale: [1.05, 1.14, 1.05], x: ['0%', '-1.6%', '0%'], y: ['0%', '-1.2%', '0%'] }}
+              transition={reduceFx ? { duration: 0.4 } : { duration: 50, repeat: Infinity, ease: 'easeInOut' }}
               style={{ backgroundImage: 'url(/assets/cashgame-bg.webp)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.6, filter: 'saturate(0.98) brightness(0.92)' }} />
             <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(6,9,16,0.36) 0%, rgba(5,8,14,0.48) 45%, rgba(4,6,12,0.66) 100%)' }} />
             <div className="absolute inset-0" style={{ background: 'radial-gradient(60% 56% at 50% 48%, rgba(0,0,0,0.5) 0%, transparent 72%)' }} />

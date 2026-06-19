@@ -75,3 +75,25 @@
            rounded-xl shadow-card;
   }
 }
+
+/* ─── Mobile battery / heat savers ──────────────────────────────────────────
+   backdrop-filter is one of the most GPU-expensive effects on phones and it's
+   used all over (frosted bars, panels, modals). On touch devices we drop it
+   entirely — the panels keep their semi-opaque backgrounds, just not frosted. */
+@media (pointer: coarse) {
+  *, *::before, *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* Honour the OS "reduce motion" setting — neutralise CSS animations/transitions
+   (framer-motion loops are gated separately in JS via useDevice().reduceFx). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

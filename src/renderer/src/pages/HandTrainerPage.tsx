@@ -6,6 +6,7 @@ import WindowControls from '../components/layout/WindowControls'
 import { GRID_RANKS, cellKey, handKeyFromCards, buildRangeMap } from '../lib/preflopRanges'
 import SpotReadTrainer from '../components/SpotReadTrainer'
 import DecisionTrainer from '../components/DecisionTrainer'
+import { useDevice } from '../lib/useDevice'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TScenario = 'open' | 'vsopen'
@@ -48,6 +49,7 @@ interface Question { scenario: TScenario; position: string; openerPos: string; c
 
 export default function HandTrainerPage() {
   const { t } = useTranslation()
+  const { reduceFx } = useDevice()
   const [screen, setScreen] = useState<'landing' | 'setup' | 'editor' | 'quiz' | 'result' | 'spotread' | 'decision'>('landing')
   const [mode, setMode] = useState<'standard' | 'custom'>('standard')
   const [numHands, setNumHands] = useState(20)
@@ -149,19 +151,19 @@ export default function HandTrainerPage() {
         {/* Slow Ken-Burns drift on the photo */}
         <motion.div className="absolute inset-0"
           initial={{ scale: 1.06 }}
-          animate={{ scale: [1.06, 1.15, 1.06], x: ['0%', '-2.5%', '0%'], y: ['0%', '-1.8%', '0%'] }}
-          transition={{ duration: 40, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reduceFx ? { scale: 1.1 } : { scale: [1.06, 1.15, 1.06], x: ['0%', '-2.5%', '0%'], y: ['0%', '-1.8%', '0%'] }}
+          transition={reduceFx ? { duration: 0.4 } : { duration: 40, repeat: Infinity, ease: 'easeInOut' }}
           style={{ backgroundImage: 'url(/assets/backgroundPokerTraining.webp)', backgroundSize: 'cover', backgroundPosition: 'center', filter: 'saturate(1.08) contrast(1.03)' }} />
         {/* Readability gradient (darker where the content sits) */}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(6,10,22,0.50) 0%, rgba(6,10,22,0.74) 48%, rgba(4,6,14,0.92) 100%)' }} />
         {/* Brand radial + vignette for depth */}
         <div className="absolute inset-0" style={{ background: 'radial-gradient(115% 95% at 50% 30%, transparent 40%, rgba(0,0,0,0.6) 100%)' }} />
         {/* Pulsing teal glow at the top — alive & stimulating */}
-        <motion.div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: '-28%', width: '70%', height: '60%', background: 'radial-gradient(circle, rgba(0,212,255,0.30), transparent 68%)', filter: 'blur(70px)' }}
-          animate={{ opacity: [0.10, 0.24, 0.10], scale: [1, 1.08, 1] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }} />
+        <motion.div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: '-28%', width: '70%', height: '60%', background: 'radial-gradient(circle, rgba(0,212,255,0.30), transparent 68%)', filter: reduceFx ? 'blur(34px)' : 'blur(70px)' }}
+          animate={reduceFx ? { opacity: 0.16 } : { opacity: [0.10, 0.24, 0.10], scale: [1, 1.08, 1] }} transition={reduceFx ? { duration: 0.4 } : { duration: 7, repeat: Infinity, ease: 'easeInOut' }} />
         {/* Faint gold counter-glow bottom-right */}
-        <motion.div className="absolute rounded-full" style={{ right: '-12%', bottom: '-18%', width: '50%', height: '50%', background: 'radial-gradient(circle, rgba(201,162,39,0.18), transparent 70%)', filter: 'blur(80px)' }}
-          animate={{ opacity: [0.08, 0.18, 0.08] }} transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 1 }} />
+        <motion.div className="absolute rounded-full" style={{ right: '-12%', bottom: '-18%', width: '50%', height: '50%', background: 'radial-gradient(circle, rgba(201,162,39,0.18), transparent 70%)', filter: reduceFx ? 'blur(38px)' : 'blur(80px)' }}
+          animate={reduceFx ? { opacity: 0.12 } : { opacity: [0.08, 0.18, 0.08] }} transition={reduceFx ? { duration: 0.4 } : { duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 1 }} />
         {/* On the WORKING screens (not the landing) the photo calms right down to a
             faint ambience so every panel/text stays crisp and readable. */}
         <div className="absolute inset-0 transition-opacity duration-500" style={{ background: 'rgba(5,7,15,0.84)', opacity: screen === 'landing' ? 0 : 1 }} />
