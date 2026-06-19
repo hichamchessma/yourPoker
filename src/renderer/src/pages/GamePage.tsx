@@ -851,6 +851,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   titleKey?: string           // override the panel title (e.g. the sim report)
 }) {
   const { t } = useTranslation()
+  const { isPhone } = useDevice()
   const [selectedId, setSelectedId] = useState<number|null>(initialId ?? (records.length > 0 ? records[records.length-1].id : null))
   const [stepIdx, setStepIdx] = useState<number>(0)
   const [critique, setCritique] = useState<MoveCritique | null>(null)
@@ -972,9 +973,9 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   const visibleActions = record.actions.slice(0, stepIdx + 1)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{background:'rgba(0,0,0,0.9)'}}>
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isPhone?'p-0':'p-3'}`} style={{background:'rgba(0,0,0,0.9)'}}>
       <motion.div initial={{opacity:0,scale:0.94,y:16}} animate={{opacity:1,scale:1,y:0}}
-        className="w-full max-w-[1480px] h-[94vh] flex flex-col rounded-2xl border border-white/10 overflow-hidden"
+        className={`w-full flex flex-col border border-white/10 overflow-hidden ${isPhone?'h-full rounded-none':'max-w-[1480px] h-[94vh] rounded-2xl'}`}
         style={{background:'#070d1a'}}>
 
         {/* Header */}
@@ -1003,16 +1004,19 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
           </div>
         </div>
 
-        <div className="flex flex-1 min-h-0">
+        <div className={`flex-1 min-h-0 ${isPhone?'flex flex-col overflow-y-auto':'flex'}`}>
 
-          {/* Hand list */}
-          <div className="w-52 flex-shrink-0 border-r border-white/8 overflow-y-auto">
+          {/* Hand list — left column on desktop, horizontal scroll strip on phone */}
+          <div className={isPhone
+            ? 'flex-shrink-0 flex overflow-x-auto border-b border-white/8'
+            : 'w-52 flex-shrink-0 border-r border-white/8 overflow-y-auto'}>
             {[...records].reverse().map(r => {
               const profit = r.heroProfit
               return (
                 <button key={r.id} ref={r.id === selectedId ? selectedRowRef : undefined} onClick={() => { stopAuto(); setSelectedId(r.id) }}
-                  className={`w-full text-left px-4 py-3 border-b border-white/5 transition-all
-                    ${r.id===selectedId?'bg-[#c9a227]/10 border-l-2 border-l-[#c9a227]':'hover:bg-white/5'}`}>
+                  className={`text-left transition-all ${isPhone
+                    ? `flex-shrink-0 px-3 py-2 border-r border-white/8 ${r.id===selectedId?'bg-[#c9a227]/15 border-b-2 border-b-[#c9a227]':''}`
+                    : `w-full px-4 py-3 border-b border-white/5 ${r.id===selectedId?'bg-[#c9a227]/10 border-l-2 border-l-[#c9a227]':'hover:bg-white/5'}`}`}>
                   <div className="text-[13px] font-bold text-white/80">Main #{r.handNum}</div>
                   <div className={`text-xs font-mono font-bold ${profit>0?'text-emerald-400':profit<0?'text-red-400':'text-white/30'}`}>
                     {profit>0?'+':''}{profit} BB
@@ -1023,17 +1027,17 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
             })}
           </div>
 
-          {/* Main content */}
-          <div className="flex-1 flex min-w-0 min-h-0">
+          {/* Main content — table + action log side-by-side on desktop, stacked on phone */}
+          <div className={`flex-1 min-w-0 min-h-0 ${isPhone?'flex flex-col':'flex'}`}>
 
             {/* Mini table view */}
-            <div className="flex-1 flex flex-col min-w-0 p-5 gap-3">
+            <div className={`flex-1 flex flex-col min-w-0 gap-3 ${isPhone?'p-3':'p-5'}`}>
               <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
                 Main #{record.handNum} — {record.date.toLocaleDateString('fr')} {record.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}
               </div>
 
               {/* Table area */}
-              <div className="relative flex-1 min-h-0" style={{minHeight:360}}>
+              <div className="relative flex-1 min-h-0" style={{minHeight:isPhone?190:360}}>
                 {/* Table SVG bg */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div style={{width:'100%',maxWidth:900,opacity:0.78}}>
@@ -1062,8 +1066,9 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                         transform: 'translate(-50%, -50%)',
                         zIndex: 10,
                       }}
-                      onMouseEnter={inHand ? (e) => { setHoverIdx(pl.idx); setHoverXY({ x: e.clientX, y: e.clientY }) } : undefined}
-                      onMouseLeave={inHand ? () => { setHoverIdx(null); setHoverXY(null) } : undefined}>
+                      onMouseEnter={!isPhone && inHand ? (e) => { setHoverIdx(pl.idx); setHoverXY({ x: e.clientX, y: e.clientY }) } : undefined}
+                      onMouseLeave={!isPhone && inHand ? () => { setHoverIdx(null); setHoverXY(null) } : undefined}
+                      onClick={isPhone && inHand ? (e) => { e.stopPropagation(); setHoverIdx(h => h===pl.idx?null:pl.idx); setHoverXY({ x: e.clientX, y: e.clientY }) } : undefined}>
                       {/* Cards */}
                       {(pl.holeCards[0] || pl.holeCards[1]) && (
                         <div className="flex gap-0.5 mb-1">
@@ -1071,9 +1076,9 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                             const card = pl.holeCards[ci as 0|1]
                             if (!card) return null
                             if (showCards && card) {
-                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={44} h={62}/>
+                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={isPhone?28:44} h={isPhone?40:62}/>
                             }
-                            return <FaceDown key={ci} w={36} h={50}/>
+                            return <FaceDown key={ci} w={isPhone?22:36} h={isPhone?30:50}/>
                           })}
                         </div>
                       )}
@@ -1251,8 +1256,10 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
               )}
             </div>
 
-            {/* Action log */}
-            <div className="w-72 flex-shrink-0 border-l border-white/8 flex flex-col min-h-0">
+            {/* Action log — right column on desktop, full-width block on phone */}
+            <div className={isPhone
+              ? 'w-full flex-shrink-0 border-t border-white/8 flex flex-col max-h-[34vh]'
+              : 'w-72 flex-shrink-0 border-l border-white/8 flex flex-col min-h-0'}>
               <div className="px-4 py-3 border-b border-white/8 flex-shrink-0">
                 <span className="text-xs font-bold text-white/50 uppercase tracking-widest">{t('sess.actionLog')}</span>
               </div>
@@ -1311,7 +1318,8 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
         if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
         if (y < 8) y = 8
         return (
-          <div className="fixed z-[60] pointer-events-none" style={{ left: x, top: y }}>
+          <div className="fixed z-[60] pointer-events-none"
+            style={isPhone ? { left: '50%', top: '50%', transform: 'translate(-50%,-50%) scale(0.72)', transformOrigin: 'center' } : { left: x, top: y }}>
             <RangeHeatmap view={view} startView={startRanges[hoverIdx] ? rangeView(startRanges[hoverIdx]) : undefined} move={meta.move} effect={meta.effect}
               name={pl.isHero ? t('sess.youRepRange') : pl.name} heroKey={heroKey}/>
           </div>
