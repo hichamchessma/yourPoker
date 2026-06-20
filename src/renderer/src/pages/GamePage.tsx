@@ -1160,6 +1160,28 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                     )
                   })
                 })()}
+
+                {/* End-of-hand result — FLOATS in the felt's bottom-left corner so it
+                    never reflows the layout: the table stays static when the hand ends,
+                    and the won board/cards stay fully visible behind it. */}
+                {isEnd && (
+                  <div className="absolute bottom-1.5 left-1.5 z-30 rounded-xl border border-[#c9a227]/25 bg-[#070d1a]/90 backdrop-blur px-3 py-2 shadow-xl shadow-black/50 flex flex-col gap-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[8px] text-white/40 uppercase tracking-wide">Gagnant</span>
+                      <span className="text-[11.5px] font-bold text-[#c9a227]">{record.winnerNames.join(', ')}</span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[8px] text-white/40 uppercase tracking-wide">Pot</span>
+                      <span className="text-[11.5px] font-bold text-white/70">${record.finalPot}</span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[8px] text-white/40 uppercase tracking-wide">{t('sess.yourResult')}</span>
+                      <span className={`text-[11.5px] font-bold ${record.heroProfit>0?'text-emerald-400':record.heroProfit<0?'text-red-400':'text-white/50'}`}>
+                        {record.heroProfit>0?'+':''}{record.heroProfit} BB
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Step controls */}
@@ -1197,26 +1219,6 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                   disabled={isEnd}>▶|</button>
                 <span className="text-xs text-white/40 font-mono">{stepIdx+1}/{record.actions.length}</span>
               </div>
-
-              {/* Summary */}
-              {isEnd && (
-                <div className="flex-shrink-0 bg-[#c9a227]/8 border border-[#c9a227]/20 rounded-xl p-4 flex items-center gap-8">
-                  <div>
-                    <span className="text-[10px] text-white/40 uppercase tracking-wide">Gagnant</span>
-                    <p className="text-sm font-bold text-[#c9a227]">{record.winnerNames.join(', ')}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-white/40 uppercase tracking-wide">Pot final</span>
-                    <p className="text-sm font-bold text-white/70">${record.finalPot}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-white/40 uppercase tracking-wide">{t('sess.yourResult')}</span>
-                    <p className={`text-sm font-bold ${record.heroProfit>0?'text-emerald-400':record.heroProfit<0?'text-red-400':'text-white/50'}`}>
-                      {record.heroProfit>0?'+':''}{record.heroProfit} BB
-                    </p>
-                  </div>
-                </div>
-              )}
 
               {/* Coach verdict — FLOATS over the table column (absolute) so it never
                   reflows the layout: the table no longer jumps when you judge a move.
