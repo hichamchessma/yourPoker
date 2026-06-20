@@ -1035,7 +1035,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
           <div className={`flex-1 min-w-0 min-h-0 ${isPhone?'flex flex-col':'flex'}`}>
 
             {/* Mini table view */}
-            <div className={`flex-1 flex flex-col min-w-0 gap-3 ${isPhone?'p-3':'p-5'}`}>
+            <div className={`relative flex-1 flex flex-col min-w-0 gap-3 ${isPhone?'p-3':'p-5'}`}>
               <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
                 Main #{record.handNum} — {record.date.toLocaleDateString('fr')} {record.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}
               </div>
@@ -1198,47 +1198,6 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                 <span className="text-xs text-white/40 font-mono">{stepIdx+1}/{record.actions.length}</span>
               </div>
 
-              {/* Coach juge — appears only on the hero's own moves */}
-              {(() => {
-                const a = record.actions[stepIdx]
-                if (!a || a.seatIdx < 0 || !a.isHero || a.actionType === 'SB' || a.actionType === 'BB') return null
-                return (
-                  <div className="flex-shrink-0">
-                    {!critique ? (
-                      <button onClick={() => { stopAuto(); setCritique(critiqueHeroMove(record, stepIdx)) }}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#c9a227] font-bold text-xs uppercase tracking-widest hover:bg-[#c9a227]/20 transition-all">
-                        👁 Juge mon coup ({a.actionType}{a.amount > 0 ? ` $${a.amount}` : ''})
-                      </button>
-                    ) : (
-                      <div className="rounded-xl border p-3.5" style={{
-                        background: critique.verdict === 'good' ? 'rgba(31,157,94,0.10)' : critique.verdict === 'mistake' ? 'rgba(192,57,49,0.10)' : 'rgba(201,162,39,0.08)',
-                        borderColor: critique.verdict === 'good' ? 'rgba(31,157,94,0.45)' : critique.verdict === 'mistake' ? 'rgba(192,57,49,0.45)' : 'rgba(201,162,39,0.35)',
-                      }}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{critique.verdict === 'good' ? '✅' : critique.verdict === 'mistake' ? '❌' : '⚠️'}</span>
-                            <span className="text-sm font-black uppercase tracking-wide" style={{ color: critique.verdict === 'good' ? '#34d399' : critique.verdict === 'mistake' ? '#f87171' : '#e8c547' }}>{critique.headline}</span>
-                          </div>
-                          <button onClick={() => setCritique(null)} className="text-white/40 hover:text-white text-sm">✕</button>
-                        </div>
-                        {/* Scrollable so the full reasoning (équité block + outs + lines) is always
-                            reachable even when it's taller than the room left under the table. */}
-                        <div className="overflow-y-auto pr-1" style={{ maxHeight: '34vh' }}>
-                          {critique.reasoning && <EquityReasoningBlock r={critique.reasoning} />}
-                          <div className="space-y-1.5">
-                            {critique.lines.map((l, i) => (
-                              <p key={i} className="text-[12.5px] text-white/80 leading-relaxed flex gap-1.5">
-                                <span className="text-[#c9a227] mt-0.5">▸</span>{l}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
-
               {/* Summary */}
               {isEnd && (
                 <div className="flex-shrink-0 bg-[#c9a227]/8 border border-[#c9a227]/20 rounded-xl p-4 flex items-center gap-8">
@@ -1258,6 +1217,51 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                   </div>
                 </div>
               )}
+
+              {/* Coach verdict — FLOATS over the table column (absolute) so it never
+                  reflows the layout: the table no longer jumps when you judge a move.
+                  Trigger = a small corner button; the verdict = a centred overlay card
+                  shown in full (its own scroll only if the reasoning is very long). */}
+              {(() => {
+                const a = record.actions[stepIdx]
+                if (!a || a.seatIdx < 0 || !a.isHero || a.actionType === 'SB' || a.actionType === 'BB') return null
+                if (!critique) {
+                  return (
+                    <button onClick={() => { stopAuto(); setCritique(critiqueHeroMove(record, stepIdx)) }}
+                      className="absolute top-1 right-1 z-30 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#c9a227]/45 bg-[#070d1a]/90 backdrop-blur text-[#c9a227] font-bold text-[11px] uppercase tracking-widest hover:bg-[#c9a227]/20 transition-all shadow-xl shadow-black/50">
+                      👁 {t('sess.judgeMove')}
+                    </button>
+                  )
+                }
+                const vc = critique.verdict === 'good' ? '#34d399' : critique.verdict === 'mistake' ? '#f87171' : '#e8c547'
+                return (
+                  <div className="absolute inset-0 z-40 flex items-center justify-center p-3" onClick={() => setCritique(null)}>
+                    <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
+                    <div onClick={e => e.stopPropagation()}
+                      className="relative w-full max-w-[560px] max-h-full overflow-y-auto rounded-2xl border p-4 shadow-2xl shadow-black/60"
+                      style={{
+                        background: critique.verdict === 'good' ? 'rgba(8,22,15,0.98)' : critique.verdict === 'mistake' ? 'rgba(26,10,10,0.98)' : 'rgba(22,18,8,0.98)',
+                        borderColor: critique.verdict === 'good' ? 'rgba(31,157,94,0.55)' : critique.verdict === 'mistake' ? 'rgba(192,57,49,0.55)' : 'rgba(201,162,39,0.45)',
+                      }}>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{critique.verdict === 'good' ? '✅' : critique.verdict === 'mistake' ? '❌' : '⚠️'}</span>
+                          <span className="text-sm font-black uppercase tracking-wide" style={{ color: vc }}>{critique.headline}</span>
+                        </div>
+                        <button onClick={() => setCritique(null)} className="text-white/45 hover:text-white text-base leading-none">✕</button>
+                      </div>
+                      {critique.reasoning && <EquityReasoningBlock r={critique.reasoning} />}
+                      <div className="space-y-1.5">
+                        {critique.lines.map((l, i) => (
+                          <p key={i} className="text-[12.5px] text-white/85 leading-relaxed flex gap-1.5">
+                            <span className="mt-0.5" style={{ color: '#c9a227' }}>▸</span>{l}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Action log — right column on desktop, full-width block on phone */}

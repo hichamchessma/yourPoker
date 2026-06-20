@@ -1059,6 +1059,7 @@
     "cashSubtitle_one": "{{sign}}{{bb}} BB en {{count}} mano",
     "cashSubtitle_other": "{{sign}}{{bb}} BB en {{count}} manos",
     "replayHint": "· ↻ replay automático (0,5s/paso, en bucle) · ←/→ navegar · Espacio juzgar · Esc cerrar",
+    "judgeMove": "Juzga mi jugada",
     "yourResult": "Tu resultado",
     "youRepRange": "Tú (rango representado)",
     "noHistory": "No hay historial disponible",

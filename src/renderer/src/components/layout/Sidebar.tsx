@@ -84,6 +84,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
   // whatever row the mouse hovers; when the cursor leaves the menu he runs
   // back to the last selected item (lobby by default).
   const contentRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const selectedId = useMemo(
     () => NAV_ITEMS.find((i) => i.path === currentPath)?.id ?? 'lobby',
@@ -92,9 +93,17 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
   const [hoverId, setHoverId] = useState<string | null>(null)
   const shownId = hoverId ?? selectedId
   const [markerY, setMarkerY] = useState<number | null>(null)
-  useLayoutEffect(() => {
+  // The mascot is absolutely positioned in `content`, but the items live in a
+  // SCROLLABLE <nav>. offsetTop is a static layout value (unaffected by scroll),
+  // so we subtract the nav's scrollTop to get the item's real on-screen centre —
+  // otherwise the runner drifts away from the row it points to as you scroll.
+  const recalcMarker = () => {
     const el = itemRefs.current[shownId]
-    if (el) setMarkerY(el.offsetTop + el.offsetHeight / 2)
+    const nav = navRef.current
+    if (el && nav) setMarkerY(el.offsetTop + el.offsetHeight / 2 - nav.scrollTop)
+  }
+  useLayoutEffect(() => {
+    recalcMarker()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shownId, isPro, i18n.language, currentPath, revealed, drawerOpen])
 
@@ -129,7 +138,7 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
       {isTouch && <div className="mx-3 h-px bg-gradient-to-r from-transparent via-poker-gold/30 to-transparent" />}
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto" onMouseLeave={() => setHoverId(null)}>
+      <nav ref={navRef} className="flex-1 px-3 py-2 space-y-1 overflow-y-auto" onScroll={recalcMarker} onMouseLeave={() => setHoverId(null)}>
         {NAV_ITEMS.map((item) => {
           const isActive = activeItem === item.id || currentPath === item.path
 

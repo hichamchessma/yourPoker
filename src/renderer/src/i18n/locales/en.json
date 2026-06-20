@@ -1059,6 +1059,7 @@
     "cashSubtitle_one": "{{sign}}{{bb}} BB in {{count}} hand",
     "cashSubtitle_other": "{{sign}}{{bb}} BB in {{count}} hands",
     "replayHint": "· ↻ auto-replay (0.5s/step, loops) · ←/→ navigate · Space judge · Esc close",
+    "judgeMove": "Judge my move",
     "yourResult": "Your result",
     "youRepRange": "You (represented range)",
     "noHistory": "No history available",
