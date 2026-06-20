@@ -1116,6 +1116,7 @@
     "scenOpen": "Ouverture (RFI)",
     "scenVsopen": "Face à une relance",
     "brush": "Pinceau :",
+    "clickToCycle": "Clic = action suivante :",
     "resetPos": "Réinit. {{pos}}",
     "validate": "Valider mes ranges"
   },

@@ -1116,6 +1116,7 @@
     "scenOpen": "Apertura (RFI)",
     "scenVsopen": "Ante una subida",
     "brush": "Pincel:",
+    "clickToCycle": "Clic = acción siguiente:",
     "resetPos": "Reiniciar {{pos}}",
     "validate": "Guardar mis rangos"
   },

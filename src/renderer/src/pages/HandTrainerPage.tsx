@@ -549,18 +549,21 @@ function OptionCard({ icon, title, desc, onClick, accent, idx, onHover }: { icon
   )
 }
 
-// ── Range editor (paint cells with a brush) ──────────────────────────────────
+// ── Range editor (click a cell to cycle its action) ──────────────────────────
 function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCustom: (c: Custom) => void; onValidate: () => void }) {
   const { t } = useTranslation()
   const [scenario, setScenario] = useState<TScenario>('open')
   const [position, setPosition] = useState('BTN')
-  const [brush, setBrush] = useState<TAction>('open')
-  const painting = useRef(false)
   const map = custom[scenario][position] ?? {}
-  const actions: TAction[] = scenario === 'open' ? ['open', 'fold'] : ['3bet', 'call', 'fold']
+  // A click cycles a cell through the scenario's action sequence:
+  //   Open (RFI)      → OPEN ⇄ FOLD
+  //   Facing a raise  → CALL (green) → 3-BET (red) → FOLD (black)
+  const cycleActs: TAction[] = scenario === 'open' ? ['open', 'fold'] : ['call', '3bet', 'fold']
 
-  function paint(key: string) {
-    const next: Custom = { ...custom, [scenario]: { ...custom[scenario], [position]: { ...custom[scenario][position], [key]: brush } } }
+  function cycle(key: string) {
+    const cur = map[key] ?? 'fold'
+    const nextAct = cycleActs[(cycleActs.indexOf(cur) + 1) % cycleActs.length]
+    const next: Custom = { ...custom, [scenario]: { ...custom[scenario], [position]: { ...custom[scenario][position], [key]: nextAct } } }
     setCustom(next)
   }
   function resetPos() {
@@ -569,8 +572,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl"
-      onMouseUp={() => (painting.current = false)} onMouseLeave={() => (painting.current = false)}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl">
       <div className="grid grid-cols-1 lg:grid-cols-[210px_1fr] gap-4 items-start">
         {/* LEFT — all controls + Validate, so the grid never pushes anything off-screen */}
         <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-md p-3">
@@ -586,25 +588,18 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
               <button key={p} onClick={() => setPosition(p)} className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border ${position === p ? 'bg-[#c9a227] text-black border-[#c9a227]' : 'bg-white/5 text-white/50 border-white/10'}`}>{p}</button>
             ))}
           </div>
-          {/* brush palette */}
+          {/* click-to-cycle sequence */}
           <div>
-            <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('htr.brush')}</span>
-            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-              {actions.map(a => (
-                <button key={a} onClick={() => setBrush(a)}
-                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all"
-                  style={brush === a ? { background: ACT[a].color, color: ACT[a].fg, borderColor: ACT[a].color, boxShadow: `0 0 12px ${ACT[a].color}66` } : { background: ACT[a].color + '22', color: ACT[a].color, borderColor: ACT[a].color + '55' }}>
-                  {ACT[a].label}
-                </button>
+            <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{t('htr.clickToCycle')}</span>
+            <div className="flex items-center gap-1 flex-wrap mt-1.5">
+              {cycleActs.map((a, i) => (
+                <span key={a} className="flex items-center gap-1">
+                  {i > 0 && <span className="text-white/30 text-[11px] leading-none">→</span>}
+                  <span className="px-2 py-1 rounded-md text-[10px] font-bold border" style={{ background: ACT[a].color, color: ACT[a].fg, borderColor: ACT[a].color }}>{ACT[a].label}</span>
+                </span>
               ))}
             </div>
             <button onClick={resetPos} className="mt-2 w-full flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-white/10 bg-white/5 text-white/50 hover:bg-white/10"><RotateCcw size={11} /> {t('htr.resetPos', { pos: position })}</button>
-          </div>
-          {/* legend */}
-          <div className="flex flex-col gap-1.5">
-            {actions.map(a => (
-              <div key={a} className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: ACT[a].color }} /><span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{ACT[a].label}</span></div>
-            ))}
           </div>
           {/* VALIDATE */}
           <button onClick={onValidate} className="mt-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black uppercase tracking-[0.14em] text-[12.5px] transition-all hover:scale-[1.02]" style={{ background: 'linear-gradient(135deg,#22d3ee,#0891b2)', color: '#04121a' }}>
@@ -613,7 +608,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
         </div>
 
         {/* RIGHT — the 13×13 grid, capped to the viewport HEIGHT (it's square) so 0 scroll */}
-        <div className="mx-auto" style={{ width: 'min(100%, 64vh)' }} onMouseDown={() => (painting.current = true)}>
+        <div className="mx-auto" style={{ width: 'min(100%, 64vh)' }}>
           <div className="grid select-none" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
             {GRID_RANKS.map((_, i) => GRID_RANKS.map((__, j) => {
               const k = cellKey(i, j)
@@ -621,7 +616,7 @@ function RangeEditor({ custom, setCustom, onValidate }: { custom: Custom; setCus
               const c = ACT[a]
               return (
                 <div key={`${i}-${j}`} title={`${k} — ${c.label}`}
-                  onMouseDown={() => paint(k)} onMouseEnter={() => { if (painting.current) paint(k) }}
+                  onClick={() => cycle(k)}
                   className="relative flex items-center justify-center rounded-[3px] cursor-pointer"
                   style={{ aspectRatio: '1', fontSize: 9, fontWeight: 700, background: c.color, color: c.fg }}>
                   {k.replace('s', '').replace('o', '')}

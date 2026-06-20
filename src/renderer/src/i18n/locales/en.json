@@ -1116,6 +1116,7 @@
     "scenOpen": "Open (RFI)",
     "scenVsopen": "Facing a raise",
     "brush": "Brush:",
+    "clickToCycle": "Click = next action:",
     "resetPos": "Reset {{pos}}",
     "validate": "Save my ranges"
   },
