@@ -193,6 +193,12 @@ export default function TrainingSetupPage(): JSX.Element {
     Array.from({ length: 8 }, (_, i) => ({ type: i < 5 ? 'bot' : 'empty', level: 2 } as Slot))
   )
   const [activeSeat, setActiveSeat] = useState<number | null>(null)
+  // Exact pixel size of the felt, computed to fit (contain) the 300:226 SVG in the
+  // available area. Sizing the box with width:100% + maxHeight:100% + aspect-ratio
+  // all at once breaks the ratio on short (landscape-phone) viewports — the SVG
+  // letterboxes while the % HTML overlays (SB/BB chips, popups) keep using the
+  // distorted box, so they drift off the seats. A measured box keeps them locked.
+  const [box, setBox] = useState({ w: 0, h: 0 })
 
   const stackChips = stackBB * bb
   const safeSelectedSeat = Math.min(selectedSeat, numPlayers - 1)
@@ -250,6 +256,28 @@ export default function TrainingSetupPage(): JSX.Element {
     document.addEventListener('pointerdown', handler)
     return () => document.removeEventListener('pointerdown', handler)
   }, [])
+
+  // Fit the felt to the available area at the exact 300:226 ratio (contain).
+  useEffect(() => {
+    const el = tableRef.current
+    if (!el) return
+    const ratio = SVG_W / SVG_H
+    const measure = () => {
+      const cw = el.clientWidth, ch = el.clientHeight
+      if (cw <= 0 || ch <= 0) return
+      let w = cw, h = cw / ratio
+      if (h > ch) { h = ch; w = ch * ratio }
+      setBox({ w: Math.round(w), h: Math.round(h) })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Scale the HTML blind chips so they track the felt's size (they're fixed-px
+  // overlays otherwise, and dwarf a small mobile table).
+  const chipScale = box.w ? Math.max(0.62, Math.min(1, box.w / 672)) : 1
 
   const handleConfirm = () => {
     navigate('/game', {
@@ -395,7 +423,9 @@ export default function TrainingSetupPage(): JSX.Element {
 
             {/* Table wrapper */}
             <div ref={tableRef} className="relative w-full max-w-2xl flex-1 min-h-0 flex items-center justify-center">
-              <div className="relative w-full" style={{ maxHeight: '100%', aspectRatio: '300 / 226' }}>
+              <div className="relative" style={box.w
+                ? { width: box.w, height: box.h }
+                : { width: '100%', aspectRatio: '300 / 226', maxHeight: '100%' }}>
 
                 {/* SVG Table */}
                 <svg viewBox="0 0 300 226" className="w-full h-full drop-shadow-2xl">
@@ -493,7 +523,7 @@ export default function TrainingSetupPage(): JSX.Element {
                 {(() => {
                   const { xPct, yPct } = chipPct(sbSeatIdx, numPlayers)
                   return (
-                    <div className="absolute pointer-events-auto" style={{ left: `${xPct}%`, top: `${yPct}%`, transform: 'translate(-50%, -50%)', zIndex: 15 }}>
+                    <div className="absolute pointer-events-auto" style={{ left: `${xPct}%`, top: `${yPct}%`, transform: `translate(-50%, -50%) scale(${chipScale})`, zIndex: 15 }}>
                       <BlindChip label="SB" value={sb} color="#55bbff"
                         onInc={() => setSb(v => +(v + 0.5).toFixed(1))}
                         onDec={() => setSb(v => Math.max(0.5, +(v - 0.5).toFixed(1)))}/>
@@ -505,7 +535,7 @@ export default function TrainingSetupPage(): JSX.Element {
                 {(() => {
                   const { xPct, yPct } = chipPct(bbSeatIdx, numPlayers)
                   return (
-                    <div className="absolute pointer-events-auto" style={{ left: `${xPct}%`, top: `${yPct}%`, transform: 'translate(-50%, -50%)', zIndex: 15 }}>
+                    <div className="absolute pointer-events-auto" style={{ left: `${xPct}%`, top: `${yPct}%`, transform: `translate(-50%, -50%) scale(${chipScale})`, zIndex: 15 }}>
                       <BlindChip label="BB" value={bb} color="#c9a227"
                         onInc={() => setBb(v => v + 1)}
                         onDec={() => setBb(v => Math.max(1, v - 1))}/>
