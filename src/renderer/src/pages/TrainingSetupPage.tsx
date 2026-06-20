@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore'
 import { useLiveSession } from '../store/liveSessionStore'
 import { useDevice } from '../lib/useDevice'
 import { ResumeSessionModal } from '../components/SessionDialogs'
+import RotateGate from '../components/RotateGate'
 
 // ── Types ──────────────────────────────────────────────────────────
 type SlotType = 'bot' | 'human' | 'empty'
@@ -258,6 +259,7 @@ export default function TrainingSetupPage(): JSX.Element {
 
   return (
     <div className="relative flex flex-col h-full bg-poker-darker overflow-hidden">
+      <RotateGate onQuit={() => navigate('/lobby')} />
       <ResumeSessionModal
         open={showResume && !!savedSession}
         label={savedSession?.label ?? ''}
@@ -279,14 +281,14 @@ export default function TrainingSetupPage(): JSX.Element {
       </div>
 
       {/* ── CONTENT ── */}
-      <div className="relative z-10 flex flex-col h-full p-3 gap-2 overflow-y-auto md:overflow-hidden">
+      <div className="relative z-10 flex flex-col h-full p-2 md:p-3 gap-1.5 md:gap-2 overflow-hidden">
 
         {/* Title */}
         <div className="flex-shrink-0 text-center">
-          <h1 className="font-display font-bold text-xl tracking-[0.22em] uppercase" style={{ color: '#c9a227', textShadow: '0 0 32px rgba(201,162,39,0.45)' }}>
+          <h1 className="font-display font-bold text-base md:text-xl tracking-[0.22em] uppercase" style={{ color: '#c9a227', textShadow: '0 0 32px rgba(201,162,39,0.45)' }}>
             {t('train.title')}
           </h1>
-          <p className="text-white/25 text-[9px] tracking-wider uppercase">{t('train.subtitle')}</p>
+          <p className="hidden md:block text-white/25 text-[9px] tracking-wider uppercase">{t('train.subtitle')}</p>
         </div>
 
         {/* Quick presets — top strip */}
@@ -302,11 +304,11 @@ export default function TrainingSetupPage(): JSX.Element {
           ))}
         </div>
 
-        {/* Main row */}
-        <div className="flex-1 flex flex-col md:flex-row gap-3 min-h-0">
+        {/* Main row — always 3 columns (landscape is forced on phones via RotateGate) */}
+        <div className="flex-1 flex gap-2 md:gap-3 min-h-0">
 
           {/* ── LEFT PANEL ── */}
-          <div className="w-full md:w-44 flex-shrink-0 flex flex-col gap-2 md:overflow-hidden">
+          <div className="w-36 md:w-44 flex-shrink-0 flex flex-col gap-1.5 md:gap-2 overflow-y-auto md:overflow-hidden">
 
             {/* Number of players */}
             <div className="glass-card p-3 flex-shrink-0">
@@ -389,10 +391,10 @@ export default function TrainingSetupPage(): JSX.Element {
           </div>
 
           {/* ── CENTER: TABLE + CONFIRM ── */}
-          <div className="w-full md:flex-1 flex flex-col items-center justify-center gap-3 min-h-0">
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 md:gap-3 min-h-0">
 
             {/* Table wrapper */}
-            <div ref={tableRef} className="relative w-full max-w-2xl md:flex-1 md:min-h-0 flex items-center justify-center">
+            <div ref={tableRef} className="relative w-full max-w-2xl flex-1 min-h-0 flex items-center justify-center">
               <div className="relative w-full" style={{ maxHeight: '100%', aspectRatio: '300 / 226' }}>
 
                 {/* SVG Table */}
@@ -544,7 +546,7 @@ export default function TrainingSetupPage(): JSX.Element {
               whileHover={{ scale: 1.025, boxShadow: '0 0 55px rgba(201,162,39,0.65)' }}
               whileTap={{ scale: 0.975 }}
               onClick={handleConfirm}
-              className="flex-shrink-0 w-full max-w-2xl py-4 rounded-2xl font-display font-bold text-lg tracking-[0.35em] uppercase text-poker-darker transition-all"
+              className="flex-shrink-0 w-full max-w-2xl py-2.5 md:py-4 rounded-2xl font-display font-bold text-base md:text-lg tracking-[0.35em] uppercase text-poker-darker transition-all"
               style={{
                 background: 'linear-gradient(135deg, #f5e070 0%, #c9a227 50%, #8B6810 100%)',
                 boxShadow: '0 0 30px rgba(201,162,39,0.45), 0 4px 24px rgba(0,0,0,0.5)',
@@ -554,7 +556,7 @@ export default function TrainingSetupPage(): JSX.Element {
           </div>
 
           {/* ── RIGHT PANEL ── */}
-          <div className="w-full md:w-52 flex-shrink-0 flex flex-col gap-2 md:overflow-hidden">
+          <div className="w-40 md:w-52 flex-shrink-0 flex flex-col gap-1.5 md:gap-2 overflow-y-auto md:overflow-hidden">
 
             {/* Stack */}
             <div className="glass-card p-3 flex-shrink-0">

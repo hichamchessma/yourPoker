@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore'
 import { useLiveSession } from '../store/liveSessionStore'
 import { useDevice } from '../lib/useDevice'
 import { ResumeSessionModal } from '../components/SessionDialogs'
+import RotateGate from '../components/RotateGate'
 import WindowControls from '../components/layout/WindowControls'
 import {
   type Speed, LEVEL_MINUTES_OPTIONS, blindStructure, placesPaid, payoutTable,
@@ -67,6 +68,7 @@ export default function TournamentSetupPage() {
 
   return (
     <div className="relative h-full w-full flex flex-col overflow-hidden" style={{ background: 'radial-gradient(120% 100% at 50% 0%, #1a1206 0%, #0d0a06 60%, #060503 100%)' }}>
+      <RotateGate onQuit={() => navigate('/lobby')} />
       <ResumeSessionModal
         open={showResume && !!saved}
         label={saved?.label ?? ''}

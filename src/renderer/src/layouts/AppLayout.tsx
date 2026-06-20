@@ -7,9 +7,10 @@ import { useDevice } from '../lib/useDevice'
 export default function AppLayout(): JSX.Element {
   const path = useLocation().pathname
   const { isPhone } = useDevice()
-  // The immersive playing/training surfaces (live table + Hand Trainer) hide the menu
-  // behind the left-edge crochet for maximum space and own their own top chrome.
-  const immersiveSurface = path === '/game' || path === '/handtrainer'
+  // The live table is the only immersive surface that hides the menu behind the
+  // left-edge crochet for maximum space. The Hand Trainer keeps the normal docked
+  // menu (it's a study screen, not the table) so navigation stays visible on web.
+  const immersiveSurface = path === '/game'
 
   // Phone menu pages: the sidebar collapses into a hamburger drawer (auto-closes on nav).
   const [drawerOpen, setDrawerOpen] = useState(false)

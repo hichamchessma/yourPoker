@@ -11,6 +11,7 @@ import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonToken, TableSVG, Room, type RoomVariant } from '../components/tableVisuals'
 import RangeAssistant from '../components/RangeAssistant'
 import RangeHeatmap from '../components/RangeHeatmap'
+import RotateGate from '../components/RotateGate'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
@@ -974,6 +975,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center ${isPhone?'p-0':'p-3'}`} style={{background:'rgba(0,0,0,0.9)'}}>
+      <RotateGate onQuit={onClose} />
       <motion.div initial={{opacity:0,scale:0.94,y:16}} animate={{opacity:1,scale:1,y:0}}
         className={`w-full flex flex-col border border-white/10 overflow-hidden ${isPhone?'h-full rounded-none':'max-w-[1480px] h-[94vh] rounded-2xl'}`}
         style={{background:'#070d1a'}}>
@@ -1006,10 +1008,12 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
 
         <div className={`flex-1 min-h-0 ${isPhone?'flex flex-col overflow-y-auto':'flex'}`}>
 
-          {/* Hand list — left column on desktop, horizontal scroll strip on phone */}
-          <div className={isPhone
+          {/* Hand list — left column on desktop, horizontal scroll strip on phone.
+              `relative z-20` keeps it above any player badge that the table area
+              positions near its edge, so every hand row stays clickable. */}
+          <div className={`relative z-20 ${isPhone
             ? 'flex-shrink-0 flex overflow-x-auto border-b border-white/8'
-            : 'w-52 flex-shrink-0 border-r border-white/8 overflow-y-auto'}>
+            : 'w-52 flex-shrink-0 border-r border-white/8 overflow-y-auto'}`}>
             {[...records].reverse().map(r => {
               const profit = r.heroProfit
               return (
@@ -1038,8 +1042,8 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
 
               {/* Table area */}
               <div className="relative flex-1 min-h-0" style={{minHeight:isPhone?190:360}}>
-                {/* Table SVG bg */}
-                <div className="absolute inset-0 flex items-center justify-center">
+                {/* Table SVG bg — decorative, never intercept pointer events */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div style={{width:'100%',maxWidth:900,opacity:0.78}}>
                     <TableSVG/>
                   </div>
@@ -1076,9 +1080,9 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                             const card = pl.holeCards[ci as 0|1]
                             if (!card) return null
                             if (showCards && card) {
-                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={isPhone?28:44} h={isPhone?40:62}/>
+                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={isPhone?34:54} h={isPhone?48:76}/>
                             }
-                            return <FaceDown key={ci} w={isPhone?22:36} h={isPhone?30:50}/>
+                            return <FaceDown key={ci} w={isPhone?28:46} h={isPhone?40:64}/>
                           })}
                         </div>
                       )}
@@ -1118,12 +1122,12 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
 
                 {/* Board cards */}
                 <div className="absolute left-1/2 -translate-x-1/2" style={{top:'41%',transform:'translate(-50%,-50%)'}}>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex gap-1.5 items-center">
                     {stepState.board.map((card, i) => (
                       <div key={i}>
                         {card
-                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={60} h={84}/>
-                          : <EmptySlot w={60} h={84}/>}
+                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={isPhone?38:48} h={isPhone?54:68}/>
+                          : <EmptySlot w={isPhone?38:48} h={isPhone?54:68}/>}
                       </div>
                     ))}
                   </div>
