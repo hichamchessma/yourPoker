@@ -196,6 +196,23 @@ export function playSound(name: SoundName): void {
   try { SYNTH[name](c, c.currentTime + 0.005) } catch { /* ignore audio glitches */ }
 }
 
+// Police siren — a hi-lo two-tone wail for the "Angry Coach" alarm. Higher anger
+// level = more wails, brighter + faster (sawtooth gives the harsh siren timbre).
+export function playSiren(level = 1): void {
+  if (useSoundStore.getState().muted) return
+  const c = ensure()
+  if (!c || !master) return
+  const t0 = c.currentTime + 0.01
+  const cycles = 2 + Math.max(0, Math.min(3, level))
+  const lo = 540 + level * 50, hi = 860 + level * 110
+  const seg = Math.max(0.13, 0.22 - level * 0.025)
+  for (let i = 0; i < cycles; i++) {
+    const t = t0 + i * seg * 2
+    tone(c, t, lo, seg, 'sawtooth', 0.16, hi)        // wail up
+    tone(c, t + seg, hi, seg, 'sawtooth', 0.16, lo)  // wail down
+  }
+}
+
 // Deal several cards with a natural stagger.
 export function playDeal(count: number, gap = 0.11): void {
   if (useSoundStore.getState().muted) return

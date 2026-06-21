@@ -16,7 +16,7 @@ import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
 import { isElectron } from '../lib/platform'
-import { playSound, playDeal } from '../lib/sound'
+import { playSound, playDeal, playSiren } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import EquityReasoningBlock from '../components/EquityReasoning'
@@ -1339,6 +1339,13 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   )
 }
 
+// Angry Coach: collapse an action to its strategic CLASS so we only scold real
+// disagreements (FOLD vs CALL), not sizing nuances (RAISE vs ALL-IN are both "aggro").
+function heroActClass(a: string): 'fold' | 'check' | 'call' | 'aggro' {
+  const u = a.toUpperCase()
+  return u === 'FOLD' ? 'fold' : u === 'CHECK' ? 'check' : u === 'CALL' ? 'call' : 'aggro'
+}
+
 // ─── Main GamePage Component ──────────────────────────────────────────────────
 export default function GamePage(): JSX.Element {
   const { t } = useTranslation()
@@ -1443,6 +1450,22 @@ export default function GamePage(): JSX.Element {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null)
   const [heroPanelHover, setHeroPanelHover] = useState(false)
   const heroPanelHoverRef = useRef(false)
+
+  // ─── Angry Coach mode ──────────────────────────────────────────────────────
+  // Toggle on → each decision that disagrees with the coach triggers an escalating
+  // scold (siren + the angry-coach image, levels 1→3). Three aligned decisions in a
+  // row calm him back down. The game freezes during the scold (we intercept the
+  // action, show the coach panel, then replay the move once you dismiss it).
+  const [angryMode, setAngryMode] = useState(false)
+  const angryModeRef = useRef(false)
+  const [angerLevel, setAngerLevel] = useState(0)
+  const angerLevelRef = useRef(0)
+  const goodStreakRef = useRef(0)
+  const [angry, setAngry] = useState<{ level: number; phase: 'alarm' | 'message' } | null>(null)
+  const angryActiveRef = useRef(false)
+  const angryWaitingRef = useRef(false)
+  const angryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingHeroActionRef = useRef<{ action: string; amount: number } | null>(null)
   const coachOpenRef = useRef(false) // mirrors coachOpen so the tournament clock can read it
   const coachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const visionRef = useRef(true)
@@ -3132,11 +3155,68 @@ export default function GamePage(): JSX.Element {
     if (pausedByHistoryRef.current) { pausedByHistoryRef.current = false; setPaused(false) }
   }
 
+  // ─── Angry Coach helpers ───────────────────────────────────────────────────
+  function applyAngerLevel(n: number) { angerLevelRef.current = n; setAngerLevel(n) }
+  function toggleAngryMode() {
+    const nv = !angryModeRef.current
+    angryModeRef.current = nv; setAngryMode(nv)
+    goodStreakRef.current = 0; applyAngerLevel(0)
+    if (!nv && angryActiveRef.current) finishAngry()   // turning it off mid-scold resolves it
+  }
+  // A disagreement: escalate the level, freeze the action, run alarm → message.
+  function triggerAngry(pAction: string, pAmount: number) {
+    if (angryTimerRef.current) clearTimeout(angryTimerRef.current)
+    const lvl = Math.min(3, angerLevelRef.current + 1)
+    applyAngerLevel(lvl)
+    goodStreakRef.current = 0
+    pendingHeroActionRef.current = { action: pAction, amount: pAmount }
+    angryActiveRef.current = true
+    angryWaitingRef.current = false
+    setAngry({ level: lvl, phase: 'alarm' })
+    playSiren(lvl)
+    try { if (navigator.vibrate) navigator.vibrate(lvl === 1 ? [130] : lvl === 2 ? [110, 60, 110] : [90, 50, 90, 50, 160]) } catch { /* ignore */ }
+    angryTimerRef.current = setTimeout(() => {
+      setAngry({ level: lvl, phase: 'message' })          // image → coach message
+      angryTimerRef.current = setTimeout(() => endAngry(), 3000)
+    }, 1000)
+  }
+  // 3s elapsed (or off-toggle): finish — but if the mouse is INSIDE the message,
+  // wait until it leaves (handled by the heroPanelHover effect).
+  function endAngry() {
+    if (heroPanelHoverRef.current) { angryWaitingRef.current = true; return }
+    finishAngry()
+  }
+  function finishAngry() {
+    if (angryTimerRef.current) { clearTimeout(angryTimerRef.current); angryTimerRef.current = null }
+    angryWaitingRef.current = false
+    angryActiveRef.current = false
+    setAngry(null)
+    const pa = pendingHeroActionRef.current
+    pendingHeroActionRef.current = null
+    if (pa) heroAction(pa.action, pa.amount, true)        // now actually play the move
+  }
+  // An aligned decision counts toward calming down (3 in a row → back to 0).
+  function registerGoodDecision() {
+    if (angerLevelRef.current === 0) return
+    const g = goodStreakRef.current + 1
+    if (g >= 3) { goodStreakRef.current = 0; applyAngerLevel(0) }
+    else goodStreakRef.current = g
+  }
+
   // ─── Hero actions ────────────────────────────────────────────────────────
-  function heroAction(action: string, amount = 0) {
+  function heroAction(action: string, amount = 0, bypassAngry = false) {
+    if (angryActiveRef.current && !bypassAngry) return    // a scold is in progress — clicks locked
     const cur = gsRef.current
     const hero = cur.seats.find(s => s.isHero)
     if (!hero || !hero.isActive) return
+    // Angry Coach: intercept a real decision, judge it against the coach's move.
+    if (!bypassAngry && angryModeRef.current && !manualModeRef.current) {
+      const rec = computeCoachMove()
+      if (rec) {
+        if (heroActClass(action) !== heroActClass(rec.action)) { triggerAngry(action, amount); return }
+        registerGoodDecision()
+      }
+    }
     if (manualModeRef.current) pushManualUndo()
 
     let newState = executeAction(hero.idx, action, amount, cur)
@@ -3236,9 +3316,16 @@ export default function GamePage(): JSX.Element {
   const heroInHand = !!hero && !hero.isFolded && !hero.isSittingOut && !heroBusted && !hero.isAllIn
     && (hero.holeCards[0] !== null || hero.holeCards[1] !== null)
     && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
-  // Coach hover-card is open when hovering the hero's own profile (or the panel).
-  const coachOpen = !!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)
+  // Coach hover-card is open when hovering the hero's own profile (or the panel) —
+  // and forced open during an Angry-Coach scold (freezes the clock + shows the panel).
+  const coachOpen = (!!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)) || (angry !== null && !!hero)
   coachOpenRef.current = coachOpen
+  // Angry scold held open because the mouse was inside the message → finish (and
+  // replay the move) the moment the mouse leaves.
+  useEffect(() => {
+    if (!heroPanelHover && angryWaitingRef.current) finishAngry()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heroPanelHover])
   // The opponent range "film" is open while hovering an in-hand opponent (or its
   // popup). Like the coach card, it FREEZES the clock — the point is to LEARN how
   // the range evolved, not to be rushed.
@@ -3490,7 +3577,7 @@ export default function GamePage(): JSX.Element {
     if (adv.action === 'RAISE') return { action: 'RAISE', amount: Math.min(allInTo, Math.max(minTo, cur.currentBet + rb((cur.pot + toCall) * (adv.betFrac || 0.66)))) }
     return null
   }
-  function executeCoachMove() { const mv = computeCoachMove(); if (mv) heroAction(mv.action, mv.amount) }
+  function executeCoachMove() { const mv = computeCoachMove(); if (mv) heroAction(mv.action, mv.amount, true) }
   coachMoveRef.current = executeCoachMove
 
   // TURBO: when it's the hero's turn, peek the coach's move — auto-play (skip) ONLY a
@@ -3505,7 +3592,7 @@ export default function GamePage(): JSX.Element {
       const h = gsRef.current.seats.find(s => s.isHero)
       if (!gsRef.current.paused && h?.isActive && turboRef.current) {
         if (fastFwdRef.current) consumeTourTime(1.5) // charge the skipped action's virtual time
-        heroAction(mv.action, mv.amount)
+        heroAction(mv.action, mv.amount, true)
       }
     }, 0)
     return () => clearTimeout(id)
@@ -3615,11 +3702,11 @@ export default function GamePage(): JSX.Element {
       if (!h || !h.isActive || cur.paused) return
       const toCall = cur.currentBet - h.bet
       if (toCall <= 0) {
-        heroAction('CHECK')
+        heroAction('CHECK', 0, true)
       } else {
         sitOutRef.current = true
         setSitOut(true)
-        heroAction('FOLD')
+        heroAction('FOLD', 0, true)
       }
     }, decisionTimer * 1000)
     return () => clearTimeout(t)
@@ -3775,6 +3862,23 @@ export default function GamePage(): JSX.Element {
             className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
               ${sitOut ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
             {sitOut ? 'Sit In' : 'Sit Out'}
+          </button>
+        )}
+
+        {/* Angry Coach — scolds you (escalating 1→3) on decisions against the coach */}
+        {sessionFormat && gs.phase !== 'idle' && (
+          <button onClick={toggleAngryMode}
+            title={t('game.angryCoachTip')}
+            className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
+              ${angryMode ? 'bg-red-600/25 border-red-500/60 text-red-300' : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}>
+            🚨 {t('game.angryCoach')}
+            {angryMode && (
+              <span className="flex gap-0.5 ml-0.5">
+                {[1, 2, 3].map(n => (
+                  <span key={n} className="w-1.5 h-1.5 rounded-full" style={{ background: n <= angerLevel ? '#ef4444' : 'rgba(255,255,255,0.22)' }} />
+                ))}
+              </span>
+            )}
           </button>
         )}
 
@@ -4616,6 +4720,39 @@ export default function GamePage(): JSX.Element {
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── ANGRY COACH — escalating scold ── */}
+      <AnimatePresence>
+        {angry && angry.phase === 'alarm' && (
+          <motion.div key="angry-alarm" className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ background: 'rgba(8,2,2,0.86)' }}>
+            {/* police lights — red + blue, counter-pulsing */}
+            <motion.div className="absolute inset-0 pointer-events-none"
+              animate={reduceFx ? { opacity: 0.5 } : { opacity: [0.25, 0.75, 0.25] }} transition={{ duration: 0.5, repeat: Infinity }}
+              style={{ background: 'radial-gradient(55% 75% at 0% 0%, rgba(220,30,30,0.55), transparent 60%), radial-gradient(55% 75% at 100% 100%, rgba(220,30,30,0.55), transparent 60%)' }} />
+            <motion.div className="absolute inset-0 pointer-events-none"
+              animate={reduceFx ? { opacity: 0.4 } : { opacity: [0.7, 0.2, 0.7] }} transition={{ duration: 0.5, repeat: Infinity }}
+              style={{ background: 'radial-gradient(55% 75% at 100% 0%, rgba(40,90,255,0.45), transparent 60%), radial-gradient(55% 75% at 0% 100%, rgba(40,90,255,0.45), transparent 60%)' }} />
+            {/* the angry coach, shaking */}
+            <motion.div className="relative flex flex-col items-center gap-3"
+              animate={reduceFx ? {} : { x: [-7, 7, -6, 6, -4, 4, 0], rotate: [-2.2, 2.2, -1.6, 1.6, 0] }}
+              transition={{ duration: 0.45, repeat: Infinity }}>
+              <img src={`/assets/cards/enervement${angry.level}.png`} alt="" draggable={false}
+                className="rounded-2xl border-2 border-red-500/70 shadow-[0_0_60px_rgba(220,30,30,0.65)]"
+                style={{ width: 'min(72vw, 440px)' }} />
+              <div className="px-4 py-1.5 rounded-full bg-red-600/30 border border-red-500/60 text-red-100 text-sm font-black uppercase tracking-[0.22em]">
+                {t('game.angryVerdict')} · {angry.level}/3
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* message phase: red frame cue behind the coach panel (panel itself = the message) */}
+      {angry && angry.phase === 'message' && (
+        <div className="fixed inset-0 z-[60] pointer-events-none"
+          style={{ boxShadow: 'inset 0 0 0 3px rgba(220,38,38,0.55), inset 0 0 90px rgba(220,38,38,0.22)' }} />
+      )}
 
     </div>
   )
