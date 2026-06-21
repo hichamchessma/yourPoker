@@ -4727,16 +4727,17 @@ export default function GamePage(): JSX.Element {
           <motion.div key="angry-alarm" className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ background: 'rgba(8,2,2,0.86)' }}>
-            {/* police lights — red + blue, counter-pulsing */}
+            {/* police lights — red + blue, counter-pulsing. Always on (incl. mobile):
+                it's a deliberate 1s alarm, not an ambient loop, so not gated on reduceFx. */}
             <motion.div className="absolute inset-0 pointer-events-none"
-              animate={reduceFx ? { opacity: 0.5 } : { opacity: [0.25, 0.75, 0.25] }} transition={{ duration: 0.5, repeat: Infinity }}
+              animate={{ opacity: [0.25, 0.75, 0.25] }} transition={{ duration: 0.5, repeat: Infinity }}
               style={{ background: 'radial-gradient(55% 75% at 0% 0%, rgba(220,30,30,0.55), transparent 60%), radial-gradient(55% 75% at 100% 100%, rgba(220,30,30,0.55), transparent 60%)' }} />
             <motion.div className="absolute inset-0 pointer-events-none"
-              animate={reduceFx ? { opacity: 0.4 } : { opacity: [0.7, 0.2, 0.7] }} transition={{ duration: 0.5, repeat: Infinity }}
+              animate={{ opacity: [0.7, 0.2, 0.7] }} transition={{ duration: 0.5, repeat: Infinity }}
               style={{ background: 'radial-gradient(55% 75% at 100% 0%, rgba(40,90,255,0.45), transparent 60%), radial-gradient(55% 75% at 0% 100%, rgba(40,90,255,0.45), transparent 60%)' }} />
-            {/* the angry coach, shaking */}
+            {/* the angry coach, shaking — on every device (the shake IS the point) */}
             <motion.div className="relative flex flex-col items-center gap-3"
-              animate={reduceFx ? {} : { x: [-7, 7, -6, 6, -4, 4, 0], rotate: [-2.2, 2.2, -1.6, 1.6, 0] }}
+              animate={{ x: [-7, 7, -6, 6, -4, 4, 0], rotate: [-2.2, 2.2, -1.6, 1.6, 0] }}
               transition={{ duration: 0.45, repeat: Infinity }}>
               <img src={`/assets/cards/enervement${angry.level}.png`} alt="" draggable={false}
                 className="rounded-2xl border-2 border-red-500/70 shadow-[0_0_60px_rgba(220,30,30,0.65)]"
