@@ -650,7 +650,15 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
       preflopActIndex(p.idx, record.players) > heroOrder).length
     // Only a TOP-of-action all-in (bet ≥ currentBet) is a real jam to call off; a
     // short all-in that's been raised over is just dead money (decide vs the raiser).
-    const numAllIn = [...allInSeats].filter(idx => idx !== hero.idx && !folded.has(idx) && (bet[idx] ?? 0) >= currentBet).length
+    const allInTop = [...allInSeats].filter(idx => idx !== hero.idx && !folded.has(idx) && (bet[idx] ?? 0) >= currentBet)
+    // …and a SMALL all-in flat-called by a still-deep player isn't a call-off either —
+    // it's a SQUEEZE/iso spot (raise to isolate). Mirror the live coach exactly so the
+    // verdict matches: don't flag a premium RAISE as "over-aggressive" there.
+    const jamShove = allInTop.reduce((m, idx) => Math.max(m, bet[idx] ?? 0), 0)
+    const jamIsoable = allInTop.length >= 1 && jamShove < heroRemaining * 0.5
+      && record.players.some(p => p.idx !== hero.idx && !folded.has(p.idx) && !allInSeats.has(p.idx)
+        && (bet[p.idx] ?? 0) >= currentBet && (p.startStack - (committed[p.idx] ?? 0)) >= record.bb * 10)
+    const numAllIn = jamIsoable ? 0 : allInTop.length
     const vsJam = numAllIn >= 1
     const vsOpenerPos = scenario === 'vsopen' ? record.players.find(p => p.idx === lastPreflopRaiserIdx)?.position : undefined
     const reRaiseRatio = scenario === 'vs3bet' && preflopRaiseAmts.length >= 2 && preflopRaiseAmts[0] > 0 ? preflopRaiseAmts[1] / preflopRaiseAmts[0] : undefined
@@ -3396,9 +3404,19 @@ export default function GamePage(): JSX.Element {
   // bet). A short all-in that's been raised OVER by a bigger live raise (e.g. a SB
   // all-in for 0.4bb behind an 800 raise) is just dead money — the real decision is
   // vs the raiser (vsopen/3bet), not a jam call-off, so it must not trigger vsJam.
-  const heroNumAllIn = gs.phase === 'preflop'
-    ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn && s.bet >= gs.currentBet).length
-    : 0
+  const heroAiSeats = gs.phase === 'preflop'
+    ? gs.seats.filter(s => !s.isHero && !s.isFolded && s.isAllIn && s.bet >= gs.currentBet)
+    : []
+  // A SMALL all-in (tiny vs the deep stacks) that a still-deep player has FLAT-CALLED
+  // is NOT a call-off — it's a SQUEEZE/iso spot (you raise to isolate the deep caller
+  // and charge the field, the all-in is just dead money). Don't force jam/call mode
+  // there, or premiums get mis-advised to "just call" (e.g. KK flatting a 1.75bb shove
+  // behind two 100bb callers). Gate: shove < half your stack AND a deep live caller.
+  const heroJamShove = heroAiSeats.reduce((m, s) => Math.max(m, s.bet), 0)
+  const heroJamIsoable = heroAiSeats.length >= 1 && hero != null
+    && heroJamShove < (hero.stack + hero.bet) * 0.5
+    && gs.seats.some(s => !s.isHero && !s.isFolded && !s.isAllIn && s.bet >= gs.currentBet && s.stack >= bbAmt * 10)
+  const heroNumAllIn = heroJamIsoable ? 0 : heroAiSeats.length
   // Facing a jam but a live RAISER/squeezer is still to act behind (raised above the
   // BB, hasn't matched the jam, not folded/all-in) → you don't close the action; their
   // range is stronger and they can re-jam → the call-off must tighten hard.
