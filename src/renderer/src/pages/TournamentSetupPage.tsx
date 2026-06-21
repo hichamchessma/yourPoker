@@ -51,7 +51,7 @@ export default function TournamentSetupPage() {
   const nbTables = Math.ceil(field / tableSize)
   const prizePool = buyIn * field
   const places = placesPaid(field, paidPct)
-  const payouts = useMemo(() => payoutTable(prizePool, places, curve), [prizePool, places, curve])
+  const payouts = useMemo(() => payoutTable(prizePool, places, curve, field), [prizePool, places, curve, field])
   const startChips = startBB * levels[0].bb
 
   function launch() {

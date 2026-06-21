@@ -40,15 +40,29 @@ export function placesPaid(field: number, paidPct: number): number {
   return Math.max(1, Math.min(field, Math.round(field * paidPct / 100)))
 }
 
-// Payout table. Standard / top-heavy / flat curve over `places` spots, summing to
-// the prize pool. Uses a geometric decay tuned by the curve shape.
-export function payoutTable(prizePool: number, places: number, curve: 'standard' | 'topheavy' | 'flat'): PayoutSpot[] {
+// Payout table over `places` spots, summing to the prize pool. Realistic MTT shape:
+// every paid place is FLOORED at a min-cash (~1.5× buy-in), then a geometric bonus
+// (tuned by the curve) stacks the rest onto the top finishes.
+//
+// A pure geometric decay (the old model) starved the min-cashes: e.g. 19th of 180 in
+// a $3600 pool paid ~$3 instead of ~1.5× the $20 buy-in. The min-cash as a FRACTION
+// of the pool is 1.5/field (buy-in = pool/field), so we only need `field` to floor it.
+export function payoutTable(
+  prizePool: number, places: number, curve: 'standard' | 'topheavy' | 'flat', field = places,
+): PayoutSpot[] {
+  places = Math.max(1, Math.min(places, Math.max(1, field)))
+  if (places === 1) return [{ place: 1, amount: Math.round(prizePool) }]
+  const buyIn = prizePool / Math.max(1, field)
+  // Floor at 1.5× buy-in, but never let the floors eat more than 65% of the pool
+  // (so there's still a real top-heavy bonus even at very wide payout %).
+  const minCash = Math.max(1, Math.min(1.5 * buyIn, (prizePool * 0.65) / places))
+  const bonusPool = Math.max(0, prizePool - minCash * places)
   const decay = curve === 'topheavy' ? 0.55 : curve === 'flat' ? 0.86 : 0.72
   const weights: number[] = []
   for (let i = 0; i < places; i++) weights.push(Math.pow(decay, i))
-  const sum = weights.reduce((a, b) => a + b, 0)
-  // Round to "nice" chip-ish amounts, then fix the remainder onto 1st place.
-  const raw = weights.map(w => (w / sum) * prizePool)
+  const wsum = weights.reduce((a, b) => a + b, 0)
+  // min-cash floor + geometric bonus; fix the rounding remainder onto 1st place.
+  const raw = weights.map(w => minCash + (w / wsum) * bonusPool)
   const rounded = raw.map(a => Math.max(1, Math.round(a)))
   const diff = prizePool - rounded.reduce((a, b) => a + b, 0)
   rounded[0] += diff

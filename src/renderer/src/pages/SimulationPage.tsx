@@ -43,7 +43,7 @@ export default function SimulationPage(): JSX.Element {
   const field = mode === 'mtt' ? numTables * seats : seats
   const paid = placesPaid(field, paidPct)
   const pool = field * buyin
-  const payTable = payoutTable(pool, paid, curve)
+  const payTable = payoutTable(pool, paid, curve, field)
   const prizeFor = (place: number) => prizeForPlace(place, payTable)
 
   function runOne(coachKind: 'coach' | 'bot'): { place: number; hands: number } {

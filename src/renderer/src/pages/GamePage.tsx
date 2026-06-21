@@ -1407,7 +1407,7 @@ export default function GamePage(): JSX.Element {
     const L = tourLevels[Math.min(tourRef.current.levelIdx, tourLevels.length - 1)]
     return { sb: L.sb, bb: L.bb, ante: L.ante }
   }
-  const tourPayouts = () => tournament ? payoutTable(tournament.buyIn * tournament.field, placesPaid(tournament.field, tournament.paidPct), tournament.curve) : []
+  const tourPayouts = () => tournament ? payoutTable(tournament.buyIn * tournament.field, placesPaid(tournament.field, tournament.paidPct), tournament.curve, tournament.field) : []
   const curLevel = tournament && tourLevels.length ? tourLevels[Math.min(tourLevelIdx, tourLevels.length - 1)] : null
   const sbAmt = curLevel ? curLevel.sb : (cfg.sb ?? 1)
   const bbAmt = curLevel ? curLevel.bb : (cfg.bb ?? 2)
