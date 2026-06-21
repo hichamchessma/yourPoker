@@ -3349,29 +3349,7 @@ export default function GamePage(): JSX.Element {
   // range popup. If it lands on neither (e.g. you moved off the table), it closes.
   const oppGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelOppGrace = (): void => { if (oppGraceRef.current) { clearTimeout(oppGraceRef.current); oppGraceRef.current = null } }
-  const scheduleOppClose = (seatIdx: number): void => {
-    cancelOppGrace()
-    oppGraceRef.current = setTimeout(() => {
-      oppGraceRef.current = null
-      if (oppPanelHoverRef.current || filmPinnedRef.current) return  // cursor reached the popup, or it's pinned
-      oppPanelHoverRef.current = false; setOppPanelHover(false)
-      setHoverSeat(s => (s === seatIdx ? null : s))
-    }, 1000)
-  }
   useEffect(() => cancelOppGrace, [])
-  // SPACE pins the open film (so leaving its zone won't close it). Only when open and
-  // not typing in a field; swallow the key so it doesn't scroll / trigger a button.
-  useEffect(() => {
-    if (!rangeFilmOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' && e.key !== ' ') return
-      const t = e.target as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
-      e.preventDefault(); setFilmPinned(true)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [rangeFilmOpen])
   // Hero's represented (perceived) range — shown postflop in the coach panel.
   const heroRepView = (coachOpen && hero && gs.community.filter(Boolean).length >= 3 && rangeRef.current[hero.idx])
     ? rangeView(rangeRef.current[hero.idx]) : null
@@ -3641,6 +3619,31 @@ export default function GamePage(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.paused, gs.currentBet, gs.pot, callAmt, canCheck, canRaise, isOpenBet, heroMaxTo, bbAmt, manualMode])
+
+  // ── Range/coach view is CLICK-driven now: Space toggles YOUR own coach card,
+  //    Esc closes any open range/coach panel. (Hover no longer opens anything.) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (historyOpen) return                 // the history modal owns Space/Esc while open
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      if (e.key === ' ' || e.code === 'Space') {
+        if (!hero) return
+        e.preventDefault()
+        cancelOppGrace(); setFilmPinned(false)
+        setHoverSeat(s => (s === hero.idx ? null : hero.idx))
+      } else if (e.key === 'Escape' && hoverSeat !== null) {
+        e.preventDefault()
+        setHoverSeat(null); setFilmPinned(false)
+        heroPanelHoverRef.current = false; setHeroPanelHover(false)
+        oppPanelHoverRef.current = false; setOppPanelHover(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hero?.idx, hoverSeat, historyOpen])
 
   // ── "H" — toggle the hand history, any time (cash OR tournament), as long as
   // there are saved hands. Not while typing or in the simulation sandbox. ──
@@ -4081,7 +4084,15 @@ export default function GamePage(): JSX.Element {
             (the film is a fixed popup rendered OUTSIDE this container, so the cursor
             crosses this boundary to reach it). The film closes via its own zone-leave,
             the ✕, or Échap. Only clear a non-film hover (hero coach handles itself). */}
-        <div ref={tableRef} className="absolute inset-0 flex items-center justify-center p-2">
+        <div ref={tableRef} className="absolute inset-0 flex items-center justify-center p-2"
+          onClick={() => {
+            // Click on the felt (not a seat's cards — those stopPropagation) closes any
+            // open range / coach card. Explicit dismiss; nothing auto-closes on hover now.
+            if (hoverSeat === null) return
+            setHoverSeat(null); setFilmPinned(false)
+            heroPanelHoverRef.current = false; setHeroPanelHover(false)
+            oppPanelHoverRef.current = false; setOppPanelHover(false)
+          }}>
           <div className="relative w-full h-full" style={{maxWidth:1240,maxHeight:700}}>
 
             {/* Table SVG */}
@@ -4148,43 +4159,29 @@ export default function GamePage(): JSX.Element {
                   turnPaused={gs.paused || coachOpen || manualMode || rangeFilmOpen}
                   hideTimer={manualMode}
                   onRebuy={!tournament && seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
-                  onHoverCards={isTouch ? undefined : (entering, e) => {
-                    // CARDS zone → range / coach only (and close the bet panel if it
-                    // was open for this on-turn seat, so cards = range, never bets).
+                  onHoverCards={manualMode ? (entering) => {
+                    // Manual authoring only: hovering the cards hides the bet panel
+                    // (cards = range view). In normal play, ranges open on CLICK.
                     if (entering && manualModeRef.current && gsRef.current.actQueue[0] === seat.idx) setManualPanel(null)
-                    if (seat.isHero) {
-                      if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                      else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { cancelOppGrace(); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { scheduleOppClose(seat.idx) }
-                    // Opponent: leaving the cards starts a 1s grace so the cursor can
-                    // travel into the film popup; otherwise the film closes itself.
-                  }}
-                  onHover={isTouch ? undefined : (entering, e) => {
-                    // NAME / STACK zone. For the on-turn player in manual mode this
-                    // reveals the BET panel only (and hides the range). Otherwise it
-                    // behaves like a normal range/coach hover.
+                  } : undefined}
+                  onHover={manualMode ? (entering) => {
+                    // Manual authoring only: hovering the NAME/STACK of the on-turn seat
+                    // reveals its BET panel. (Ranges are click-driven, not hover.)
                     const onTurnManual = manualModeRef.current && gsRef.current.actQueue[0] === seat.idx && !seat.isFolded
                       && gsRef.current.phase !== 'showdown' && gsRef.current.phase !== 'idle'
-                    if (onTurnManual) {
-                      if (entering) { setHoverSeat(s => (s === seat.idx ? null : s)); if (manualPanel !== seat.idx) { setManualBet(''); setManualPanel(seat.idx) } }
-                      return
-                    }
-                    if (seat.isHero) {
-                      if (entering && e) { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                      else { coachTimerRef.current = setTimeout(() => { if (!heroPanelHoverRef.current) setHoverSeat(s => (s === seat.idx ? null : s)) }, 350) }
-                    } else if (entering && e) { cancelOppGrace(); setHoverSeat(seat.idx); setHoverPos({ x: e.clientX, y: e.clientY }) }
-                    else { scheduleOppClose(seat.idx) }
-                    // Opponent: leaving the name/stack starts the same 1s grace.
-                  }}
-                  onTapCards={isTouch ? (e) => {
-                    // Touch: tap the cards to toggle the range (opponents) / coach (hero).
-                    // Tapping the same seat again — or empty felt — closes it.
+                    if (onTurnManual && entering) { setHoverSeat(s => (s === seat.idx ? null : s)); if (manualPanel !== seat.idx) { setManualBet(''); setManualPanel(seat.idx) } }
+                  } : undefined}
+                  onTapCards={(e) => {
+                    // CLICK the cards to TOGGLE the range (opponents) / coach (hero) — on
+                    // every device (hover no longer opens it). Click the same seat again,
+                    // click the felt, or press Esc to close; Space toggles your own card.
                     e.stopPropagation()
                     cancelOppGrace()
-                    setHoverSeat(s => (s === seat.idx ? null : seat.idx))
+                    const opening = hoverSeat !== seat.idx
+                    setHoverSeat(opening ? seat.idx : null)
+                    setFilmPinned(opening && !seat.isHero)   // keep an opponent film open until dismissed
                     setHoverPos({ x: e.clientX, y: e.clientY })
-                  } : undefined}
+                  }}
                 />
               )
             })}
@@ -4681,7 +4678,7 @@ export default function GamePage(): JSX.Element {
               ? { left: '50%', top: '50%', transform: 'translate(-50%,-50%) scale(0.48)', transformOrigin: 'center' }
               : { left: x, top: y }}
             onMouseEnter={() => { cancelOppGrace(); oppPanelHoverRef.current = true; setOppPanelHover(true) }}
-            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false); if (!filmPinned) scheduleOppClose(hoverSeat) }}
+            onMouseLeave={() => { oppPanelHoverRef.current = false; setOppPanelHover(false) }}
             onMouseDown={() => setFilmPinned(true)}>
             <RangeEvolution key={hoverSeat} history={history} name={seat.name} width={462}
               pinned={filmPinned} onClose={closeFilm} side={explainSide} deadCards={heroDead} />
@@ -4696,7 +4693,7 @@ export default function GamePage(): JSX.Element {
             <div className="pointer-events-auto"
               style={compactTable ? { transform: 'scale(0.48)', transformOrigin: 'top center' } : undefined}
               onMouseEnter={() => { if (coachTimerRef.current) clearTimeout(coachTimerRef.current); heroPanelHoverRef.current = true; setHeroPanelHover(true) }}
-              onMouseLeave={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false); setHoverSeat(s => (s === hero.idx ? null : s)) }}>
+              onMouseLeave={() => { heroPanelHoverRef.current = false; setHeroPanelHover(false) }}>
               <RangeAssistant
                 embedded
                 representedView={heroRepView}
