@@ -2558,14 +2558,19 @@ export default function GamePage(): JSX.Element {
 
   // A busted bot seat is re-seated with a fresh player (moved from a breaking
   // table) so the table stays full while the field is still big.
-  function refillSeat(s: Seat, chips: number): Seat {
+  function refillSeat(s: Seat, chips: number, used: Set<string> = new Set()): Seat {
     const lvl = Math.max(1, Math.min(3, s.level || tournament?.botLevel || 2))
     const pool = BNAMES[lvl as keyof typeof BNAMES] ?? BNAMES[2]
+    // Avoid cloning a name already at the table (refills used to spawn 4× "Solid Steve").
+    // Prefer the seat's own tier pool, then any bot name, then a numbered fallback.
+    let free = pool.filter(n => !used.has(n))
+    if (!free.length) free = ([] as string[]).concat(...Object.values(BNAMES)).filter(n => !used.has(n))
+    const name = free.length ? free[Math.floor(Math.random() * free.length)] : `Bot ${Math.floor(Math.random() * 900 + 100)}`
     return {
       ...s, stack: chips, isEliminated: false, isFolded: false, isAllIn: false,
       isSittingOut: false, bet: 0, totalBet: 0, holeCards: [null, null], cardsFaceUp: false,
       isWinner: false, handStrength: undefined, handScore: undefined, lastAction: null,
-      name: pool[Math.floor(Math.random() * pool.length)],
+      name,
     }
   }
 
@@ -2588,9 +2593,14 @@ export default function GamePage(): JSX.Element {
         const startChips = tournament.startBB * tourLevels[0].bb
         const fieldAvg = (tournament.field * startChips) / Math.max(1, t.playersLeft)
         const median = fieldAvg * 0.55
-        seats = seats.map(s => (s.isEliminated && !s.isHero)
-          ? refillSeat(s, Math.max(Math.round(startChips * 0.15), Math.round(median * (0.4 + Math.random() * 1.4))))
-          : s)
+        // Names already in use by seats we keep → refills pick a DIFFERENT name.
+        const usedNames = new Set<string>(seats.filter(s => !(s.isEliminated && !s.isHero)).map(s => s.name))
+        seats = seats.map(s => {
+          if (!(s.isEliminated && !s.isHero)) return s
+          const r = refillSeat(s, Math.max(Math.round(startChips * 0.15), Math.round(median * (0.4 + Math.random() * 1.4))), usedNames)
+          usedNames.add(r.name)
+          return r
+        })
       } else {
         // Final table: no refill. If the hero is the last one standing → victory.
         const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))

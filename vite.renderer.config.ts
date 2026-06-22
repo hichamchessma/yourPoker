@@ -36,6 +36,10 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,webp,png,woff2,ttf}'],
+        // The "Angry Coach" images are large (~3.6 MB) and only needed when the alarm
+        // fires → keep them OUT of the install precache; the browser fetches + caches
+        // them on demand. Everything else (cards, fonts, bundles) stays offline-ready.
+        globIgnores: ['**/assets/cards/enervement*.png'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024
       }
     })
