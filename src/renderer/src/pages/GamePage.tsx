@@ -1916,6 +1916,15 @@ export default function GamePage(): JSX.Element {
     const posBonus = POS_BONUS[seat.position] ?? 0.75
     const toCall = state.currentBet - seat.bet
     const potOdds = state.pot > 0 ? toCall / (state.pot + toCall) : 0
+    // Priced in / pot-committed: a tiny call into a big pot (≈9:1+) — or a small bump
+    // over what we've ALREADY put in this street — is mandatory, whatever the hand. No
+    // one folds $12000 for $710. Overrides ONLY the fold (pre- & post-flop), never the
+    // raise/call lines, so normal aggression is untouched. `effCall` caps at our stack
+    // so a pot-committed short stack still calls all-in for the price.
+    const effCall = Math.min(toCall, seat.stack)
+    const effOdds = state.pot > 0 ? effCall / (state.pot + effCall) : 0
+    const pricedIn = toCall > 0
+      && (effOdds <= 0.10 || (seat.bet > 0 && effCall <= seat.bet * 0.30))
     const board = state.community.filter(Boolean) as Card[]
     const onBoard = board.length >= 3
     const strength = onBoard ? madeStrength([c1, c2], board) : (preflopStrength(c1, c2) * posBonus) / 10
@@ -1963,7 +1972,7 @@ export default function GamePage(): JSX.Element {
       if (rand < acc) return toCall > 0 ? { action: 'CALL', amount: toCall } : { action: 'CHECK', amount: 0 }
       acc += pp.check
       if (rand < acc) return { action: 'CHECK', amount: 0 }
-      return { action: 'FOLD', amount: 0 }
+      return pricedIn ? { action: 'CALL', amount: effCall } : { action: 'FOLD', amount: 0 }
     }
 
     // ── Post-flop ──
@@ -1984,7 +1993,7 @@ export default function GamePage(): JSX.Element {
     if (draw && strength + 0.18 >= potOdds) return { action: 'CALL', amount: toCall }                 // call the draw on odds
     if (rand < p.spew) return { action: 'CALL', amount: toCall }                                      // tilt: loose call
     if (tier >= 2 && rand < p.bluff * 0.6) return { action: 'RAISE', amount: raiseTo(0.8) }           // occasional bluff raise
-    return { action: 'FOLD', amount: 0 }
+    return pricedIn ? { action: 'CALL', amount: effCall } : { action: 'FOLD', amount: 0 }              // never fold when pot-committed
   }
 
   // Update Human players' mood at the end of each hand: big losses tilt them
