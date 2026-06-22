@@ -1365,6 +1365,9 @@ export default function GamePage(): JSX.Element {
   const selectedSeat = cfg.selectedSeat ?? 0
   const stackBB = cfg.stackBB ?? 100
   const displayName = cfg.displayName ?? 'Hero'
+  // Random button at the start of a fresh game → your POSITION (BTN/SB/BB/UTG…) is
+  // random each time instead of always the button (positions rotate off the dealer).
+  const randomDealer = () => Math.floor(Math.random() * Math.max(1, numPlayers))
   const slots = cfg.slots ?? Array.from({length: numPlayers - 1}, () => ({type:'bot', level:2}))
   const decisionTimer = cfg.decisionTimer && cfg.decisionTimer > 0 ? cfg.decisionTimer : 25
 
@@ -1591,7 +1594,7 @@ export default function GamePage(): JSX.Element {
     const t = setTimeout(() => {
       if (tourStartedRef.current) return
       tourStartedRef.current = true
-      startHand(createSeats(), 0, 0)
+      startHand(createSeats(), randomDealer(), 0)
     }, 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3120,7 +3123,7 @@ export default function GamePage(): JSX.Element {
     // (huge) blind here (the level-0 re-render hasn't happened yet) → wrong stacks. Force
     // the configured tournament starting stack (= startBB × level-0 BB, like a re-entry).
     const freshStack = tournament.startBB * tourLevels[0].bb
-    startHand(createSeats().map(s => ({ ...s, stack: freshStack })), 0, 0)
+    startHand(createSeats().map(s => ({ ...s, stack: freshStack })), randomDealer(), 0)
   }
 
   function setPaused(paused: boolean) {
@@ -3913,7 +3916,7 @@ export default function GamePage(): JSX.Element {
 
         {/* Game controls — flow is automatic; Pause halts it (incl. at showdown) */}
         {gs.phase === 'idle' ? (
-          <button onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), gs.dealerIdx, gs.handNum)}
+          <button onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), gs.seats.length > 0 ? gs.dealerIdx : randomDealer(), gs.handNum)}
             className="app-drag-none flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition-all"
             style={{background:'linear-gradient(135deg,#c9a227,#8B6810)',color:'#0a0a0a'}}>
             <Play size={12}/> Démarrer
@@ -4070,7 +4073,7 @@ export default function GamePage(): JSX.Element {
                 </h2>
                 <p className="text-white/40 text-sm">{t('game.idleStart')}</p>
                 <button
-                  onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), 0, 0)}
+                  onClick={() => startHand(gs.seats.length > 0 ? gs.seats : createSeats(), gs.seats.length > 0 ? gs.dealerIdx : randomDealer(), 0)}
                   className="mt-2 px-8 py-3 rounded-xl font-bold text-sm tracking-widest uppercase transition-all"
                   style={{background:'linear-gradient(135deg,#f0d060,#c9a227,#8B6810)',color:'#0a0a0a',boxShadow:'0 0 30px rgba(201,162,39,0.4)'}}>
                   {t('game.startGame')}
