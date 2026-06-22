@@ -131,9 +131,9 @@ const POT_POS = { x: 50, y: 50 }
 function betOffset(leftPct: number, topPct: number): { x: number; y: number } {
   const dx = 50 - leftPct, dy = 50 - topPct
   const len = Math.hypot(dx, dy) || 1
-  // Bottom seats (the hero) need a longer reach so the chips clear the hole
-  // cards that are drawn above the seat panel.
-  const dist = topPct > 62 ? 21 : 13
+  // Bottom seats (the hero) need a longer reach so the chips + amount clear the
+  // hole cards that are drawn above the seat panel (otherwise the cards hide the bet).
+  const dist = topPct > 62 ? 27 : 13
   return { x: (dx / len) * dist, y: (dy / len) * dist }
 }
 
@@ -4253,16 +4253,23 @@ export default function GamePage(): JSX.Element {
               const off = betOffset(parseFloat(pos.left), parseFloat(pos.top))
               return (
                 <motion.div key={`bet-${seat.idx}`}
-                  className="absolute pointer-events-none flex flex-col items-center gap-0.5"
-                  initial={{opacity:0,scale:0.7}} animate={{opacity:1,scale:1}}
+                  className="absolute pointer-events-none flex flex-col items-center gap-1"
+                  initial={{opacity:0,scale:0.7,y:6}} animate={{opacity:1,scale:1,y:0}}
+                  transition={{type:'spring',stiffness:340,damping:22}}
                   style={{
                     left: `calc(${pos.left} + ${off.x}%)`,
                     top: `calc(${pos.top} + ${off.y}%)`,
                     transform: 'translate(-50%,-50%)',
-                    zIndex: 12,
+                    // Above the seat panel (active hero = z20) so the bet is never hidden
+                    // behind the hole cards; the hero's own bet sits highest.
+                    zIndex: seat.isHero ? 26 : 22,
                   }}>
                   <ChipStack amount={seat.bet} sz={compactTable?9:17} maxVisible={5}/>
-                  <span className={`font-mono text-[#c9a227] font-bold bg-black/55 px-1 rounded ${compactTable?'text-[7px]':'text-[9px]'}`}>${seat.bet.toLocaleString()}</span>
+                  {/* Gold pill — dark text on a gold gradient pops on the felt and reads at a glance */}
+                  <span className={`font-mono font-black tracking-tight text-[#1a1206] rounded-full whitespace-nowrap ${compactTable?'text-[8px] px-1.5 py-px':'text-[11px] px-2 py-0.5'}`}
+                    style={{ background:'linear-gradient(135deg,#f7e58a 0%,#e8c84a 45%,#c9a227 100%)', border:'1px solid rgba(255,244,190,0.7)', boxShadow:'0 2px 9px rgba(0,0,0,0.6), 0 0 14px rgba(201,162,39,0.45)' }}>
+                    ${seat.bet.toLocaleString()}
+                  </span>
                 </motion.div>
               )
             })}
@@ -4292,7 +4299,7 @@ export default function GamePage(): JSX.Element {
             background: compactTable
               ? 'linear-gradient(to top, rgba(3,6,13,0.97) 62%, rgba(3,6,13,0))'
               : 'rgba(4,7,16,0.98)',
-            minHeight: compactTable ? undefined : 100,
+            minHeight: compactTable ? undefined : 78,
             paddingTop: compactTable ? 18 : undefined
           }}>
 
@@ -4306,7 +4313,7 @@ export default function GamePage(): JSX.Element {
           )}
 
           {/* Action buttons — fixed height so the bar never jumps between states */}
-          <div className={`flex items-center gap-3 px-4 ${compactTable ? 'py-0.5' : 'py-3 min-h-[92px]'}`}
+          <div className={`flex items-center gap-3 px-4 ${compactTable ? 'py-0.5' : 'py-2 min-h-[68px]'}`}
             style={compactTable ? { transform: 'scale(0.66)', transformOrigin: 'bottom center' } : undefined}>
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
