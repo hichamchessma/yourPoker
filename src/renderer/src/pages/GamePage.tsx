@@ -5,7 +5,7 @@ import i18n from '../i18n'
 const tc = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, ChevronUp, ChevronDown, RefreshCw, Eye, FastForward, RotateCw } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, Keyboard, RefreshCw, Eye, FastForward, RotateCw } from 'lucide-react'
 import { useDevice } from '../lib/useDevice'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonToken, TableSVG, Room, type RoomVariant } from '../components/tableVisuals'
@@ -1424,6 +1424,7 @@ export default function GamePage(): JSX.Element {
   }))
   const [chipFlights, setChipFlights] = useState<ChipFlight[]>([])
   const [heroBetAmt, setHeroBetAmt] = useState(bbAmt * 2)
+  const [showBetInput, setShowBetInput] = useState(false)   // custom raise amount (keyboard toggle)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
   const pausedByHistoryRef = useRef(false) // we auto-paused for the history modal → auto-resume on close
@@ -4344,8 +4345,9 @@ export default function GamePage(): JSX.Element {
             </div>
           )}
 
-          {/* Action buttons — fixed height so the bar never jumps between states */}
-          <div className={`flex items-center gap-3 px-4 ${compactTable ? 'py-0.5' : 'py-2 min-h-[68px]'}`}
+          {/* Action buttons — fixed height so the bar never jumps between states.
+              `relative` anchors the floating raise-preset column to this row. */}
+          <div className={`relative flex items-center gap-3 px-4 ${compactTable ? 'py-0.5' : 'py-2 min-h-[68px]'}`}
             style={compactTable ? { transform: 'scale(0.66)', transformOrigin: 'bottom center' } : undefined}>
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
@@ -4390,6 +4392,40 @@ export default function GamePage(): JSX.Element {
               </div>
             ) : isHeroTurn ? (
               <>
+                {/* ── Raise presets — compact vertical stack floating above the bar (right).
+                    Each pill shows its size in BB + the $ amount; a tap raises that size.
+                    Keeps the bar itself tiny (just Fold / Check-Call / Raise-To). ── */}
+                {canRaise && (() => {
+                  const sizeTo = (frac: number) => clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * frac / bbAmt) * bbAmt)
+                  const fmtBB = (amt: number) => { const b = amt / bbAmt; return b >= 10 ? `${Math.round(b)}` : `${Math.round(b * 10) / 10}` }
+                  const seen = new Set<number>()
+                  const presets = [
+                    { label: '⅓', amt: sizeTo(1 / 3) },
+                    { label: '½', amt: sizeTo(1 / 2) },
+                    { label: '¾', amt: sizeTo(3 / 4) },
+                    { label: 'Pot', amt: sizeTo(1) },
+                  ].filter(p => { if (p.amt >= heroMaxTo || seen.has(p.amt)) return false; seen.add(p.amt); return true })
+                  return (
+                    <div className="absolute right-3 bottom-full mb-1.5 z-30 flex flex-col-reverse gap-1 w-[150px]">
+                      {/* All-in sits on top */}
+                      <motion.button whileTap={{ scale: 0.96 }} onClick={() => heroAction('ALL-IN', heroMaxTo)}
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-purple-600/45 bg-[#160e22]/92 backdrop-blur-md hover:bg-purple-900/40 transition-all shadow-lg shadow-black/40">
+                        <span className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-500/25 text-purple-200 border border-purple-400/30 leading-none">MAX</span>
+                        <span className="text-[9px] text-white/40 uppercase tracking-wide">All-in</span>
+                        <span className="ml-auto text-[11px] font-black font-mono text-purple-200">${heroMaxTo.toLocaleString()}</span>
+                      </motion.button>
+                      {presets.map(p => (
+                        <motion.button key={p.label} whileTap={{ scale: 0.96 }} onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', p.amt)}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-[#c9a227]/35 bg-[#13100a]/92 backdrop-blur-md hover:bg-[#c9a227]/15 transition-all shadow-lg shadow-black/40">
+                          <span className="text-[8px] font-black px-1 py-0.5 rounded bg-[#c9a227]/20 text-[#f0d878] border border-[#c9a227]/30 leading-none">{fmtBB(p.amt)}BB</span>
+                          <span className="text-[9px] text-white/40 uppercase tracking-wide">{p.label}</span>
+                          <span className="ml-auto text-[11px] font-black font-mono text-[#f0d878]">${p.amt.toLocaleString()}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  )
+                })()}
+
                 {/* Fold */}
                 <motion.button whileTap={{scale:0.95}}
                   onClick={() => heroAction('FOLD')}
@@ -4412,11 +4448,15 @@ export default function GamePage(): JSX.Element {
                   </motion.button>
                 )}
 
-                {/* Bet / Raise — typeable amount + sizing shortcuts (all "raise to" totals) */}
+                {/* Raise-To — confirms the current amount; the ⌨ toggles a custom input.
+                    The presets above cover the standard sizes. */}
                 {canRaise && (
-                  <div className="flex-1 flex flex-col gap-1">
-                    {/* Keyboard input above the raise button */}
-                    <div className="flex items-center gap-1">
+                  <div className="flex-1 flex items-center gap-1">
+                    <button onClick={() => setShowBetInput(v => !v)} title="Custom amount"
+                      className={`shrink-0 w-9 h-9 rounded-lg border flex items-center justify-center transition-all ${showBetInput ? 'border-[#c9a227]/50 bg-[#c9a227]/15 text-[#c9a227]' : 'border-white/10 bg-black/40 text-white/45 hover:text-[#c9a227] hover:border-[#c9a227]/30'}`}>
+                      <Keyboard size={14}/>
+                    </button>
+                    {showBetInput && (
                       <div className="flex items-center rounded-lg border border-[#c9a227]/30 bg-black/45 overflow-hidden shrink-0">
                         <span className="pl-1.5 text-[11px] text-white/35 font-mono">$</span>
                         <input
@@ -4425,65 +4465,19 @@ export default function GamePage(): JSX.Element {
                           min={Math.min(minRaiseTo, heroMaxTo)}
                           max={heroMaxTo}
                           step={bbAmt}
-                          onChange={e => {
-                            // Allow free typing (only cap at all-in); enforce the
-                            // minimum on blur / submit so large numbers can be typed.
-                            const n = parseInt(e.target.value, 10)
-                            setHeroBetAmt(Number.isNaN(n) ? 0 : Math.min(Math.max(0, n), heroMaxTo))
-                          }}
+                          onChange={e => { const n = parseInt(e.target.value, 10); setHeroBetAmt(Number.isNaN(n) ? 0 : Math.min(Math.max(0, n), heroMaxTo)) }}
                           onBlur={() => setHeroBetAmt(v => clampRaise(v))}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') heroAction(isOpenBet ? 'BET' : 'RAISE', clampRaise(heroBetAmt))
-                          }}
-                          className="w-[68px] bg-transparent text-[13px] font-bold text-[#c9a227] font-mono px-1 py-2 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          onKeyDown={e => { if (e.key === 'Enter') heroAction(isOpenBet ? 'BET' : 'RAISE', clampRaise(heroBetAmt)) }}
+                          className="w-[64px] bg-transparent text-[13px] font-bold text-[#c9a227] font-mono px-1 py-2 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </div>
-                      <motion.button whileTap={{scale:0.95}}
-                        onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', clampRaise(heroBetAmt))}
-                        className="flex-1 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/15 text-[#c9a227] font-bold text-sm uppercase tracking-widest hover:bg-[#c9a227]/25 transition-all whitespace-nowrap">
-                        {clampRaise(heroBetAmt) >= heroMaxTo ? 'All-in' : isOpenBet ? `Bet $${heroBetAmt.toLocaleString()}` : `Raise to $${heroBetAmt.toLocaleString()}`}
-                      </motion.button>
-                    </div>
-                    {/* Sizing shortcuts */}
-                    <div className="flex items-center gap-1 justify-center">
-                      <button onClick={() => setHeroBetAmt(v => clampRaise(v - bbAmt))}
-                        className="w-5 h-5 rounded bg-white/8 border border-white/10 flex items-center justify-center text-white/50 hover:bg-white/15 transition-colors">
-                        <ChevronDown size={10}/>
-                      </button>
-                      <div className="flex gap-1">
-                        {([
-                          ['3bb', clampRaise(3 * bbAmt), ''],
-                          ['⅓', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 3 / bbAmt) * bbAmt), '&'],
-                          ['½', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / 2 / bbAmt) * bbAmt), ''],
-                          ['⅔', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * 2 / 3 / bbAmt) * bbAmt), 'é'],
-                          ['Pot', clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) / bbAmt) * bbAmt), 'P'],
-                        ] as [string, number, string][]).map(([label, amt, key]) => (
-                          <button key={label} onClick={() => setHeroBetAmt(amt)}
-                            title={key ? t('sess.betSizeTip', { label, key }) : label}
-                            className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-white/5 border border-white/10 text-white/45 hover:text-[#c9a227] hover:border-[#c9a227]/30 transition-all">
-                            {label}{key && <span className="ml-0.5 opacity-50">{key}</span>}
-                          </button>
-                        ))}
-                        <button onClick={() => setHeroBetAmt(heroMaxTo)} title={t('sess.allinKey')}
-                          className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-900/20 border border-purple-700/30 text-purple-400 hover:bg-purple-900/30 transition-all">
-                          All-in <span className="opacity-50">A</span>
-                        </button>
-                      </div>
-                      <button onClick={() => setHeroBetAmt(v => clampRaise(v + bbAmt))}
-                        className="w-5 h-5 rounded bg-white/8 border border-white/10 flex items-center justify-center text-white/50 hover:bg-white/15 transition-colors">
-                        <ChevronUp size={10}/>
-                      </button>
-                    </div>
+                    )}
+                    <motion.button whileTap={{scale:0.95}}
+                      onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', clampRaise(heroBetAmt))}
+                      className="flex-1 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/15 text-[#c9a227] font-bold text-sm uppercase tracking-widest hover:bg-[#c9a227]/25 transition-all whitespace-nowrap">
+                      {clampRaise(heroBetAmt) >= heroMaxTo ? 'All-in' : isOpenBet ? `Bet $${heroBetAmt.toLocaleString()}` : `Raise $${heroBetAmt.toLocaleString()}`}
+                    </motion.button>
                   </div>
-                )}
-
-                {/* All-in shortcut */}
-                {canRaise && (
-                  <motion.button whileTap={{scale:0.95}}
-                    onClick={() => heroAction('ALL-IN', heroMaxTo)}
-                    className="px-3 py-2.5 rounded-xl border border-purple-700/40 bg-purple-900/20 text-purple-400 font-bold text-xs uppercase tracking-widest hover:bg-purple-900/35 transition-all">
-                    All-in <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">A</kbd>
-                  </motion.button>
                 )}
               </>
             ) : (
