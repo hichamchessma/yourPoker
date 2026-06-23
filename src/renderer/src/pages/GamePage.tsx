@@ -4072,23 +4072,30 @@ export default function GamePage(): JSX.Element {
               </div>
             )
           }
+          // Split into TWO pills — tournament STRUCTURE on the left, YOUR STANDING on the
+          // right — so the centre top stays clear and the back players are fully visible.
+          const pillCls = 'absolute top-2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10'
+          const pillStyle = { background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' } as const
           return (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10"
-              style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
-              <Cell label={t('game.hudLevel')} value={`${Math.min(tourLevelIdx + 1, tourLevels.length)}`} accent />
-              <Cell label={t('game.hudBlinds')} value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
-              <Cell label={t('game.hudNextLevel')} value={timer} />
-              <Cell label={t('game.hudPlayers')} value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
-              <Cell label={t('game.hudAvgStack')} value={`${Math.round(avgStack / curLevel.bb)} BB`} />
-              <Cell label={t('game.hudYourStack')} value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
-              <Cell label={t('game.hudPlace')} value={t('tour.placeN', { n: rank.toLocaleString() })} />
-              <div className="flex flex-col items-center px-3">
-                <span className="text-[7px] uppercase tracking-widest text-white/35 font-bold">{t('game.hudStatus')}</span>
-                <span className={`text-[11px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/60'}`}>
-                  {itm ? t('game.hudItm', { prize: prizeForPlace(rank, tourPayouts()).toLocaleString() }) : toBubble <= 5 ? t('game.hudBubble', { n: toBubble }) : t('game.hudPaid', { n: places })}
-                </span>
+            <>
+              <div className={`${pillCls} left-2`} style={pillStyle}>
+                <Cell label={t('game.hudLevel')} value={`${Math.min(tourLevelIdx + 1, tourLevels.length)}`} accent />
+                <Cell label={t('game.hudBlinds')} value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
+                <Cell label={t('game.hudNextLevel')} value={timer} />
+                <Cell label={t('game.hudPlayers')} value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
               </div>
-            </div>
+              <div className={`${pillCls} right-2`} style={pillStyle}>
+                <Cell label={t('game.hudAvgStack')} value={`${Math.round(avgStack / curLevel.bb)} BB`} />
+                <Cell label={t('game.hudYourStack')} value={`${Math.round(heroStack / curLevel.bb)} BB`} accent />
+                <Cell label={t('game.hudPlace')} value={t('tour.placeN', { n: rank.toLocaleString() })} />
+                <div className="flex flex-col items-center px-3">
+                  <span className="text-[7px] uppercase tracking-widest text-white/35 font-bold">{t('game.hudStatus')}</span>
+                  <span className={`text-[11px] font-black ${itm ? 'text-emerald-400' : toBubble <= 5 ? 'text-amber-400' : 'text-white/60'}`}>
+                    {itm ? t('game.hudItm', { prize: prizeForPlace(rank, tourPayouts()).toLocaleString() }) : toBubble <= 5 ? t('game.hudBubble', { n: toBubble }) : t('game.hudPaid', { n: places })}
+                  </span>
+                </div>
+              </div>
+            </>
           )
         })()}
 
@@ -4323,17 +4330,13 @@ export default function GamePage(): JSX.Element {
         </div>
       </div>
 
-      {/* ── HERO CONTROLS ── */}
+      {/* ── HERO CONTROLS ── floats over the bottom of the felt (no solid bar) so the
+          table gets the full height and the back players stay visible. ── */}
       {gs.phase !== 'idle' && (
-        <div className={compactTable
-            ? 'absolute bottom-0 left-0 right-0 z-20'
-            : 'flex-shrink-0 border-t border-white/8 relative z-20'}
+        <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none"
           style={{
-            background: compactTable
-              ? 'linear-gradient(to top, rgba(3,6,13,0.97) 62%, rgba(3,6,13,0))'
-              : 'rgba(4,7,16,0.98)',
-            minHeight: compactTable ? undefined : 78,
-            paddingTop: compactTable ? 18 : undefined
+            background: 'linear-gradient(to top, rgba(3,6,13,0.92) 45%, rgba(3,6,13,0.4) 78%, rgba(3,6,13,0))',
+            paddingTop: compactTable ? 18 : 30
           }}>
 
           {/* Sit-out notice (cards/name/stack are already shown on the table seat) */}
@@ -4345,9 +4348,10 @@ export default function GamePage(): JSX.Element {
             </div>
           )}
 
-          {/* Action buttons — fixed height so the bar never jumps between states.
-              `relative` anchors the floating raise-preset column to this row. */}
-          <div className={`relative flex items-center gap-3 px-4 ${compactTable ? 'py-0.5' : 'py-2 min-h-[68px]'}`}
+          {/* Action buttons — compact & centred (not full-width) so the felt shows through.
+              `relative` anchors the floating raise-preset column; pointer-events re-enabled
+              here (the gradient wrapper is click-through). */}
+          <div className={`relative pointer-events-auto flex items-center justify-center gap-2.5 px-4 ${compactTable ? 'py-0.5' : 'py-2'}`}
             style={compactTable ? { transform: 'scale(0.66)', transformOrigin: 'bottom center' } : undefined}>
             {heroAllInLive ? (
               <div className="flex-1 flex items-center justify-center gap-2">
@@ -4429,7 +4433,7 @@ export default function GamePage(): JSX.Element {
                 {/* Fold */}
                 <motion.button whileTap={{scale:0.95}}
                   onClick={() => heroAction('FOLD')}
-                  className="flex-1 py-2.5 rounded-xl border border-red-700/40 bg-red-900/20 text-red-400 font-bold text-sm uppercase tracking-widest hover:bg-red-900/35 transition-all">
+                  className="px-9 py-2.5 rounded-xl border border-red-700/40 bg-red-900/20 text-red-400 font-bold text-sm uppercase tracking-widest hover:bg-red-900/35 transition-all">
                   Fold <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">F</kbd>
                 </motion.button>
 
@@ -4437,13 +4441,13 @@ export default function GamePage(): JSX.Element {
                 {canCheck ? (
                   <motion.button whileTap={{scale:0.95}}
                     onClick={() => heroAction('CHECK')}
-                    className="flex-1 py-2.5 rounded-xl border border-sky-700/40 bg-sky-900/20 text-sky-400 font-bold text-sm uppercase tracking-widest hover:bg-sky-900/35 transition-all">
+                    className="px-9 py-2.5 rounded-xl border border-sky-700/40 bg-sky-900/20 text-sky-400 font-bold text-sm uppercase tracking-widest hover:bg-sky-900/35 transition-all">
                     Check <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">C</kbd>
                   </motion.button>
                 ) : (
                   <motion.button whileTap={{scale:0.95}}
                     onClick={() => heroAction('CALL', callAmt)}
-                    className="flex-1 py-2.5 rounded-xl border border-emerald-700/40 bg-emerald-900/20 text-emerald-400 font-bold text-sm uppercase tracking-widest hover:bg-emerald-900/35 transition-all">
+                    className="px-8 py-2.5 rounded-xl border border-emerald-700/40 bg-emerald-900/20 text-emerald-400 font-bold text-sm uppercase tracking-widest hover:bg-emerald-900/35 transition-all">
                     Call ${callAmt.toLocaleString()} <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">C</kbd>
                   </motion.button>
                 )}
@@ -4451,7 +4455,7 @@ export default function GamePage(): JSX.Element {
                 {/* Raise-To — confirms the current amount; the ⌨ toggles a custom input.
                     The presets above cover the standard sizes. */}
                 {canRaise && (
-                  <div className="flex-1 flex items-center gap-1">
+                  <div className="flex items-center gap-1">
                     <button onClick={() => setShowBetInput(v => !v)} title="Custom amount"
                       className={`shrink-0 w-9 h-9 rounded-lg border flex items-center justify-center transition-all ${showBetInput ? 'border-[#c9a227]/50 bg-[#c9a227]/15 text-[#c9a227]' : 'border-white/10 bg-black/40 text-white/45 hover:text-[#c9a227] hover:border-[#c9a227]/30'}`}>
                       <Keyboard size={14}/>
@@ -4474,7 +4478,7 @@ export default function GamePage(): JSX.Element {
                     )}
                     <motion.button whileTap={{scale:0.95}}
                       onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', clampRaise(heroBetAmt))}
-                      className="flex-1 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/15 text-[#c9a227] font-bold text-sm uppercase tracking-widest hover:bg-[#c9a227]/25 transition-all whitespace-nowrap">
+                      className="px-6 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/15 text-[#c9a227] font-bold text-sm uppercase tracking-widest hover:bg-[#c9a227]/25 transition-all whitespace-nowrap">
                       {clampRaise(heroBetAmt) >= heroMaxTo ? 'All-in' : isOpenBet ? `Bet $${heroBetAmt.toLocaleString()}` : `Raise $${heroBetAmt.toLocaleString()}`}
                     </motion.button>
                   </div>
