@@ -211,11 +211,15 @@ function betFrequency(oppHole: Card[], board: Card[], a: number, donkLead = fals
     // "two pair" (really one pair) correctly low-equity against a triple barrel.
     if (pocket && pairRank > bRanks[0]) return Math.max(0.25, 0.80 * (1 - a * 0.28)) // overpair (still raises for value)
     if (above === 0) return Math.max(0.22, 0.78 * (1 - a * 0.32)) * (facingRaise ? 0.12 : 1)  // top pair — a RAISE is rarely just this
-    if (above === 1) return Math.max(0.08, 0.52 * (1 - a * 0.7)) * (facingRaise ? 0.06 : donkLead ? 0.3 : 1)  // 2nd pair / middle
-    return Math.max(0.05, 0.36 * (1 - a * 0.85)) * (facingRaise ? 0.04 : donkLead ? 0.22 : 1)              // weak / bottom pair
+    // donkLead = a LEAD (not a raise) is still more value-heavy than a c-bet, but NOT
+    // as nitty as we modelled — opponents (esp. bots) bluff-lead/barrel a fair bit, so
+    // softer multipliers keep more bluffs in the lead range → marginal made hands call
+    // more vs leads (a top pair into a barrel is a real bluff-catch, not an auto-fold).
+    if (above === 1) return Math.max(0.08, 0.52 * (1 - a * 0.7)) * (facingRaise ? 0.06 : donkLead ? 0.52 : 1)  // 2nd pair / middle
+    return Math.max(0.05, 0.36 * (1 - a * 0.85)) * (facingRaise ? 0.04 : donkLead ? 0.44 : 1)              // weak / bottom pair
   }
-  if (hasStrongDraw(oppHole, board)) return 0.58 * (facingRaise ? 0.18 : donkLead ? 0.4 : 1)  // a turn/river raise is rarely a BARE draw
-  return Math.max(0.05, 0.18 * (1 - a * 0.4)) * (facingRaise ? 0.03 : donkLead ? 0.18 : 1)    // air bluff
+  if (hasStrongDraw(oppHole, board)) return 0.58 * (facingRaise ? 0.18 : donkLead ? 0.58 : 1)  // a turn/river raise is rarely a BARE draw
+  return Math.max(0.05, 0.18 * (1 - a * 0.4)) * (facingRaise ? 0.03 : donkLead ? 0.42 : 1)    // air bluff
 }
 
 // Pre-flop pot type narrows the villain's range BEFORE the flop. A 3-bet/4-bet pot
