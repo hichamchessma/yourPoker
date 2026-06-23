@@ -1424,7 +1424,7 @@ export default function GamePage(): JSX.Element {
   }))
   const [chipFlights, setChipFlights] = useState<ChipFlight[]>([])
   const [heroBetAmt, setHeroBetAmt] = useState(bbAmt * 2)
-  const [showBetInput, setShowBetInput] = useState(false)   // custom raise amount (keyboard toggle)
+  const [showBetInput, setShowBetInput] = useState(true)   // custom raise amount visible by default (⌨ can hide it)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
   const pausedByHistoryRef = useRef(false) // we auto-paused for the history modal → auto-resume on close
@@ -4409,7 +4409,7 @@ export default function GamePage(): JSX.Element {
                     { label: 'Pot', amt: sizeTo(1) },
                   ].filter(p => { if (p.amt >= heroMaxTo || seen.has(p.amt)) return false; seen.add(p.amt); return true })
                   return (
-                    <div className="absolute left-1/2 ml-10 bottom-full mb-1 z-30 flex flex-col-reverse gap-1 w-[150px]">
+                    <div className="absolute left-1/2 ml-24 bottom-full mb-1 z-30 flex flex-col-reverse gap-1 w-[150px]">
                       {/* All-in sits on top */}
                       <motion.button whileTap={{ scale: 0.96 }} onClick={() => heroAction('ALL-IN', heroMaxTo)}
                         className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-purple-500/55 bg-[#1a1030] hover:bg-purple-900/60 transition-all shadow-lg shadow-black/50">
