@@ -1648,10 +1648,9 @@ export default function GamePage(): JSX.Element {
     const cx = 50, cy = compactTable ? 47 : 49
     const x = cx + rx * Math.cos(angle)
     let y = cy + ry * Math.sin(angle)
-    // Phone: lift the hero (offset 0, bottom-centre) clear of the floating action
-    // bar (taller when it's their turn, with the bet presets) so the stack/cards
-    // are never hidden.
-    if (compactTable && offset === 0) y -= 14
+    // Lift the hero (offset 0, bottom-centre) clear of the floating action controls
+    // so the stack/cards are never hidden behind them (more on phone where it's tighter).
+    if (offset === 0) y -= compactTable ? 16 : 10
     return { left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }
   }
 
@@ -4238,7 +4237,7 @@ export default function GamePage(): JSX.Element {
                 onClick={() => coachMoveRef.current()}
                 title="Joue exactement le conseil du coach (touche S)"
                 className="app-drag-none absolute z-30 flex items-center gap-2 px-3.5 py-2 rounded-xl border font-black text-[10px] uppercase tracking-widest"
-                style={{ right: '2.5%', bottom: '3%', borderColor: 'rgba(167,139,255,0.6)', background: 'linear-gradient(135deg, rgba(124,92,240,0.32), rgba(78,56,168,0.32))', color: '#dcd0ff', boxShadow: '0 0 24px rgba(124,92,240,0.4)', backdropFilter: 'blur(4px)' }}>
+                style={{ left: '2.5%', bottom: '3%', borderColor: 'rgba(167,139,255,0.6)', background: 'linear-gradient(135deg, rgba(124,92,240,0.42), rgba(78,56,168,0.42))', color: '#dcd0ff', boxShadow: '0 0 24px rgba(124,92,240,0.4)', backdropFilter: 'blur(4px)' }}>
                 ✨ Suivre le coach
                 <kbd className="px-1 rounded bg-black/35 text-[8px] font-mono opacity-80">S</kbd>
               </motion.button>
@@ -4410,20 +4409,20 @@ export default function GamePage(): JSX.Element {
                     { label: 'Pot', amt: sizeTo(1) },
                   ].filter(p => { if (p.amt >= heroMaxTo || seen.has(p.amt)) return false; seen.add(p.amt); return true })
                   return (
-                    <div className="absolute right-3 bottom-full mb-1.5 z-30 flex flex-col-reverse gap-1 w-[150px]">
+                    <div className="absolute left-1/2 ml-10 bottom-full mb-1 z-30 flex flex-col-reverse gap-1 w-[150px]">
                       {/* All-in sits on top */}
                       <motion.button whileTap={{ scale: 0.96 }} onClick={() => heroAction('ALL-IN', heroMaxTo)}
-                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-purple-600/45 bg-[#160e22]/92 backdrop-blur-md hover:bg-purple-900/40 transition-all shadow-lg shadow-black/40">
-                        <span className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-500/25 text-purple-200 border border-purple-400/30 leading-none">MAX</span>
-                        <span className="text-[9px] text-white/40 uppercase tracking-wide">All-in</span>
-                        <span className="ml-auto text-[11px] font-black font-mono text-purple-200">${heroMaxTo.toLocaleString()}</span>
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-purple-500/55 bg-[#1a1030] hover:bg-purple-900/60 transition-all shadow-lg shadow-black/50">
+                        <span className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-500/30 text-purple-100 border border-purple-400/40 leading-none">MAX</span>
+                        <span className="text-[9px] text-white/55 uppercase tracking-wide">All-in</span>
+                        <span className="ml-auto text-[11px] font-black font-mono text-purple-100">${heroMaxTo.toLocaleString()}</span>
                       </motion.button>
                       {presets.map(p => (
                         <motion.button key={p.label} whileTap={{ scale: 0.96 }} onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', p.amt)}
-                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-[#c9a227]/35 bg-[#13100a]/92 backdrop-blur-md hover:bg-[#c9a227]/15 transition-all shadow-lg shadow-black/40">
-                          <span className="text-[8px] font-black px-1 py-0.5 rounded bg-[#c9a227]/20 text-[#f0d878] border border-[#c9a227]/30 leading-none">{fmtBB(p.amt)}BB</span>
-                          <span className="text-[9px] text-white/40 uppercase tracking-wide">{p.label}</span>
-                          <span className="ml-auto text-[11px] font-black font-mono text-[#f0d878]">${p.amt.toLocaleString()}</span>
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-[#c9a227]/50 bg-[#1a1408] hover:bg-[#c9a227]/25 transition-all shadow-lg shadow-black/50">
+                          <span className="text-[8px] font-black px-1 py-0.5 rounded bg-[#c9a227]/25 text-[#f6dd85] border border-[#c9a227]/40 leading-none">{fmtBB(p.amt)}BB</span>
+                          <span className="text-[9px] text-white/55 uppercase tracking-wide">{p.label}</span>
+                          <span className="ml-auto text-[11px] font-black font-mono text-[#f6dd85]">${p.amt.toLocaleString()}</span>
                         </motion.button>
                       ))}
                     </div>
@@ -4501,20 +4500,21 @@ export default function GamePage(): JSX.Element {
                     </button>
                   </div>
                 ) : heroInHand ? (
-                  /* Pre-action check boxes — clickable while it's not yet our turn */
-                  <div className="w-full flex items-center gap-3">
-                    <div className="flex items-center gap-2 mr-1">
+                  /* Pre-action check boxes — compact (same footprint as the turn buttons),
+                     clickable while it's not yet our turn. */
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="hidden sm:flex items-center gap-1.5 mr-1">
                       <div className="w-2 h-2 rounded-full bg-[#00d4ff] animate-ping opacity-60"/>
                       <p className="text-[9px] text-white/35 uppercase tracking-widest whitespace-nowrap">{t('sess.waitingPreselect')}</p>
                     </div>
                     <button onClick={() => setPreAction(preAction==='fold'?'none':'fold')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all
+                      className={`flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all
                         ${preAction==='fold' ? 'border-red-500 bg-red-600/30 text-red-200 shadow-[0_0_16px_rgba(220,40,40,0.35)]' : 'border-red-700/40 bg-red-900/15 text-red-400/80 hover:bg-red-900/30'}`}>
                       <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${preAction==='fold'?'bg-red-500 border-red-400 text-white':'border-red-500/50'}`}>{preAction==='fold'?'✓':''}</span>
                       Fold
                     </button>
                     <button onClick={() => setPreAction(preAction==='checkcall'?'none':'checkcall')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all
+                      className={`flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl border font-bold text-sm uppercase tracking-widest transition-all
                         ${preAction==='checkcall'
                           ? (preCanCheck ? 'border-sky-400 bg-sky-600/30 text-sky-100 shadow-[0_0_16px_rgba(40,140,220,0.35)]' : 'border-emerald-400 bg-emerald-600/30 text-emerald-100 shadow-[0_0_16px_rgba(40,200,120,0.35)]')
                           : (preCanCheck ? 'border-sky-700/40 bg-sky-900/15 text-sky-400/80 hover:bg-sky-900/30' : 'border-emerald-700/40 bg-emerald-900/15 text-emerald-400/80 hover:bg-emerald-900/30')}`}>
