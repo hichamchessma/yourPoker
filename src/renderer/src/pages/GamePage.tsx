@@ -1538,9 +1538,12 @@ export default function GamePage(): JSX.Element {
       // your cards) — like calling a clock-pause to think; blinds won't go up.
       if (gsRef.current.paused || t.busted || coachOpenRef.current || rangeFilmRef.current) return
       if (t.secondsLeft > 0) t.secondsLeft -= 1
-      if (t.secondsLeft <= 0 && t.levelIdx < tourLevels.length - 1) {
+      // The level keeps ADVANCING past the last printed level (blinds clamp to the top
+      // level via tourBlinds()), so levelFloat keeps rising and the field keeps shrinking
+      // to the final table instead of freezing at the last level (it used to stick ~13).
+      if (t.secondsLeft <= 0) {
         t.levelIdx += 1; t.secondsLeft = tournament.levelMinutes * 60; setTourLevelIdx(t.levelIdx)
-      } else if (t.secondsLeft < 0) t.secondsLeft = 0
+      }
       if (!t.finalTable) {
         const lf = t.levelIdx + (1 - t.secondsLeft / Math.max(1, tournament.levelMinutes * 60))
         const fm = fieldRemaining(tournament.field, lf)
@@ -1564,12 +1567,13 @@ export default function GamePage(): JSX.Element {
     const t = tourRef.current
     if (t.busted || gsRef.current.paused) return
     t.secondsLeft -= secs
-    while (t.secondsLeft <= 0 && t.levelIdx < tourLevels.length - 1) {
+    // Level keeps advancing past the last printed level (blinds clamp) so the field
+    // keeps converging to the final table — see the clock above.
+    while (t.secondsLeft <= 0) {
       t.levelIdx += 1
       t.secondsLeft += tournament.levelMinutes * 60
       setTourLevelIdx(t.levelIdx)
     }
-    if (t.secondsLeft < 0) t.secondsLeft = 0
     if (!t.finalTable) {
       const lf = t.levelIdx + (1 - t.secondsLeft / Math.max(1, tournament.levelMinutes * 60))
       const fm = fieldRemaining(tournament.field, lf)
@@ -1789,7 +1793,10 @@ export default function GamePage(): JSX.Element {
 
   // ─── Blind / seat setup ──────────────────────────────────────────────────
   function findBlinds(seats: Seat[], dealerIdx: number): { sbIdx: number; bbIdx: number } {
-    const isLive = (s?: Seat) => !!s && !s.isEliminated && s.stack > 0 && !s.isSittingOut
+    // In a TOURNAMENT an absent (sit-out) player is still blinded — they post SB/BB/ante
+    // and auto-fold, so they bleed down and bust like real life (no immortal deep run).
+    // In cash, sitting out genuinely sits you out (no blinds).
+    const isLive = (s?: Seat) => !!s && !s.isEliminated && s.stack > 0 && (!!tournament || !s.isSittingOut)
     const active = seats.filter(isLive)
     const n = active.length
     // Fewer than 2 active players (e.g. you sit out heads-up): never charge a
@@ -2583,21 +2590,27 @@ export default function GamePage(): JSX.Element {
     if (tournament) {
       const t = tourRef.current
       if (!t.finalTable) {
-        // Table balancing: refill busted bots with an incoming player from another table.
-        // The field's survivors are RIGHT-SKEWED (many short stacks, a few big) → a random
-        // arrival has ~the MEDIAN, well BELOW the mean. Refilling at the mean (field×start
-        // ÷ left, which GROWS as the field shrinks) makes the hero face an endless wall of
-        // ever-bigger stacks → it can never build a dominant stack and almost never reaches
-        // the final table. Refill around the MEDIAN (≈0.55× mean) with variance, so a hero
-        // that ACCUMULATES stays ahead and can actually run deep / win.
+        // Table balancing — refill busted bots with incoming players, but CONSERVE the
+        // tournament's chips: an arrival's stack is drawn from the OFF-TABLE chip budget
+        // (total − what's already on this table), so the table can never hold more than the
+        // whole tournament owns (it used to bloat to >100M in a 25M event). Arrivals are
+        // ~the field MEDIAN (right-skewed field → below the mean) so a hero who accumulates
+        // stays ahead. When the budget runs dry the seat stays empty → the table shrinks
+        // toward the final table.
         const startChips = tournament.startBB * tourLevels[0].bb
-        const fieldAvg = (tournament.field * startChips) / Math.max(1, t.playersLeft)
-        const median = fieldAvg * 0.55
-        // Names already in use by seats we keep → refills pick a DIFFERENT name.
+        const totalChips = tournament.field * startChips
+        const onTable = seats.reduce((a, s) => a + ((s.isHero || (!s.isEliminated && s.stack > 0)) ? s.stack : 0), 0)
+        let budget = Math.max(0, totalChips - onTable)
+        const median = (totalChips / Math.max(1, t.playersLeft)) * 0.55
+        const minStack = Math.round(startChips * 0.15)
         const usedNames = new Set<string>(seats.filter(s => !(s.isEliminated && !s.isHero)).map(s => s.name))
         seats = seats.map(s => {
           if (!(s.isEliminated && !s.isHero)) return s
-          const r = refillSeat(s, Math.max(Math.round(startChips * 0.15), Math.round(median * (0.4 + Math.random() * 1.4))), usedNames)
+          const desired = Math.max(minStack, Math.round(median * (0.4 + Math.random() * 1.4)))
+          const stack = Math.min(desired, budget)
+          if (stack < minStack) return s   // off-table chips depleted → leave the seat empty
+          budget -= stack
+          const r = refillSeat(s, stack, usedNames)
           usedNames.add(r.name)
           return r
         })
@@ -4045,7 +4058,7 @@ export default function GamePage(): JSX.Element {
               <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-1"
                 style={{ background: 'linear-gradient(180deg, rgba(14,10,3,0.94) 35%, rgba(14,10,3,0))' }}>
                 <div className="flex items-center gap-2.5">
-                  <Mini l={t('game.hudLevel')} v={`${tourLevelIdx + 1}`} accent />
+                  <Mini l={t('game.hudLevel')} v={`${Math.min(tourLevelIdx + 1, tourLevels.length)}`} accent />
                   <Mini l={t('game.hudBlinds')} v={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}`} />
                   <Mini l={t('game.hudNextLevel')} v={timer} />
                 </div>
@@ -4061,7 +4074,7 @@ export default function GamePage(): JSX.Element {
           return (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-xl border px-1 py-1.5 backdrop-blur-md divide-x divide-white/10"
               style={{ background: 'rgba(20,14,4,0.92)', borderColor: 'rgba(240,192,96,0.35)' }}>
-              <Cell label={t('game.hudLevel')} value={`${tourLevelIdx + 1}`} accent />
+              <Cell label={t('game.hudLevel')} value={`${Math.min(tourLevelIdx + 1, tourLevels.length)}`} accent />
               <Cell label={t('game.hudBlinds')} value={`${curLevel.sb.toLocaleString()}/${curLevel.bb.toLocaleString()}${curLevel.ante ? ` (a${curLevel.ante.toLocaleString()})` : ''}`} />
               <Cell label={t('game.hudNextLevel')} value={timer} />
               <Cell label={t('game.hudPlayers')} value={`${playersLeft.toLocaleString()}/${tournament.field.toLocaleString()}`} accent />
