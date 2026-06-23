@@ -35,14 +35,14 @@ export default function TournamentSetupPage() {
   const [showResume, setShowResume] = useState(!!saved)
   const resumeSession = () => { if (saved) navigate('/game', { state: { ...saved.cfg, resume: saved } }) }
 
-  const [field, setField] = useState(180)
+  const [field, setField] = useState(45)
   const [tableSize, setTableSize] = useState(9)
   const [startBB, setStartBB] = useState(100)
   const [speed, setSpeed] = useState<Speed>('regular')
   const [levelMinutes, setLevelMinutes] = useState(5)
   const [antes, setAntes] = useState(true)
   const [buyIn, setBuyIn] = useState(20)
-  const [paidPct, setPaidPct] = useState(15)
+  const [paidPct, setPaidPct] = useState(19)
   const [curve, setCurve] = useState<Curve>('standard')
   const [reentry, setReentry] = useState(false)
   const [botLevel, setBotLevel] = useState(2)
