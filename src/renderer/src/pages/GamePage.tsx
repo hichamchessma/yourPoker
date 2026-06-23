@@ -4263,10 +4263,9 @@ export default function GamePage(): JSX.Element {
               )
             })()}
 
-            {/* Dealer button */}
-            {gs.phase !== 'idle' && gs.seats.length > 0 && (() => {
-              const dealerSeat = gs.seats[gs.dealerIdx]
-              if (!dealerSeat) return null
+            {/* Dealer button — GLIDES to the next seat between hands (real-client feel)
+                instead of teleporting. Kept mounted across hands so the position tweens. */}
+            {gs.phase !== 'idle' && gs.seats.length > 0 && gs.seats[gs.dealerIdx] && (() => {
               const pos = getSeatPosPct(gs.dealerIdx, gs.seats.length)
               const leftPct = parseFloat(pos.left)
               const topPct = parseFloat(pos.top)
@@ -4274,14 +4273,13 @@ export default function GamePage(): JSX.Element {
               const offX = leftPct < 50 ? 8 : -8
               const offY = topPct < 50 ? 6 : -6
               return (
-                <div className="absolute pointer-events-none" style={{
-                  left: `calc(${pos.left} + ${offX}%)`,
-                  top: `calc(${pos.top} + ${offY}%)`,
-                  transform: 'translate(-50%,-50%)',
-                  zIndex: 15,
-                }}>
+                <motion.div className="absolute pointer-events-none"
+                  initial={false}
+                  animate={{ left: `${leftPct + offX}%`, top: `${topPct + offY}%` }}
+                  transition={{ type: 'spring', stiffness: 120, damping: 18, mass: 0.7 }}
+                  style={{ transform: 'translate(-50%,-50%)', zIndex: 15 }}>
                   <DealerButtonToken size={compactTable?17:34}/>
-                </div>
+                </motion.div>
               )
             })()}
 
