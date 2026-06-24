@@ -776,6 +776,7 @@
     "valueBet": "Strong hand: bet for value and make the draws pay.",
     "semiBluff": "Strong draw: a semi-bluff wins the pot right away or by hitting.",
     "onePairCheck": "Medium pair: check to control the pot size and bluff-catch later.",
+    "flushBoardPotControl": "{{n}} cards of one suit on the board: your {{name}} is BEHIND every made flush. Betting for value only gets called by flushes and folds out worse → check (pot control); you still beat the non-flushes and can fill up.",
     "bluffNoSdv": "You have no showdown value ({{eq}}) → checking almost always gives up the pot.",
     "bluffRepNuts": "The opponent bet then checked (capped range) and the {{tex}} board favors YOUR in-position calling range: you rep the nuts → big fold equity. This is a bluff, not over-aggression.",
     "texCompleted": "with completed flush/straight",

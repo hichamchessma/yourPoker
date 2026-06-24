@@ -776,6 +776,7 @@
     "valueBet": "Main forte : mise pour la valeur et fais payer les tirages.",
     "semiBluff": "Tirage fort : un semi-bluff gagne le pot tout de suite ou en touchant.",
     "onePairCheck": "Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.",
+    "flushBoardPotControl": "{{n}} cartes de la même couleur sur le board : ton {{name}} est DERRIÈRE toutes les couleurs déjà faites. Miser pour la valeur ne fait que payer les couleurs et fold les pires → checke (contrôle du pot), tu bats encore les non-couleurs et tu peux te remplir.",
     "bluffNoSdv": "Tu n'as aucune showdown value ({{eq}}) → checker abandonne presque toujours le pot.",
     "bluffRepNuts": "L'adversaire a misé puis checké (range plafonné) et le board {{tex}} favorise TON range de caller en position : tu rep le nuts → grosse fold equity. C'est un bluff, pas de la sur-agressivité.",
     "texCompleted": "à couleur/quinte complétée",

@@ -164,7 +164,9 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
   const all = [...hole, ...board]
   const bySuit: Record<string, number> = {}
   all.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
-  if (Object.values(bySuit).some(n => n === 4)) return true
+  // A flush DRAW needs the HERO to hold a card of that suit — 4 of a suit all on the
+  // board is a board flush, not the hero's draw (e.g. black JJ on a 4-heart board).
+  if (Object.entries(bySuit).some(([s, n]) => n === 4 && hole.some(h => h.suit === s))) return true
   const vals = new Set(all.map(c => RV[c.rank]))
   if (vals.has(14)) vals.add(1)
   for (let lo = 1; lo <= 10; lo++) {
@@ -333,7 +335,9 @@ function detectDraws(hole: Card[], board: Card[]): DrawCode[] {
   const all = [...hole, ...board]
   const bySuit: Record<string, number> = {}
   all.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
-  if (Object.values(bySuit).some(n => n === 4)) draws.push('flush')
+  // Only a flush draw the HERO actually holds (a card of that suit) — 4 of a suit all
+  // on the board is a board flush, not the hero's draw.
+  if (Object.entries(bySuit).some(([s, n]) => n === 4 && hole.some(h => h.suit === s))) draws.push('flush')
   const vals = new Set(all.map(c => RV[c.rank]))
   if (vals.has(14)) vals.add(1)
   let oesd = false, gut = false
@@ -592,7 +596,16 @@ export function getPostflopAdvice(input: {
     const protectVsDraw = toCall <= 0 && !isStrongValue && !thinValueVsCapped && !protectionBet
       && isOnePair && (effPair === 'top' || effPair === 'overpair')
       && drawyBoard && eq >= Math.max(0.48, fairShare + 0.1)
-    if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw) {
+    // A COMPLETED flush sits on the board (4+ of a suit) and the hero has NO flush
+    // (effCat < 5): a set / two pair / pair is BEHIND every made flush → betting for
+    // "value" only gets called by flushes (which crush it) and folds out worse. Check
+    // and pot-control instead (we still beat non-flushes and may redraw to a full house).
+    const boardFlushNoHero = maxSuitB >= 4 && effCat < 5
+    if (boardFlushNoHero && (isStrongValue || isOnePair)) {
+      action = 'CHECK'; sizingText = tt('cadv.szCheckPotControl')
+      reasons.push(tt('cadv.flushBoardPotControl', { n: maxSuitB, name: name.toLowerCase() }))
+      confidence = 'moyenne'
+    } else if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw) {
       action = 'BET'
       if (protectionBet) {
         sizingText = tt('cadv.szProtectionHalf', { amt: round(pot * 0.5) }); betFrac = 0.5

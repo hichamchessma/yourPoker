@@ -776,6 +776,7 @@
     "valueBet": "Mano fuerte: apuesta por valor y haz pagar a los proyectos.",
     "semiBluff": "Proyecto fuerte: un semifarol gana el bote de inmediato o al ligar.",
     "onePairCheck": "Pareja media: pasa para controlar el tamaño del bote y hacer bluff-catch después.",
+    "flushBoardPotControl": "{{n}} cartas del mismo palo en la mesa: tu {{name}} está POR DETRÁS de todos los colores ya hechos. Apostar por valor solo te paga con colores y hace foldear lo peor → pasa (control del bote); aún ganas a los que no tienen color y puedes mejorar.",
     "bluffNoSdv": "No tienes valor de showdown ({{eq}}) → pasar casi siempre cede el bote.",
     "bluffRepNuts": "El rival apostó y luego pasó (rango limitado) y el board {{tex}} favorece TU rango de pago en posición: representas los nuts → gran fold equity. Es un farol, no exceso de agresión.",
     "texCompleted": "con color/escalera completados",
