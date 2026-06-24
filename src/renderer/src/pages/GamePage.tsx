@@ -1112,6 +1112,20 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
                   )
                 })}
 
+                {/* Dealer button — show the BTN so the position is clear in the replay too */}
+                {(() => {
+                  const di = record.players.findIndex(p => p.position === 'BTN' || p.position === 'BTN/SB')
+                  if (di < 0) return null
+                  const dp = getPlayerPos(di)
+                  const ox = dp.x < 50 ? 5 : -5
+                  const oy = dp.y < 46 ? 4 : -4
+                  return (
+                    <div className="absolute pointer-events-none" style={{ left: `${dp.x + ox}%`, top: `${dp.y + oy}%`, transform: 'translate(-50%,-50%)', zIndex: 14 }}>
+                      <DealerButtonToken size={isPhone ? 16 : 24}/>
+                    </div>
+                  )
+                })()}
+
                 {/* Live bets in front of players (re-enacted street by street). Hidden
                     at the end — the chips have been swept into the pot → winner. */}
                 {!isEnd && record.players.map((pl, i) => {
