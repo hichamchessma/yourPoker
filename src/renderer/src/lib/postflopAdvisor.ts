@@ -394,7 +394,12 @@ export function getPostflopAdvice(input: {
   // earlier, so a checked-then-bet line is rarely the nuts and carries far more
   // bluffs / medium hands. Soften the value-polarization so the hero's bluff-catchers
   // correctly call more (it also eases the reverse-implied-odds cushion).
-  const aggression = input.cappedRange ? rawAggr * 0.5 : rawAggr
+  // BUT only for a SINGLE delayed bet. Once the villain keeps BARRELLING (2+ streets) the
+  // range re-polarises to value — the hands that delayed now fire, and a completing scare
+  // card makes value credible — so the "capped" discount switches OFF instead of paying
+  // down a double/triple barrel with an underpair (e.g. 77 vs check-flop, bet-turn, bet-A-river).
+  const cappedActive = !!input.cappedRange && (input.barrels ?? 0) <= 1
+  const aggression = cappedActive ? rawAggr * 0.5 : rawAggr
   const effStack = input.effStack ?? input.heroStack
   const barrels = input.barrels ?? 0
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0
@@ -424,7 +429,7 @@ export function getPostflopAdvice(input: {
     : tt('cadv.eqVsOpp', { count: opponents })
   reasons.push(tt('cadv.equityReal', { eq: pct(eq), suffix: eqSuffix }))
   if (toCall > 0) reasons.push(tt('cadv.potOdds', { odds: pct(potOdds), toCall }))
-  if (input.cappedRange && toCall > 0) reasons.push(tt('cadv.capped'))
+  if (cappedActive && toCall > 0) reasons.push(tt('cadv.capped'))
   if (input.donkLead && !input.facingRaise && toCall > 0) reasons.push(tt('cadv.donkLead'))
   if (input.facingRaise && toCall > 0) reasons.push(tt('cadv.facingRaise'))
   // "Playing the board" is strictly a RIVER concept (5 community cards) where your
