@@ -440,7 +440,12 @@ export function getPostflopAdvice(input: {
   if (hole[0].rank === hole[1].rank) holePairRanks.add(RV[hole[0].rank])
   hole.forEach(h => { if (board.some(b => b.rank === h.rank)) holePairRanks.add(RV[h.rank]) })
   const boardLeanTwoPair = cat === 2 && holePairRanks.size <= 1
-  const effCat = boardOnlyPair ? 0 : boardLeanTwoPair ? 1 : cat
+  // Trips / full house / quads the hero makes WITHOUT any hole-card pair (no pocket pair,
+  // no card matching the board) sit ENTIRELY on the board — everyone shares them, only
+  // the kicker plays. e.g. Q-T on A-2-K-K-K is NOT trips, it's a Queen kicker → don't
+  // value-bet/jam it. (Straights/flushes are excluded: hole cards can form those.)
+  const boardOnlyMade = (cat === 3 || cat === 6 || cat === 7) && !heroHasRealPair
+  const effCat = boardOnlyPair || boardOnlyMade ? 0 : boardLeanTwoPair ? 1 : cat
   // Effective pair class for the demoted hand (analyseMade only classifies cat 1).
   let effPair: PairKind = pair
   if (boardLeanTwoPair) {
@@ -767,7 +772,8 @@ export function diagnoseSpot(hole: Card[], board: Card[]): SpotDiagnosis {
   if (hole[0].rank === hole[1].rank) holePairRanks.add(RV[hole[0].rank])
   hole.forEach(h => { if (board.some(b => b.rank === h.rank)) holePairRanks.add(RV[h.rank]) })
   const boardLeanTwoPair = cat === 2 && holePairRanks.size <= 1
-  const effCat = boardOnlyPair ? 0 : boardLeanTwoPair ? 1 : cat
+  const boardOnlyMade = (cat === 3 || cat === 6 || cat === 7) && !heroHasRealPair  // trips/full/quads entirely on the board
+  const effCat = boardOnlyPair || boardOnlyMade ? 0 : boardLeanTwoPair ? 1 : cat
   let effPair: PairKind = pair
   if (boardLeanTwoPair) {
     const pr = [...holePairRanks][0] ?? 0
