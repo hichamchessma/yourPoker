@@ -131,9 +131,11 @@ const POT_POS = { x: 50, y: 50 }
 function betOffset(leftPct: number, topPct: number): { x: number; y: number } {
   const dx = 50 - leftPct, dy = 50 - topPct
   const len = Math.hypot(dx, dy) || 1
-  // Bottom seats (the hero) need a longer reach so the chips + amount clear the
-  // hole cards that are drawn above the seat panel (otherwise the cards hide the bet).
-  const dist = topPct > 62 ? 27 : 13
+  // Only the bottom-CENTRE seat (the hero) needs a longer reach so the chips clear its
+  // big hole cards. The bottom-LEFT/RIGHT seats use the normal reach so their bets ride
+  // the dashed ring NEXT TO THEIR OWN cards (seat → chips → pot stay in a straight line),
+  // instead of being pushed in toward the hero's cards.
+  const dist = (topPct > 62 && Math.abs(leftPct - 50) < 16) ? 27 : 13
   return { x: (dx / len) * dist, y: (dy / len) * dist }
 }
 
