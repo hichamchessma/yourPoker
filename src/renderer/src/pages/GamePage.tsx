@@ -2268,6 +2268,21 @@ export default function GamePage(): JSX.Element {
     return -1
   }
 
+  // TOURNAMENT rule: at an all-in showdown (2+ players in the hand and no further
+  // betting possible — the rest are all-in), the players TURN THEIR CARDS FACE UP
+  // before the board runs out. Cash games keep them hidden until showdown. Returns
+  // the SAME state ref when nothing changes (not tournament / betting still open /
+  // already shown) so callers can detect a real reveal.
+  function revealAllInCards(state: GState): GState {
+    if (!tournament) return state
+    const live = state.seats.filter(s => !s.isFolded && !s.isEliminated)
+    if (live.length < 2) return state
+    if (live.filter(s => !s.isAllIn).length > 1) return state                 // betting still open
+    if (live.every(s => s.cardsFaceUp || !(s.holeCards[0] || s.holeCards[1]))) return state // already up
+    return { ...state, seats: state.seats.map(s =>
+      (!s.isFolded && !s.isEliminated && (s.holeCards[0] || s.holeCards[1])) ? { ...s, cardsFaceUp: true } : s) }
+  }
+
   function endStreet(state: GState): void {
     // Slide every committed bet into the central pot, then reset the bets.
     const collectMs = collectBetsToPot(state.seats)
@@ -2285,7 +2300,16 @@ export default function GamePage(): JSX.Element {
         newState.phase === 'preflop' ? 'flop' :
         newState.phase === 'flop' ? 'turn' :
         newState.phase === 'turn' ? 'river' : 'showdown'
-      dealCommunity(newState, nextPhase)
+      // Tournament all-in showdown → flip cards FACE UP and pause before the board
+      // runs out (so you see the cards turn over first). Otherwise deal straight away.
+      const revealed = revealAllInCards(newState)
+      if (revealed !== newState) {
+        setGs(revealed); gsRef.current = revealed
+        const gen = flowGenRef.current
+        setTimeout(() => { if (flowGenRef.current !== gen) return; dealCommunity(gsRef.current, nextPhase) }, fastFwdRef.current ? 80 : 900)
+      } else {
+        dealCommunity(newState, nextPhase)
+      }
     }
   }
 
@@ -2336,16 +2360,19 @@ export default function GamePage(): JSX.Element {
     }
 
     // 0 or 1 player can still act (others all-in) → no more betting, run the
-    // rest of the board out to showdown.
+    // rest of the board out to showdown. Tournament: make sure the all-in cards are
+    // face up (endStreet does it first, this keeps later run-out streets consistent).
     if (queue.length <= 1) {
+      const rs = revealAllInCards(state)
+      if (rs !== state) { setGs(rs); gsRef.current = rs }
       const gen = flowGenRef.current
-      if (state.phase === 'river') setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(state) }, fastFwdRef.current ? 50 : 400)
+      if (rs.phase === 'river') setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(rs) }, fastFwdRef.current ? 50 : 400)
       else {
         const nextPhase: Phase =
-          state.phase === 'preflop' ? 'flop' :
-          state.phase === 'flop' ? 'turn' :
-          state.phase === 'turn' ? 'river' : 'showdown'
-        dealCommunity(state, nextPhase)
+          rs.phase === 'preflop' ? 'flop' :
+          rs.phase === 'flop' ? 'turn' :
+          rs.phase === 'turn' ? 'river' : 'showdown'
+        dealCommunity(rs, nextPhase)
       }
       return
     }
