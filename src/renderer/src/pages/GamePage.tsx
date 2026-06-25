@@ -988,7 +988,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   const visibleActions = record.actions.slice(0, stepIdx + 1)
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isPhone?'p-0':'p-3'}`} style={{background:'rgba(0,0,0,0.9)'}}>
+    <div className={`fixed inset-0 z-[110] flex items-center justify-center ${isPhone?'p-0':'p-3'}`} style={{background:'rgba(0,0,0,0.9)'}}>
       <RotateGate onQuit={onClose} />
       <motion.div initial={{opacity:0,scale:0.94,y:16}} animate={{opacity:1,scale:1,y:0}}
         className={`w-full flex flex-col border border-white/10 overflow-hidden ${isPhone?'h-full rounded-none':'max-w-[1480px] h-[94vh] rounded-2xl'}`}
@@ -4682,6 +4682,12 @@ export default function GamePage(): JSX.Element {
                   style={{ background: 'linear-gradient(135deg,#5ad19a,#2e9e6b)', color: '#04140c' }}>
                   <RefreshCw size={14}/> {t('game.rejouer')}
                 </button>
+                {handHistory.length > 0 && (
+                  <button onClick={openHistory} title={t('game.viewHistory')}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#f0c060] hover:bg-[#c9a227]/20 transition-all">
+                    <Eye size={14}/> {t('game.viewHistory')}
+                  </button>
+                )}
                 <button onClick={() => navigate('/tournament')}
                   className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-[0.16em] text-[12px] border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 transition-all">
                   {t('game.quit')}
