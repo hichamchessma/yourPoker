@@ -70,6 +70,7 @@ interface TournamentCfg {
   field: number; tableSize: number; startBB: number; speed: TourSpeed; levelMinutes: number; antes: boolean
   buyIn: number; paidPct: number; curve: 'standard' | 'topheavy' | 'flat'
   reentry: boolean; botLevel: number
+  noHelp?: boolean   // "serious session": all assists off + hero on the clock
 }
 // Custom-scenario start state coming from SetupPositionPage.
 interface ScenarioCfg {
@@ -1475,6 +1476,10 @@ export default function GamePage(): JSX.Element {
 
   // ─── Tournament (MTT) — escalating blinds + field model ────────────────────
   const tournament = cfg.tournament
+  // "Serious session" (tournament option): every assist is OFF (no coach panel, no
+  // opponent ranges, no follow-coach / turbo / angry coach) and the hero plays on a
+  // real clock that auto-checks/folds when it runs out.
+  const noHelp = !!tournament?.noHelp
 
   // ─── Live-session resume (cash / tournament only) ──────────────────────────
   const saveResumable = useLiveSession(s => s.saveResumable)
@@ -2783,11 +2788,15 @@ export default function GamePage(): JSX.Element {
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     // A manually-authored scenario is a one-off spot — never auto-deal a new hand.
     if (manualModeRef.current) return
-    // Don't deal a new hand while the hero is busted (waiting on a rebuy).
-    // Sitting out does NOT halt the table — the hero is simply dealt out.
-    if (heroIsBusted(gsRef.current)) return
+    // Don't deal a new hand while the hero is busted (waiting on a rebuy) or the
+    // tournament is already decided (won/out). Sitting out does NOT halt the table.
+    if (heroIsBusted(gsRef.current) || tourRef.current.busted) return
     nextHandTimeoutRef.current = setTimeout(() => {
-      if (gsRef.current.paused || heroIsBusted(gsRef.current)) return
+      nextHandTimeoutRef.current = null   // mark "fired" so the flow watchdog can detect a stall
+      if (heroIsBusted(gsRef.current) || tourRef.current.busted) return
+      // Paused (history modal open) → don't drop the hand: poll again so it deals the
+      // moment you resume, instead of stranding the table until a mode toggle.
+      if (gsRef.current.paused) { scheduleNextHand(); return }
       advanceToNextHand()
     }, fastFwdRef.current ? 350 : 3800)
   }
@@ -2822,13 +2831,13 @@ export default function GamePage(): JSX.Element {
 
   function startHand(prevSeats: Seat[], dealerIdx: number, prevHandNum: number) {
     const handNum = prevHandNum + 1
-    // Touch: a tapped-open range/coach must NOT linger into the next hand (there's no
-    // mouse-leave to close it), so reset the hover state at every new hand.
-    if (isTouch) {
-      cancelOppGrace()
-      setHoverSeat(null); setOppPanelHover(false); oppPanelHoverRef.current = false
-      setFilmPinned(false); setHeroPanelHover(false); heroPanelHoverRef.current = false
-    }
+    // A tapped/hovered range or coach panel must NOT linger into the next hand: on touch
+    // there's no mouse-leave to close it, and on DESKTOP a stationary cursor resting on
+    // your cards keeps the coach panel open ON TOP of the freshly dealt hand (it read as
+    // "cards invisible / can't act" until you moved the mouse). Reset it on every hand.
+    cancelOppGrace()
+    setHoverSeat(null); setOppPanelHover(false); oppPanelHoverRef.current = false
+    setFilmPinned(false); setHeroPanelHover(false); heroPanelHoverRef.current = false
     // ── Checkpoint a resumable cash/tournament session at this clean hand boundary
     //    (prevSeats hold start-of-hand stacks, before any blinds/antes are posted). ──
     if (sessionFormat && !simModeRef.current) checkpointSession(prevSeats, dealerIdx, prevHandNum)
@@ -3519,7 +3528,7 @@ export default function GamePage(): JSX.Element {
     && gs.phase !== 'idle' && gs.phase !== 'dealing' && gs.phase !== 'showdown'
   // Coach hover-card is open when hovering the hero's own profile (or the panel) —
   // and forced open during an Angry-Coach scold (freezes the clock + shows the panel).
-  const coachOpen = (!!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)) || (angry !== null && !!hero)
+  const coachOpen = !noHelp && ((!!hero && heroInHand && (hoverSeat === hero.idx || heroPanelHover)) || (angry !== null && !!hero))
   coachOpenRef.current = coachOpen
   // Angry scold held open because the mouse was inside the message → finish (and
   // replay the move) the moment the mouse leaves.
@@ -3530,7 +3539,7 @@ export default function GamePage(): JSX.Element {
   // The opponent range "film" is open while hovering an in-hand opponent (or its
   // popup). Like the coach card, it FREEZES the clock — the point is to LEARN how
   // the range evolved, not to be rushed.
-  const rangeFilmOpen = (hoverSeat !== null && hoverSeat !== hero?.idx) || oppPanelHover || filmPinned
+  const rangeFilmOpen = !noHelp && ((hoverSeat !== null && hoverSeat !== hero?.idx) || oppPanelHover || filmPinned)
   rangeFilmRef.current = rangeFilmOpen
   // Each time the hovered seat changes (incl. closing), start the new film unpinned.
   useEffect(() => { setFilmPinned(false) }, [hoverSeat])
@@ -3788,6 +3797,22 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.handNum, gs.currentBet, gs.phase, turbo])
 
+  // SERIOUS SESSION: the hero is on a real clock (no assists to lean on). When the turn
+  // bar empties, auto-check (nothing to call) or auto-fold — no infinite tanking. The
+  // visual bar (turnSeconds = decisionTimer) is shown only here, so the two stay in sync.
+  useEffect(() => {
+    if (!noHelp || !isHeroTurn || gs.paused || manualMode) return
+    const id = setTimeout(() => {
+      const cur = gsRef.current
+      const h = cur.seats.find(s => s.isHero)
+      if (!h?.isActive || cur.paused) return
+      const toCall = cur.currentBet - h.bet
+      heroAction(toCall <= 0 ? 'CHECK' : 'FOLD', 0, true)
+    }, decisionTimer * 1000)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noHelp, isHeroTurn, gs.handNum, gs.currentBet, gs.paused, manualMode])
+
   // ── Keyboard shortcuts — only on the hero's turn, ignored while typing ──
   //   f = fold · c = check/call · &(1) = ⅓ pot · é(2) = ⅔ pot · p = pot · a = all-in
   //   (& and é are the AZERTY 1/2 keys; the bare 1/2 digits work too as a fallback)
@@ -3800,7 +3825,7 @@ export default function GamePage(): JSX.Element {
       const k = e.key.toLowerCase()
       const sizeTo = (frac: number) => clampRaise(gs.currentBet + Math.round((gs.pot + callAmt) * frac / bbAmt) * bbAmt)
       const aggro = (amt: number) => { if (canRaise) heroAction(isOpenBet ? 'BET' : 'RAISE', amt) }
-      if (k === 's') { e.preventDefault(); coachMoveRef.current() } // suivre le conseil du coach
+      if (k === 's') { if (noHelp) return; e.preventDefault(); coachMoveRef.current() } // suivre le conseil du coach
       else if (k === 'f') { e.preventDefault(); heroAction('FOLD') }
       else if (k === 'c') { e.preventDefault(); if (canCheck) heroAction('CHECK'); else heroAction('CALL', callAmt) }
       else if (k === '&' || k === '1') { e.preventDefault(); aggro(sizeTo(1 / 3)) }
@@ -3822,7 +3847,7 @@ export default function GamePage(): JSX.Element {
       const el = document.activeElement
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
       if (e.key === ' ' || e.code === 'Space') {
-        if (!hero) return
+        if (!hero || noHelp) return   // serious session — coach card disabled
         e.preventDefault()
         cancelOppGrace(); setFilmPinned(false)
         setHoverSeat(s => (s === hero.idx ? null : hero.idx))
@@ -3944,6 +3969,26 @@ export default function GamePage(): JSX.Element {
   // A new hand clears any queued pre-action.
   useEffect(() => { setPreAction('none') }, [gs.handNum])
 
+  // ─── Flow watchdog ─────────────────────────────────────────────────────────
+  // The hand flow is driven by setTimeout chains. A BACKGROUNDED TAB throttles and can
+  // drop them, so a hand could finish with the next one never dealt — the player had to
+  // toggle a speed mode to un-stick it. This re-kicks the showdown→next-hand transition
+  // when the tab regains focus and on a slow safety poll. `nextHandTimeoutRef` is nulled
+  // when its timer fires, so a lingering 'showdown' with no pending timer means a stall.
+  useEffect(() => {
+    function kick() {
+      const cur = gsRef.current
+      if (simModeRef.current || manualModeRef.current) return
+      if (cur.paused || heroIsBusted(cur) || tourRef.current.busted) return  // busted/won → tournament over
+      if (cur.phase === 'showdown' && nextHandTimeoutRef.current == null) scheduleNextHand()
+    }
+    const onVis = () => { if (document.visibilityState === 'visible') kick() }
+    document.addEventListener('visibilitychange', onVis)
+    const id = setInterval(kick, 6000)
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ─── Cleanup on unmount ──────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -4038,7 +4083,7 @@ export default function GamePage(): JSX.Element {
               // Cycle: Normal → Accéléré → Turbo → Normal.
               let nf: boolean, nt: boolean
               if (!fastFwdRef.current) { nf = true; nt = false }
-              else if (!turboRef.current) { nf = true; nt = true }
+              else if (!turboRef.current && !noHelp) { nf = true; nt = true }  // no coach-peek turbo in a serious session
               else { nf = false; nt = false }
               fastFwdRef.current = nf; setFastFwd(nf); turboRef.current = nt; setTurbo(nt)
               const cur = gsRef.current
@@ -4080,7 +4125,7 @@ export default function GamePage(): JSX.Element {
         )}
 
         {/* Angry Coach — scolds you (escalating 1→3) on decisions against the coach */}
-        {sessionFormat && gs.phase !== 'idle' && (
+        {sessionFormat && gs.phase !== 'idle' && !noHelp && (
           <button onClick={toggleAngryMode}
             title={t('game.angryCoachTip')}
             className={`app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest
@@ -4357,7 +4402,7 @@ export default function GamePage(): JSX.Element {
                   turnSeconds={decisionTimer}
                   turnNonce={`${gs.handNum}:${gs.currentBet}`}
                   turnPaused={gs.paused || coachOpen || manualMode || rangeFilmOpen}
-                  hideTimer={manualMode}
+                  hideTimer={manualMode || (seat.isHero && !noHelp)}
                   onRebuy={!tournament && seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
                   onHoverCards={manualMode ? (entering) => {
                     // Manual authoring only: hovering the cards hides the bet panel
@@ -4376,6 +4421,7 @@ export default function GamePage(): JSX.Element {
                     // every device (hover no longer opens it). Click the same seat again,
                     // click the felt, or press Esc to close; Space toggles your own card.
                     e.stopPropagation()
+                    if (noHelp) return   // serious session — no coach/range reveal
                     cancelOppGrace()
                     const opening = hoverSeat !== seat.idx
                     setHoverSeat(opening ? seat.idx : null)
@@ -4388,7 +4434,7 @@ export default function GamePage(): JSX.Element {
 
             {/* "Follow the coach" — tournament auto-pilot: one click plays EXACTLY
                 the coach's recommended move (precise size). Shortcut: S. */}
-            {tournament && isHeroTurn && !manualMode && !heroBusted && (
+            {tournament && isHeroTurn && !manualMode && !heroBusted && !noHelp && (
               <motion.button
                 initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                 whileTap={{ scale: 0.95 }}

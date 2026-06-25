@@ -46,6 +46,7 @@ export default function TournamentSetupPage() {
   const [curve, setCurve] = useState<Curve>('standard')
   const [reentry, setReentry] = useState(false)
   const [botLevel, setBotLevel] = useState(2)
+  const [noHelp, setNoHelp] = useState(false)   // "serious session": all assists off + hero on the clock
 
   const levels = useMemo(() => blindStructure(speed, antes), [speed, antes])
   const nbTables = Math.ceil(field / tableSize)
@@ -61,7 +62,7 @@ export default function TournamentSetupPage() {
         numPlayers: tableSize, selectedSeat: 0, stackBB: startBB,
         sb: levels[0].sb, bb: levels[0].bb, ante: levels[0].ante, decisionTimer: 25,
         displayName, slots,
-        tournament: { field, tableSize, startBB, speed, levelMinutes, antes, buyIn, paidPct, curve, reentry, botLevel },
+        tournament: { field, tableSize, startBB, speed, levelMinutes, antes, buyIn, paidPct, curve, reentry, botLevel, noHelp },
       },
     })
   }
@@ -201,6 +202,21 @@ export default function TournamentSetupPage() {
                   {[{ l: 1, n: t('tour.botAmateur') }, { l: 2, n: t('tour.botPro') }, { l: 3, n: t('tour.botExpert') }].map(b => (
                     <Chip key={b.l} active={botLevel === b.l} onClick={() => setBotLevel(b.l)}>{b.n}</Chip>
                   ))}
+                </div>
+              </div>
+            </div>
+            {/* Serious session — disables every assist and puts the hero on a real clock */}
+            <div className="mt-3 pt-3 border-t border-white/8">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>{t('tour.noHelp')}</Label>
+                  <p className="text-[8.5px] text-white/35 mt-0.5 leading-snug max-w-[260px]">
+                    {noHelp ? t('tour.noHelpOnDesc') : t('tour.noHelpOffDesc')}
+                  </p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <Chip active={!noHelp} onClick={() => setNoHelp(false)}>{t('tour.no')}</Chip>
+                  <Chip active={noHelp} onClick={() => setNoHelp(true)}>{t('tour.yes')}</Chip>
                 </div>
               </div>
             </div>
