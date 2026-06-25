@@ -3804,21 +3804,6 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHeroTurn, gs.handNum, gs.currentBet, gs.phase, turbo])
 
-  // SERIOUS SESSION: the hero is on a real clock (no assists to lean on). When the turn
-  // bar empties, auto-check (nothing to call) or auto-fold — no infinite tanking. The
-  // visual bar (turnSeconds = decisionTimer) is shown only here, so the two stay in sync.
-  useEffect(() => {
-    if (!noHelp || !isHeroTurn || gs.paused || manualMode) return
-    const id = setTimeout(() => {
-      const cur = gsRef.current
-      const h = cur.seats.find(s => s.isHero)
-      if (!h?.isActive || cur.paused) return
-      const toCall = cur.currentBet - h.bet
-      heroAction(toCall <= 0 ? 'CHECK' : 'FOLD', 0, true)
-    }, decisionTimer * 1000)
-    return () => clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noHelp, isHeroTurn, gs.handNum, gs.currentBet, gs.paused, manualMode])
 
   // ── Keyboard shortcuts — only on the hero's turn, ignored while typing ──
   //   f = fold · c = check/call · &(1) = ⅓ pot · é(2) = ⅔ pot · p = pot · a = all-in
@@ -3935,29 +3920,22 @@ export default function GamePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualMode])
 
-  // Decision clock: when the hero's time runs out, auto-act. Facing a bet that
-  // must be called/raised → auto-fold and sit out next hand. Otherwise (a free
-  // check is available) → auto-check and the hand continues normally.
+  // Decision clock — ONLY in a SERIOUS session (noHelp). When the hero's time runs out,
+  // auto-check if it's free, otherwise auto-fold (no sit-out — you keep playing). In a
+  // NORMAL session there is NO clock at all: the hero takes all the time they want.
   useEffect(() => {
-    // The clock freezes while the coach hover-card is open (resumes on leave).
-    // In manual authoring mode there is no clock at all — you take your time.
-    if (!isHeroTurn || gs.paused || coachOpen || manualMode || rangeFilmOpen) return
+    // (In a serious session the coach/range panels are disabled, so no freeze needed.)
+    if (!noHelp || !isHeroTurn || gs.paused || manualMode) return
     const t = setTimeout(() => {
       const cur = gsRef.current
       const h = cur.seats.find(s => s.isHero)
       if (!h || !h.isActive || cur.paused) return
       const toCall = cur.currentBet - h.bet
-      if (toCall <= 0) {
-        heroAction('CHECK', 0, true)
-      } else {
-        sitOutRef.current = true
-        setSitOut(true)
-        heroAction('FOLD', 0, true)
-      }
+      heroAction(toCall <= 0 ? 'CHECK' : 'FOLD', 0, true)
     }, decisionTimer * 1000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHeroTurn, gs.paused, coachOpen, gs.handNum, gs.currentBet, manualMode, rangeFilmOpen])
+  }, [noHelp, isHeroTurn, gs.paused, gs.handNum, gs.currentBet, manualMode])
 
   // Apply a queued pre-action ("check box") the instant it's the hero's turn.
   useEffect(() => {
