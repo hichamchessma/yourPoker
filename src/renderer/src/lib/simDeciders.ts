@@ -63,7 +63,7 @@ function botDecision(seat: SimSeat, hs: HandState): SimDecision {
   const raiseTo = (frac: number) => Math.min(allInTo, Math.max(minTo, hs.currentBet + roundBB((pot + toCall) * frac)))
   if (!onBoard) {
     const psv = preflopStrength(c1, c2)
-    const pp = preflopProbs(psv, posBonus, preflopRaises(hs), tier, toCall)
+    const pp = preflopProbs(psv, posBonus, preflopRaises(hs), tier, toCall, bb > 0 ? toCall / bb : 0)
     let acc = pp.aggr
     if (rand < acc) { const size = preflopRaises(hs) === 0 ? 0.8 : 0.9; return toCall === 0 ? { action: 'bet', to: raiseTo(size) } : { action: 'raise', to: raiseTo(size) } }
     acc += pp.call; if (rand < acc) return toCall > 0 ? { action: 'call' } : { action: 'check' }

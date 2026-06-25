@@ -132,7 +132,7 @@ export function policyFor(tier: number, human: boolean, mood = 0): PolicyParams 
 //    priorRaises = number of raises already made this street before the player acts:
 //      0 = unopened (RFI / limped) · 1 = vs an open · 2 = vs a 3-bet · ≥3 = vs a 4-bet+.
 //    `psv` is the raw 1..10 hand-chart value (preflopStrength).
-export function preflopProbs(psv: number, posBonus: number, priorRaises: number, tier: number, toCall: number): Record<ActCat, number> {
+export function preflopProbs(psv: number, posBonus: number, priorRaises: number, tier: number, toCall: number, priceBB = 0): Record<ActCat, number> {
   // Chen-scale thresholds. openTh maps to realistic widths:
   //   UTG≈6.7 (~17%) · HJ≈5.9 (~24%) · CO≈5.3 (~27%) · BTN≈4.7 (~42%).
   const openTh = 10.0 - posBonus * 5.3
@@ -150,9 +150,15 @@ export function preflopProbs(psv: number, posBonus: number, priorRaises: number,
   if (priorRaises === 1) {
     const value3bet = 10                         // ~ QQ+, JJ, TT, AK, AQs, AJs, KQs
     const flatLo = openTh - 0.5
+    // The flat/continue range TIGHTENS with the PRICE: you can flat a 2-3bb open wide,
+    // but a big re-raise / ALL-IN (e.g. a 100bb jam) is a CALL-OFF — only strong hands
+    // continue. Without this the bots flat-called shoves with trash (87o vs a 100bb jam).
+    // jamLift 0 at ≤8bb … 1 at ≥30bb collapses the flat floor up to the premium tier.
+    const jamLift = Math.max(0, Math.min(1, (priceBB - 8) / 22))
+    const contLo = flatLo + jamLift * Math.max(0, value3bet + 1 - flatLo)
     if (psv >= value3bet) return RAISE
-    if (psv >= flatLo) {
-      const bluff = tier >= 2 && psv < flatLo + 1.5 ? (tier === 3 ? 0.12 : 0.07) : 0  // polarised light 3-bets
+    if (psv >= contLo) {
+      const bluff = tier >= 2 && jamLift < 0.4 && psv < contLo + 1.5 ? (tier === 3 ? 0.12 : 0.07) : 0  // light 3-bets only vs a normal open
       return { fold: 0, check: 0, call: 1 - bluff, aggr: bluff }
     }
     return { fold: 1, check: 0, call: 0, aggr: 0 }
@@ -163,10 +169,14 @@ export function preflopProbs(psv: number, posBonus: number, priorRaises: number,
   // 3-bet" range correctly capped & condensed (~9%) instead of a 27%-wide soup.
   if (priorRaises === 2) {
     const value4bet = 14                         // AA, KK, QQ
-    const flatLo = 8                             // down to 88, AKo, ATs, KTs, suited broadways…
+    const flatLoBase = 8                         // down to 88, AKo, ATs, KTs, suited broadways…
+    // Same call-off tightening for a 3-bet JAM (a normal 3-bet ~8bb doesn't tighten; a
+    // 3-bet shove for 30bb+ does → fold the flat core, keep only the call-off premiums).
+    const jamLift = Math.max(0, Math.min(1, (priceBB - 18) / 30))
+    const flatLo = flatLoBase + jamLift * Math.max(0, value4bet - 1 - flatLoBase)
     if (psv >= value4bet) return RAISE
     if (psv >= flatLo) {
-      const bluff = tier === 3 && psv < flatLo + 1 ? 0.10 : 0
+      const bluff = tier === 3 && jamLift < 0.4 && psv < flatLo + 1 ? 0.10 : 0
       return { fold: 0, check: 0, call: 1 - bluff, aggr: bluff }
     }
     return { fold: 1, check: 0, call: 0, aggr: 0 }

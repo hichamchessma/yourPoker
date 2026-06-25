@@ -2082,7 +2082,7 @@ export default function GamePage(): JSX.Element {
       const psv = preflopStrength(c1, c2)            // 1..10 hand chart value
       const preRaises = currentHandActionsRef.current
         .filter(a => a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
-      const pp = preflopProbs(psv, posBonus, preRaises, tier, toCall)
+      const pp = preflopProbs(psv, posBonus, preRaises, tier, toCall, bbAmt > 0 ? toCall / bbAmt : 0)
       let acc = pp.aggr
       if (rand < acc) {
         const size = preRaises === 0 ? 0.8 : 0.9     // opens a touch smaller than re-raises
