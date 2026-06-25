@@ -5,7 +5,7 @@ import i18n from '../i18n'
 const tc = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Play, Pause, Square, Keyboard, RefreshCw, Eye, FastForward, RotateCw } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Square, Keyboard, RefreshCw, Eye, FastForward, RotateCw, Target } from 'lucide-react'
 import { useDevice } from '../lib/useDevice'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonToken, TableSVG, Room, type RoomVariant } from '../components/tableVisuals'
@@ -28,7 +28,9 @@ import {
   type Speed as TourSpeed, blindStructure,
   placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
 } from '../lib/tournament'
-import { saveSession } from '../lib/historyStore'
+import { saveSession, type SessionKind } from '../lib/historyStore'
+import { loadPerfs, savePerf } from '../lib/perfStore'
+import PerfReportModal from '../components/PerfReportModal'
 import { useLiveSession, type ResumableSession, type LiveFormat } from '../store/liveSessionStore'
 import { LeaveTableModal } from '../components/SessionDialogs'
 
@@ -521,7 +523,9 @@ function computeStepState(record: HandHistoryRecord, stepIdx: number): {
 }
 
 // ─── "Coach juge" — constructive critique of a hero action in the replay ──────
-interface MoveCritique { verdict: 'good' | 'ok' | 'mistake'; headline: string; lines: string[]; reasoning?: EquityReasoning | null }
+// Stable, language-agnostic leak buckets (for the session perf report aggregation).
+export type LeakKind = 'pf-loose' | 'overcall' | 'passive' | 'overfold' | 'overaggro' | 'sizing-big' | 'sizing-small'
+interface MoveCritique { verdict: 'good' | 'ok' | 'mistake'; headline: string; lines: string[]; reasoning?: EquityReasoning | null; phase?: Phase; leak?: LeakKind | null }
 function boardForPhase(board: (Card | null)[], phase: Phase): Card[] {
   const b = board.filter(Boolean) as Card[]
   if (phase === 'flop') return b.slice(0, 3)
@@ -579,7 +583,7 @@ function isAggroAction(a: PfAction & { isHero?: boolean }, deadAllIn: Set<number
   if (a.actionType !== 'BET' && a.actionType !== 'RAISE' && a.actionType !== 'ALL-IN') return false
   return !(a.phase === 'preflop' && a.actionType === 'ALL-IN' && deadAllIn.has(a.seatIdx))
 }
-function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCritique | null {
+function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: number): MoveCritique | null {
   const act = record.actions[actionIdx]
   if (!act || act.seatIdx < 0 || !act.isHero) return null
   if (act.actionType === 'SB' || act.actionType === 'BB') return null // blinds aren't a decision
@@ -641,6 +645,9 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
   let verdict: MoveCritique['verdict'] = 'ok'
   let headline = ''
   let reasoning: EquityReasoning | null = null
+  // Hoisted out of the per-branch blocks so the leak bucket can be derived once at the end.
+  let recCatOut: 'fold' | 'passive' | 'aggr' = 'fold'
+  let sizing: 'big' | 'small' | null = null
 
   if (phase === 'preflop') {
     const scenario: Scenario = preflopRaises >= 3 ? 'vs4bet'
@@ -685,6 +692,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
     const rec = map.get(key) ?? 'fold'
     const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
+    recCatOut = recCat
     // NOTE: no equity-vs-pot-odds reasoning block pre-flop — there the decision is a
     // RANGE call (domination / realizability), not a pot-odds one, so the "I have/don't
     // have the price" framing would contradict a correct range fold (e.g. ATo folds a
@@ -758,9 +766,10 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     // FACING A RAISE (mirrors live): ≥2 aggressive actions on this street → a bet got raised.
     const curStreetAggro = record.actions.slice(0, actionIdx).filter(a => a.phase === phase && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
     const facingRaise = toCall > 0 && curStreetAggro >= 2  // postflop branch only
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise, iters })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
+    recCatOut = recCat
     if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
       decision: adv.action === 'FOLD' ? 'fold' : adv.action === 'CALL' ? 'call' : 'aggro' })
     const phaseLbl = tc(phase === 'flop' ? 'crit.phaseFlop' : phase === 'turn' ? 'crit.phaseTurn' : phase === 'river' ? 'crit.phaseRiver' : 'crit.phasePreflop')
@@ -778,10 +787,10 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
         const sprNow = effStack / pot
         const isValue = adv.equity >= 0.6
         if (isValue && betFrac > 1.15) {
-          verdict = 'ok'; headline = tc('crit.hSizeOverbet')
+          verdict = 'ok'; sizing = 'big'; headline = tc('crit.hSizeOverbet')
           lines.push(tc('crit.lSizeOverbet', { pct: Math.round(betFrac * 100), allin: act.actionType === 'ALL-IN' ? tc('crit.pAllinSuffix') : '', tail: sprNow <= 1.8 ? tc('crit.lSizeOverbetLowSpr', { spr: sprNow.toFixed(1) }) : tc('crit.lSizeOverbetHighSpr') }))
         } else if (isValue && betFrac < 0.4) {
-          verdict = 'ok'; headline = tc('crit.hSizeTooSmall')
+          verdict = 'ok'; sizing = 'small'; headline = tc('crit.hSizeTooSmall')
           lines.push(tc('crit.lSizeTooSmall', { pct: Math.round(betFrac * 100) }))
         }
       }
@@ -803,7 +812,76 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number): MoveCri
     else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = tc('crit.hOverAggro'); lines.push(tc('crit.lOverAggroPost')) }
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hMissedFold'); lines.push(tc('crit.lMissedFold', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
   }
-  return { verdict, headline, lines, reasoning }
+  // Map the verdict to a stable leak bucket for the session perf report. A 'good' move
+  // (incl. the slow-play exception) leaks nothing; otherwise the recommended-vs-actual
+  // mismatch (or the sizing flag) tells us WHICH leak it is.
+  let leak: LeakKind | null = null
+  if (verdict !== 'good') {
+    if (sizing) leak = sizing === 'big' ? 'sizing-big' : 'sizing-small'
+    else if (recCatOut === 'fold' && heroCat !== 'fold') leak = phase === 'preflop' ? 'pf-loose' : 'overcall'
+    else if (recCatOut === 'aggr' && heroCat === 'passive') leak = 'passive'
+    else if (recCatOut === 'aggr' && heroCat === 'fold') leak = 'overfold'
+    else if (recCatOut === 'passive' && heroCat === 'aggr') leak = 'overaggro'
+    else if (recCatOut === 'passive' && heroCat === 'fold') leak = 'overfold'
+  }
+  return { verdict, headline, lines, reasoning, phase, leak }
+}
+
+// ─── Session performance report ──────────────────────────────────────────────
+// Run the coach critique over EVERY hero decision of the session and aggregate it
+// into a graded report: an alignment score, per-street accuracy, the dominant leaks
+// and the worst spots to review. Pure data — the modal just renders it.
+export type Street = 'preflop' | 'flop' | 'turn' | 'river'
+export interface StreetStat { n: number; good: number; ok: number; mistake: number; acc: number }
+export interface SessionMistake { handId: number; handNum: number; actionIdx: number; phase: Street; headline: string; leak: LeakKind | null; verdict: 'ok' | 'mistake' }
+export interface SessionEval {
+  score: number; grade: 'S' | 'A' | 'B' | 'C' | 'D'
+  decisions: number; good: number; ok: number; mistake: number
+  streets: Record<Street, StreetStat>
+  leaks: Array<{ kind: LeakKind; count: number }>
+  worstStreet: Street | null; bestStreet: Street | null
+  topMistakes: SessionMistake[]
+}
+const STREETS: Street[] = ['preflop', 'flop', 'turn', 'river']
+export function evaluateSession(records: HandHistoryRecord[]): SessionEval {
+  const streets: Record<Street, StreetStat> = {
+    preflop: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 }, flop: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 },
+    turn: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 }, river: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 },
+  }
+  const leakCounts = new Map<LeakKind, number>()
+  const flagged: SessionMistake[] = []
+  let good = 0, ok = 0, mistake = 0, decisions = 0
+  for (const rec of records) {
+    for (let i = 0; i < rec.actions.length; i++) {
+      const a = rec.actions[i]
+      if (a.seatIdx < 0 || !a.isHero) continue
+      // Lighter Monte-Carlo for the batch — dozens of spots, accuracy is plenty at ~900.
+      const c = critiqueHeroMove(rec, i, 900)
+      if (!c) continue
+      const ph = (c.phase ?? a.phase) as Phase
+      if (ph !== 'preflop' && ph !== 'flop' && ph !== 'turn' && ph !== 'river') continue
+      decisions++
+      const s = streets[ph]; s.n++
+      if (c.verdict === 'good') { good++; s.good++ }
+      else if (c.verdict === 'ok') { ok++; s.ok++ }
+      else { mistake++; s.mistake++ }
+      if (c.leak) leakCounts.set(c.leak, (leakCounts.get(c.leak) ?? 0) + 1)
+      if (c.verdict !== 'good') flagged.push({ handId: rec.id, handNum: rec.handNum, actionIdx: i, phase: ph, headline: c.headline, leak: c.leak ?? null, verdict: c.verdict })
+    }
+  }
+  // Alignment with the coach: a 'good' move scores full, an 'ok' (right idea, wrong
+  // sizing / a touch off) scores half, a 'mistake' scores zero.
+  const score = decisions ? Math.round(((good + ok * 0.5) / decisions) * 100) : 100
+  const grade: SessionEval['grade'] = score >= 90 ? 'S' : score >= 80 ? 'A' : score >= 68 ? 'B' : score >= 55 ? 'C' : 'D'
+  STREETS.forEach(k => { const s = streets[k]; s.acc = s.n ? (s.good + s.ok * 0.5) / s.n : 0 })
+  const leaks = [...leakCounts.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count)
+  // Best / worst street need a meaningful sample (≥3 decisions) to call out.
+  const rated = STREETS.filter(k => streets[k].n >= 3)
+  const worstStreet = rated.length ? rated.reduce((w, k) => streets[k].acc < streets[w].acc ? k : w) : null
+  const bestStreet = rated.length ? rated.reduce((b, k) => streets[k].acc > streets[b].acc ? k : b) : null
+  // Mistakes first, then sizing/borderline 'ok's; keep the 6 worst to review.
+  const topMistakes = flagged.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === 'mistake' ? -1 : 1)).slice(0, 6)
+  return { score, grade, decisions, good, ok, mistake, streets, leaks, worstStreet, bestStreet: worstStreet === bestStreet ? null : bestStreet, topMistakes }
 }
 
 // Replay the hand up to `stepIdx` through the range estimator → each player's
@@ -858,21 +936,24 @@ function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number)
   return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
 }
 
-export function HandHistoryModal({ records, onClose, onRevive, initialId, titleKey }: {
+export function HandHistoryModal({ records, onClose, onRevive, initialId, initialStep, titleKey }: {
   records: HandHistoryRecord[]
   onClose: () => void
   onRevive?: (record: HandHistoryRecord, stepIdx: number) => void
   initialId?: number          // open directly on this hand (defaults to the most recent)
+  initialStep?: number        // jump straight to this action step (e.g. a flagged move from the perf report)
   titleKey?: string           // override the panel title (e.g. the sim report)
 }) {
   const { t } = useTranslation()
   const { isPhone } = useDevice()
   const [selectedId, setSelectedId] = useState<number|null>(initialId ?? (records.length > 0 ? records[records.length-1].id : null))
-  const [stepIdx, setStepIdx] = useState<number>(0)
+  const [stepIdx, setStepIdx] = useState<number>(initialStep ?? 0)
   const [critique, setCritique] = useState<MoveCritique | null>(null)
+  // Pin a specific opening step (a flagged spot to review): honoured once, then normal.
+  const initStepRef = useRef<number | undefined>(initialStep)
   // Auto-replay: on open, the last hand plays from the start (0.5s/step); at the end
   // it waits 5s then loops. ANY manual navigation flips this off (see stopAuto).
-  const [autoPlay, setAutoPlay] = useState(true)
+  const [autoPlay, setAutoPlay] = useState(initialStep == null)
   const autoPlayRef = useRef(autoPlay)
   useEffect(() => { autoPlayRef.current = autoPlay }, [autoPlay])
   const stopAuto = () => setAutoPlay(false)
@@ -886,6 +967,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, titleK
   // On (re)selecting a hand: auto-replay starts at the very first step; otherwise jump
   // straight to the final result (the previous behaviour).
   useEffect(() => {
+    if (initStepRef.current != null) { setStepIdx(initStepRef.current); initStepRef.current = undefined; return }
     if (record) setStepIdx(autoPlayRef.current ? 0 : record.actions.length - 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
@@ -1447,7 +1529,13 @@ export default function GamePage(): JSX.Element {
   const [showBetInput, setShowBetInput] = useState(true)   // custom raise amount visible by default (⌨ can hide it)
   const [handHistory, setHandHistory] = useState<HandHistoryRecord[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyReview, setHistoryReview] = useState<{ id: number; step: number } | null>(null) // open history on a flagged spot
   const pausedByHistoryRef = useRef(false) // we auto-paused for the history modal → auto-resume on close
+  // ── Session perf report ("Évaluer ma perf") ──
+  const [perfEval, setPerfEval] = useState<SessionEval | null>(null)
+  const [perfOpen, setPerfOpen] = useState(false)
+  const [perfLoading, setPerfLoading] = useState(false)
+  const [perfTrend, setPerfTrend] = useState<{ avg: number | null; prevCount: number }>({ avg: null, prevCount: 0 })
   const coachMoveRef = useRef<() => void>(() => {}) // latest "follow the coach" executor (fresh closure each render)
   // ── "Revive situation" — replay a historical spot as a playable sandbox.
   const [simMode, setSimMode] = useState(false)
@@ -3243,7 +3331,29 @@ export default function GamePage(): JSX.Element {
   }
   function closeHistory() {
     setHistoryOpen(false)
+    setHistoryReview(null)
     if (pausedByHistoryRef.current) { pausedByHistoryRef.current = false; setPaused(false) }
+  }
+  // Run (or re-open) the session perf report. The coach critique sweeps every hero
+  // decision (Monte-Carlo equity), so defer past a paint to show the spinner first.
+  function openPerf() {
+    if (perfEval) { setPerfOpen(true); return }
+    setPerfLoading(true)
+    setTimeout(() => {
+      const ev = evaluateSession(handHistoryRef.current)
+      const kind: SessionKind = tournament ? 'tournament' : 'cash'
+      const prev = loadPerfs(kind)
+      const avg = prev.length ? Math.round(prev.reduce((s, p) => s + p.score, 0) / prev.length) : null
+      savePerf(kind, { date: new Date().toISOString(), score: ev.score, grade: ev.grade, decisions: ev.decisions })
+      setPerfTrend({ avg, prevCount: prev.length })
+      setPerfEval(ev); setPerfLoading(false); setPerfOpen(true)
+    }, 50)
+  }
+  // Jump from a flagged spot in the report straight into that hand's replay.
+  function reviewPerfHand(handId: number, actionIdx: number) {
+    setPerfOpen(false)
+    setHistoryReview({ id: handId, step: actionIdx })
+    setHistoryOpen(true)
   }
 
   // ─── Angry Coach helpers ───────────────────────────────────────────────────
@@ -4669,7 +4779,14 @@ export default function GamePage(): JSX.Element {
               <p className={`text-[13px] mt-1 font-bold ${tourResult.prize > 0 ? 'text-emerald-400' : 'text-white/40'}`}>
                 {tourResult.prize > 0 ? t('game.prize', { amount: tourResult.prize.toLocaleString() }) : t('game.noPrize')}
               </p>
-              <div className="flex items-center justify-center gap-3 mt-6">
+              {handHistory.length > 0 && (
+                <button onClick={openPerf}
+                  className="w-full flex items-center justify-center gap-2.5 mt-5 px-5 py-3 rounded-xl font-black uppercase tracking-[0.18em] text-[13px] transition-all hover:scale-[1.02]"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#c026d3)', color: '#fff', boxShadow: '0 0 28px rgba(168,85,247,0.4)' }}>
+                  <Target size={16}/> {t('game.evaluatePerf')}
+                </button>
+              )}
+              <div className="flex items-center justify-center gap-3 mt-4">
                 {tournament.reentry && (
                   <button onClick={reEnterTournament}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-[0.16em] text-[12px] transition-all hover:scale-[1.03]"
@@ -4701,7 +4818,23 @@ export default function GamePage(): JSX.Element {
       {/* ── HAND HISTORY MODAL ── */}
       <AnimatePresence>
         {historyOpen && handHistory.length > 0 && (
-          <HandHistoryModal records={handHistory} onClose={closeHistory} onRevive={reviveSituation}/>
+          <HandHistoryModal key={historyReview ? `rev-${historyReview.id}-${historyReview.step}` : 'hist'}
+            records={handHistory} onClose={closeHistory} onRevive={reviveSituation}
+            initialId={historyReview?.id} initialStep={historyReview?.step}/>
+        )}
+      </AnimatePresence>
+
+      {/* ── SESSION PERF REPORT ("Évaluer ma perf") ── */}
+      <AnimatePresence>
+        {perfLoading && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex flex-col items-center justify-center gap-4" style={{ background: 'rgba(4,3,8,0.9)' }}>
+            <Target size={40} className="text-[#c026d3] animate-pulse"/>
+            <p className="text-[13px] text-white/70 uppercase tracking-[0.2em] font-bold">{t('perf.analyzing')}</p>
+          </motion.div>
+        )}
+        {perfOpen && perfEval && (
+          <PerfReportModal ev={perfEval} trend={perfTrend} onClose={() => setPerfOpen(false)} onReviewHand={reviewPerfHand}/>
         )}
       </AnimatePresence>
 
