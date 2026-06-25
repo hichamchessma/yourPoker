@@ -1541,6 +1541,7 @@ export default function GamePage(): JSX.Element {
   const [perfOpen, setPerfOpen] = useState(false)
   const [perfLoading, setPerfLoading] = useState(false)
   const [perfTrend, setPerfTrend] = useState<{ avg: number | null; prevCount: number }>({ avg: null, prevCount: 0 })
+  const perfReturnRef = useRef(false) // history was opened FROM the perf report → reopen it on close
   const coachMoveRef = useRef<() => void>(() => {}) // latest "follow the coach" executor (fresh closure each render)
   // ── "Revive situation" — replay a historical spot as a playable sandbox.
   const [simMode, setSimMode] = useState(false)
@@ -3332,6 +3333,7 @@ export default function GamePage(): JSX.Element {
   // freezes while gs.paused); closing it resumes — but only if WE auto-paused, so a
   // manual pause before opening history is left paused on close.
   function openHistory() {
+    perfReturnRef.current = false   // opened directly (not from the perf report)
     if (tournament && !gsRef.current.paused && gsRef.current.phase !== 'idle') {
       pausedByHistoryRef.current = true
       setPaused(true)
@@ -3342,6 +3344,9 @@ export default function GamePage(): JSX.Element {
     setHistoryOpen(false)
     setHistoryReview(null)
     if (pausedByHistoryRef.current) { pausedByHistoryRef.current = false; setPaused(false) }
+    // If we came here from a flagged spot in the perf report, go BACK to the report
+    // (not to the end-of-tournament panel underneath it).
+    if (perfReturnRef.current) { perfReturnRef.current = false; setPerfOpen(true) }
   }
   // Run (or re-open) the session perf report. The coach critique sweeps every hero
   // decision (Monte-Carlo equity), so defer past a paint to show the spinner first.
@@ -3358,8 +3363,10 @@ export default function GamePage(): JSX.Element {
       setPerfEval(ev); setPerfLoading(false); setPerfOpen(true)
     }, 50)
   }
-  // Jump from a flagged spot in the report straight into that hand's replay.
+  // Jump from a flagged spot in the report straight into that hand's replay. Mark that
+  // we should return to the report (not the result panel) when the replay is closed.
   function reviewPerfHand(handId: number, actionIdx: number) {
+    perfReturnRef.current = true
     setPerfOpen(false)
     setHistoryReview({ id: handId, step: actionIdx })
     setHistoryOpen(true)
