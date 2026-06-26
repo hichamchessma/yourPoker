@@ -1,0 +1,91 @@
+// ─── Coach regression bench ────────────────────────────────────────────────
+// A self-contained invariant suite for the coach (sizing + made-hand decisions +
+// preflop ranges). Run it after EVERY change to the advisor to catch regressions:
+//
+//   npx esbuild tools/coach-bench.ts --bundle --format=esm --outfile=_b.mjs \
+//     --log-level=error && node _b.mjs && rm _b.mjs
+//
+// Assertions use clear-cut hands (not razor-edge equities) so Monte-Carlo noise can't
+// flake them. A failing line prints "❌ <reason>". Green = no behavioural regression.
+import { getPostflopAdvice } from '../src/renderer/src/lib/postflopAdvisor'
+import { buildRangeMap } from '../src/renderer/src/lib/preflopRanges'
+
+const C = (r: string, s: string) => ({ rank: r, suit: s })
+const H = (s: string) => { const x = s.replace(/\s/g, ''); return [C(x[0], x[1]), C(x[2], x[3])] as any }
+const BD = (s: string) => s.split(' ').map(x => C(x[0], x[1])) as any
+function A(hole: any, board: any, o: any = {}) {
+  return getPostflopAdvice({ hole, board, pot: 1000, toCall: o.toCall ?? 0, heroStack: 9000, effStack: o.eff ?? 9000,
+    opponents: o.opp ?? 1, inPosition: o.ip ?? true, aggression: o.aggr ?? (o.toCall ? 0.5 : 0), barrels: o.toCall ? 1 : 0, bb: 50 } as any)
+}
+const fail: string[] = []; let n = 0
+const t = (cond: boolean, msg: string) => { n++; if (!cond) fail.push(msg) }
+const bf = (a: any) => a.betFrac ?? 0
+
+// ════ A. SIZING (strong value = set) by texture × street ════
+console.log('A. SIZING set par texture:')
+const TEX: [string, string, string][] = [
+  ['sec-haut', '6s6d', 'Ad Kc 6h'], ['sec-bas', '4s4d', '7d 4c 2h'],
+  ['dynam(2t)', '8c8h', 'Ks 8s 3d'], ['connect', 'TsTc', 'Td 9c 8h'], ['mono', '9s9d', 'Ah 9h 4h'],
+]
+for (const [k, h, b] of TEX) { const a = A(H(h), BD(b)); console.log(`   ${k.padEnd(10)} flop ${a.action} ${bf(a).toFixed(2)}`) }
+t(bf(A(H('6s6d'), BD('Ad Kc 6h'))) >= 1, 'set sec-haut HU → overbet (>1)')
+t(bf(A(H('8c8h'), BD('Ks 8s 3d'))) >= 1, 'set dynamique-haut HU → overbet')
+t(bf(A(H('9s9d'), BD('Ah 9h 4h'))) <= 0.45, 'set monotone → petit (≤0.45)')
+t(bf(A(H('TsTc'), BD('Td 9c 8h'))) <= 0.6, 'set connecté → size down (≤0.6)')
+t(bf(A(H('4s4d'), BD('7d 4c 2h'))) < 1, 'set sec-BAS → pas overbet (rien à charger)')
+t(bf(A(H('6s6d'), BD('Ad Kc 6h'), { opp: 3 })) < 1, 'set multiway → JAMAIS overbet')
+// monotone reste petit sur toutes les rues ; top paire ne sur-size pas à la river
+t(bf(A(H('9s9d'), BD('Ah 9h 4h 2c 3s'))) <= 0.45, 'set monotone river → petit')
+t(bf(A(H('AsKd'), BD('Kc 7h 2d 3s 9c'))) < 0.85, 'top paire river → pas un gros polar bet')
+
+// ════ B. DÉCISIONS checké-à-nous ════
+console.log('B. Décisions checké-à-nous:')
+t(A(H('7s2d'), BD('Ad Kc 6h')).action !== 'BET', 'air (72) ne value-bet pas')
+t(A(H('AsKd'), BD('Ad Kc 6h')).action === 'BET', 'top paire AK value-bet')
+t(bf(A(H('6s6d'), BD('Ad Kc 6h'))) >= 1, 'set value-bet (overbet)')
+t(A(H('AhKh'), BD('Qh 7h 2h')).action === 'BET', 'flush (on a monotone board) value-bet, pas check')
+
+// ════ C. FACE À UNE MISE ════
+console.log('C. Face à une mise (board sec A-9-4):')
+t(A(H('7s2d'), BD('Ah 9c 4d'), { toCall: 1000 }).action === 'FOLD', 'air fold vs pot bet')
+t(['CALL', 'RAISE'].includes(A(H('9s9d'), BD('Ah 9c 4d'), { toCall: 1000 }).action), 'set continue vs pot')
+t(A(H('AdKc'), BD('Ah 9c 4d'), { toCall: 300 }).action !== 'FOLD', 'top paire ne fold pas un petit bet')
+t(A(H('2s3s'), BD('Ah 9c 4d'), { toCall: 1000 }).action === 'FOLD', 'air bas fold vs pot')
+
+// ════ D. PRÉFLOP RFI (largeur croissante) ════
+console.log('D. Préflop RFI:')
+function openPct(pos: string, behind: number) {
+  const m = buildRangeMap('rfi', pos, behind, { effBB: 100 }); const R = '23456789TJQKA'; let raise = 0, tot = 0
+  for (let hi = 12; hi >= 0; hi--) for (let lo = hi; lo >= 0; lo--) {
+    if (hi === lo) { tot += 6; if (m.get(R[hi] + R[hi]) === 'raise') raise += 6 }
+    else { tot += 4; if (m.get(R[hi] + R[lo] + 's') === 'raise') raise += 4; tot += 12; if (m.get(R[hi] + R[lo] + 'o') === 'raise') raise += 12 }
+  }
+  return Math.round(100 * raise / tot)
+}
+const utg = openPct('UTG', 8), co = openPct('CO', 3), btn = openPct('BTN', 2)
+console.log(`   UTG ${utg}%  CO ${co}%  BTN ${btn}%`)
+t(utg < co && co < btn, 'RFI croît UTG < CO < BTN')
+t(utg >= 11 && utg <= 20, `UTG ${utg}% dans 11-20`)
+t(btn >= 38 && btn <= 55, `BTN ${btn}% dans 38-55`)
+const rUTG = buildRangeMap('rfi', 'UTG', 8, { effBB: 100 })
+t(rUTG.get('AA') === 'raise', 'AA open UTG'); t(rUTG.get('72o') === 'fold', '72o fold UTG'); t(rUTG.get('72s') === 'fold', '72s fold UTG (100bb)')
+
+// ════ E. vs OPEN / 3BET ════
+console.log('E. vs open / squeeze:')
+const vo = buildRangeMap('vsopen', 'CO', undefined, { effBB: 100, raiseToBB: 2.5, vsOpenerPos: 'MP' })
+t(['3bet', 'raise'].includes(vo.get('AA') as string), 'AA 3bet vs open'); t(vo.get('72o') === 'fold', '72o fold vs open')
+// squeeze re-jam tightens with cold-callers: A9s folds vs open+2 callers (10bb), jams vs +1
+const sq2 = buildRangeMap('squeeze', 'BTN', 2, { effBB: 10, multiway: true, numCallers: 2, raiseToBB: 4 })
+const sq1 = buildRangeMap('squeeze', 'BTN', 2, { effBB: 10, multiway: true, numCallers: 1, raiseToBB: 4 })
+t(sq2.get('A9s') === 'fold', 'A9s fold le squeeze vs open+2 callers (10bb)')
+t(sq1.get('A9s') === 'raise', 'A9s jam le squeeze vs open+1 caller (10bb)')
+
+// ════ F. JAMS short-stack ════
+console.log('F. Jams short-stack RFI UTG+1:')
+t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 10 }).get('72s') === 'fold', '72s fold à 10bb')
+t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 1 }).get('72s') === 'raise', '72s jam à 1bb (any two)')
+t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 10 }).get('AA') === 'raise', 'AA jam/open à 10bb')
+
+console.log('\n' + '═'.repeat(52))
+console.log(fail.length === 0 ? `✅ ${n} INVARIANTS — TOUS PASSENT` : `⚠️  ${fail.length}/${n} ÉCHEC(S):\n  - ` + fail.join('\n  - '))
+if (fail.length) process.exit(1)
