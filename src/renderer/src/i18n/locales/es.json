@@ -781,6 +781,8 @@
     "protectVsDraw": "Apuesta de PROTECCIÓN: board con PROYECTOS (color/escalera posible) y casi seguro vas POR DELANTE. Apuesta ~2/3 del bote para cobrar a los proyectos y negarles una carta gratis — pasar tu mano fuerte aquí deja que el color/escalera se complete gratis (así es exactamente como te remontan).",
     "thinValue": "Rango rival LIMITADO (pasa repetido): tu pareja gana a la mayoría de sus manos → valor FINO. Apuesta POCO (~1/3 del bote) para que te paguen las peores parejas — una apuesta grande las haría foldear.",
     "valueBet": "Mano fuerte: apuesta por valor y haz pagar a los proyectos.",
+    "overbet": "Ventaja de nuts en board de carta alta: polariza y OVERBET — su rango inelástico (top pairs) no puede foldear, maximizas el valor.",
+    "szOverbet": "overbet por valor (~{{mult}}x bote, ${{amt}})",
     "semiBluff": "Proyecto fuerte: un semifarol gana el bote de inmediato o al ligar.",
     "onePairCheck": "Pareja media: pasa para controlar el tamaño del bote y hacer bluff-catch después.",
     "flushBoardPotControl": "{{n}} cartas del mismo palo en la mesa: tu {{name}} está POR DETRÁS de todos los colores ya hechos. Apostar por valor solo te paga con colores y hace foldear lo peor → pasa (control del bote); aún ganas a los que no tienen color y puedes mejorar.",

@@ -580,6 +580,16 @@ export function getPostflopAdvice(input: {
   for (let lo = 2; lo <= 10 && !straightPossibleB; lo++) if (bvalsB.filter(v => v >= lo && v < lo + 5).length >= 3) straightPossibleB = true
   // hero "has it" if they make a straight+ (effCat>=4) — then they CAN raise for value.
   const raiseGetsOnlyValue = (flushPossibleB || straightPossibleB) && effCat >= 2 && effCat < 4 && toCall > 0 && aggression >= 0.5
+  // ── OVERBET (polarized value): a NUTTED hand (set+, effCat≥3) with a clear nut advantage
+  // on a HIGH-card dry/dynamic board (villain holds inelastic top pairs that can't fold),
+  // heads-up, with no completed straight/flush we don't hold. Polarize & bet BIG — bigger
+  // by street as ranges polarize toward the river. Research (verified): disconnected
+  // A/Broadway/low boards are overbet most (AK6r); overbets need nut advantage + an
+  // inelastic range. Tightly gated so it only fires on genuine monsters.
+  const maxBoardRank = board.length >= 3 ? Math.max(...board.map(c => RV[c.rank])) : 0
+  const overbetSpot = toCall === 0 && effCat >= 3 && eq >= 0.80 && Math.max(1, opponents) === 1
+    && maxBoardRank >= 12 && !flushPossibleB && !straightPossibleB
+    && (textureClass(board) === 'dry' || textureClass(board) === 'dynamic')
 
   let action: AdviceAction
   let sizingText = ''
@@ -667,6 +677,10 @@ export function getPostflopAdvice(input: {
       } else if (thinValueVsCapped && eq < 0.8) {
         sizingText = tt('cadv.szThinValue', { amt: round(pot * 0.4) }); betFrac = 0.4
         reasons.push(tt('cadv.thinValue'))
+      } else if (overbetSpot) {
+        const obFrac = board.length >= 5 ? 1.5 : board.length >= 4 ? 1.35 : 1.25   // polarity grows by street
+        sizingText = tt('cadv.szOverbet', { mult: String(obFrac), amt: round(pot * obFrac) }); betFrac = obFrac
+        reasons.push(tt('cadv.overbet'))
       } else {
         sizingText = tt('cadv.szValueBet', { frac: fracLabel(vbFrac), amt: valueBetSize }); betFrac = vbFrac
         reasons.push(tt('cadv.valueBet'))

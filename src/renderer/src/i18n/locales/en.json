@@ -781,6 +781,8 @@
     "protectVsDraw": "PROTECTION bet: DRAW-heavy board (flush/straight possible) and you're very likely AHEAD. Bet ~2/3 pot to charge the draws and deny them a free card — checking your strong hand here lets the flush/straight complete for free (that's exactly how you get outdrawn).",
     "thinValue": "Opponent range CAPPED (repeated checks): your pair beats most of their hands → THIN value. Bet SMALL (~1/3 pot) to get paid by worse pairs — a big bet would fold them out.",
     "valueBet": "Strong hand: bet for value and make the draws pay.",
+    "overbet": "Nut advantage on a high-card board: polarize and OVERBET — their inelastic range (top pairs) can't fold, so you max value.",
+    "szOverbet": "overbet for value (~{{mult}}x pot, ${{amt}})",
     "semiBluff": "Strong draw: a semi-bluff wins the pot right away or by hitting.",
     "onePairCheck": "Medium pair: check to control the pot size and bluff-catch later.",
     "flushBoardPotControl": "{{n}} cards of one suit on the board: your {{name}} is BEHIND every made flush. Betting for value only gets called by flushes and folds out worse → check (pot control); you still beat the non-flushes and can fill up.",

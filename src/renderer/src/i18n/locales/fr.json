@@ -781,6 +781,8 @@
     "protectVsDraw": "Bet de PROTECTION : board à TIRAGE (couleur/quinte possible) et tu es très probablement DEVANT. Mise ~⅔ pot pour faire payer les tirages et leur refuser une carte gratuite — checker ta main forte ici laisse la couleur/quinte se compléter pour rien (c'est exactement comme ça qu'on se fait remonter).",
     "thinValue": "Range adverse PLAFONNÉE (checks répétés) : ta paire bat la plupart de ses mains → value FINE. Mise PETIT (~⅓ pot) pour te faire payer par les pires paires — un gros bet les ferait coucher.",
     "valueBet": "Main forte : mise pour la valeur et fais payer les tirages.",
+    "overbet": "Avantage de nuts sur board haute carte : polarise et OVERBET — sa range inélastique (top paires) ne peut pas folder, tu maximises la value.",
+    "szOverbet": "overbet pour la valeur (~{{mult}}× pot, ${{amt}})",
     "semiBluff": "Tirage fort : un semi-bluff gagne le pot tout de suite ou en touchant.",
     "onePairCheck": "Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.",
     "flushBoardPotControl": "{{n}} cartes de la même couleur sur le board : ton {{name}} est DERRIÈRE toutes les couleurs déjà faites. Miser pour la valeur ne fait que payer les couleurs et fold les pires → checke (contrôle du pot), tu bats encore les non-couleurs et tu peux te remplir.",
