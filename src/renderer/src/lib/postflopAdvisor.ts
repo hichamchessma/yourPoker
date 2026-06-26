@@ -378,6 +378,36 @@ function boardWetness(board: Card[]): number {
   return Math.min(1, w)
 }
 
+// ── Board texture class (solver-informed) — drives c-bet sizing via the "wetness
+//    parabola": dynamic two-tone boards take a BIG bet (charge the many draws), but
+//    BOTH dry AND very-wet (monotone / straight-heavy) boards take a SMALL bet — a big
+//    bet there only folds out trash and runs into too many strong hands. Sources:
+//    GTO Wizard "Mechanics of C-Bet Sizing" / "Flop heuristics IP c-betting".
+type TextureClass = 'dry' | 'dynamic' | 'connected' | 'monotone'
+function textureClass(board: Card[]): TextureClass {
+  if (board.length < 3) return 'dry'
+  const bySuit: Record<string, number> = {}; board.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
+  const maxSuit = Math.max(...Object.values(bySuit))
+  if (maxSuit >= 3) return 'monotone'                                   // 3+ to a flush → small (parabola)
+  const vals = [...new Set(board.map(c => RV[c.rank]))].sort((a, b) => a - b)
+  for (let lo = 2; lo <= 10; lo++) if (vals.filter(v => v >= lo && v < lo + 5).length >= 3) return 'connected' // straights live → size DOWN
+  if (maxSuit === 2) return 'dynamic'                                   // two-tone, draws to charge → BIG
+  let conn = 0; for (let i = 1; i < vals.length; i++) if (vals[i] - vals[i - 1] <= 2) conn++
+  return conn >= 1 ? 'dynamic' : 'dry'
+}
+// Recommended value c-bet / value-raise size as a fraction of the pot, by texture.
+// Multiway leans a touch bigger (value-heavier, less fold equity needed).
+function cbetFrac(board: Card[], opponents: number, forRaise: boolean): number {
+  const cls = textureClass(board)
+  let f = cls === 'dynamic' ? 0.75      // two-tone / gappy → charge draws big
+    : cls === 'connected' ? 0.5         // straights in the defender's range → size down
+    : cls === 'monotone' ? 0.4          // wetness parabola → small (fold only trash otherwise)
+    : 0.55                              // dry/static → medium-small
+  if (forRaise) f += 0.1
+  if (Math.max(1, opponents) >= 2) f += 0.08
+  return Math.min(forRaise ? 1.0 : 0.9, f)
+}
+
 // ── Main advice ──────────────────────────────────────────────────────────────
 export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
@@ -532,8 +562,13 @@ export function getPostflopAdvice(input: {
   const isStrongValue = !playsBoard && (effCat >= 2 || effPair === 'overpair') && !beatenMultiway // two pair+, sets, overpair
   const isOnePair = !playsBoard && effCat === 1
   if (beatenMultiway) reasons.push(tt('cadv.beatenMultiway', { eq: pct(eq) }))
-  const valueRaiseSize = wet > 0.4 ? round(pot * 0.85) : round(pot * 0.66)
-  const valueBetSize = wet > 0.4 ? round(pot * 0.75) : round(pot * 0.6)
+  // Texture-driven value sizing (wetness parabola) — replaces the old "wetter = bigger"
+  // binary, which wrongly sized UP on monotone boards (those want SMALL).
+  const vbFrac = cbetFrac(board, opponents, false)
+  const vrFrac = cbetFrac(board, opponents, true)
+  const fracLabel = (f: number) => f >= 0.7 ? '¾' : f >= 0.58 ? '⅔' : f >= 0.45 ? '½' : '⅓'
+  const valueRaiseSize = round(pot * vrFrac)
+  const valueBetSize = round(pot * vbFrac)
   // DANGER board for a RAISE: a STRAIGHT or FLUSH is possible that the hero does NOT
   // hold. Then a "strong" made hand (two pair / set) facing aggression is really a
   // BLUFF-CATCHER — raising only gets called by the straights/flushes/better that crush
@@ -558,7 +593,7 @@ export function getPostflopAdvice(input: {
     if (isStrongValue && eq >= 0.55 && !raiseGetsOnlyValue) {
       // Strong made hand with the edge → value raise.
       if (spr <= 1.5) { action = 'RAISE'; sizingText = tt('cadv.szRaiseAllinLowSpr'); jam = true }
-      else { action = 'RAISE'; sizingText = tt('cadv.szValueRaise', { frac: wet > 0.4 ? '¾' : '⅔', amt: valueRaiseSize }); betFrac = wet > 0.4 ? 0.85 : 0.66 }
+      else { action = 'RAISE'; sizingText = tt('cadv.szValueRaise', { frac: fracLabel(vrFrac), amt: valueRaiseSize }); betFrac = vrFrac }
       reasons.push(tt('cadv.valueRaise'))
       confidence = eq >= 0.7 ? 'haute' : 'moyenne'
     } else if (eq >= potOdds + callMargin) {
@@ -633,7 +668,7 @@ export function getPostflopAdvice(input: {
         sizingText = tt('cadv.szThinValue', { amt: round(pot * 0.4) }); betFrac = 0.4
         reasons.push(tt('cadv.thinValue'))
       } else {
-        sizingText = tt('cadv.szValueBet', { frac: wet > 0.4 ? '¾' : '⅔', amt: valueBetSize }); betFrac = wet > 0.4 ? 0.75 : 0.6
+        sizingText = tt('cadv.szValueBet', { frac: fracLabel(vbFrac), amt: valueBetSize }); betFrac = vbFrac
         reasons.push(tt('cadv.valueBet'))
       }
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
