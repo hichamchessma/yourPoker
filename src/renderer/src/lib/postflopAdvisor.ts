@@ -29,6 +29,16 @@ export interface FacePlanRow {
   equation: string   // the math: "B = ⅔·pot ($X) ; req = B/(pot+2B) = 2/7 ≈ 29%"
   action: string     // "CALL", "FOLD", "RE-RAISE / 4-BET (valeur)"…
   why: string        // short math rationale
+  kind: 'call' | 'fold' | 'reraise'   // language-agnostic action primitive (for the Pro Plan)
+}
+// ── PRO PLAN — the multi-street "line" a strong player would announce (check-call ⅓,
+//    bet-fold, barrel turn…). Synthesised from facePlan + the made-hand read so it is
+//    CONSISTENT with what the coach would advise at each next node (not faked depth). ──
+export interface ProPlan {
+  line: string                                   // shorthand headline: "CHECK / FOLD", "BET ⅔ / FOLD"…
+  branches: { cond: string; act: string; kind: 'call' | 'fold' | 'reraise' }[]  // condensed decision tree
+  turn: string                                   // next-street intent (barrel / give up / pot control)
+  term: string                                   // the key pro term used (for the glossary)
 }
 export interface OutCard { card: Card; cat: number; label: string; weak?: boolean }
 export interface Advice {
@@ -43,6 +53,7 @@ export interface Advice {
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[] // plan vs a bet/raise behind — when CHECK / BET / CALL
+  proPlan?: ProPlan        // synthesised multi-street "line" (Pro tier)
   outs: OutCard[]          // specific cards (flop/turn) that improve the hero's hand
   betFrac?: number         // recommended bet/raise size as a fraction of the pot (for auto-play)
   jam?: boolean            // recommended size is all-in
@@ -688,23 +699,26 @@ export function getPostflopAdvice(input: {
       const equation = s.allin
         ? `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${round(B)}/(${round(pot)}+2·${round(B)}) ≈ ${pct(reqEq)}`
         : `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${s.reqTxt} ≈ ${pct(reqEq)}`
-      let act: string, why: string
+      let act: string, why: string, kind: FacePlanRow['kind']
       if (isStrongValue) {
-        if (s.allin || spr <= 1.5) { act = tt('cadv.fpCallAllinValue'); why = tt('cadv.fpWhyStrong', { eq: pct(eq) }) }
-        else { act = tt('cadv.fpReraiseValue'); why = tt('cadv.fpWhyDominate', { small: small ? tt('cadv.fpSmallReraise') : '' }) }
+        if (s.allin || spr <= 1.5) { act = tt('cadv.fpCallAllinValue'); why = tt('cadv.fpWhyStrong', { eq: pct(eq) }); kind = 'call' }
+        else { act = tt('cadv.fpReraiseValue'); why = tt('cadv.fpWhyDominate', { small: small ? tt('cadv.fpSmallReraise') : '' }); kind = 'reraise' }
       } else if (strongDraw && small) {
-        act = tt('cadv.fpReraiseSemi'); why = tt('cadv.fpWhySemi')
+        act = tt('cadv.fpReraiseSemi'); why = tt('cadv.fpWhySemi'); kind = 'reraise'
       } else if (effEq >= reqEq) {
         act = isOnePair ? tt('cadv.fpCallBluffcatch') : tt('cadv.fpCall')
-        why = tt('cadv.fpWhyCall', { eq: pct(eq), req: pct(reqEq) })
+        why = tt('cadv.fpWhyCall', { eq: pct(eq), req: pct(reqEq) }); kind = 'call'
       } else if (strongDraw && effEq >= reqEq - impliedBuf) {
-        act = tt('cadv.fpCallDraw'); why = tt('cadv.fpWhyDraw', { eq: pct(eq), req: pct(reqEq) })
+        act = tt('cadv.fpCallDraw'); why = tt('cadv.fpWhyDraw', { eq: pct(eq), req: pct(reqEq) }); kind = 'call'
       } else {
-        act = tt('cadv.fpFold'); why = tt('cadv.fpWhyFold', { eq: pct(eq), req: pct(reqEq), big: s.allin || (s.frac as number) >= 1 ? tt('cadv.fpBigBet') : '' })
+        act = tt('cadv.fpFold'); why = tt('cadv.fpWhyFold', { eq: pct(eq), req: pct(reqEq), big: s.allin || (s.frac as number) >= 1 ? tt('cadv.fpBigBet') : '' }); kind = 'fold'
       }
-      return { label: s.label, reqEq, equation, action: act, why }
+      return { label: s.label, reqEq, equation, action: act, why, kind }
     })
   }
+
+  // ── PRO PLAN: synthesise the announced "line" from facePlan + the made-hand read ──
+  const proPlan = buildProPlan(action, facePlan, betFrac, jam, { isStrongValue, isOnePair, strongDraw, eq })
 
   // Honest hand label: a "pair" that is ONLY the board's pair (your hole cards add
   // nothing) is really just your high card + the shared board pair — never call it
@@ -713,7 +727,73 @@ export function getPostflopAdvice(input: {
   const madeHand = boardOnlyPair ? tt('hand.madeBoardOnly', { hi: heroHi })
     : boardLeanTwoPair ? tt('hand.madeBoardLean', { pair: pairLabel(effPair) })
     : name
-  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, outs: computeOuts(hole, board), betFrac, jam }
+  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, outs: computeOuts(hole, board), betFrac, jam }
+}
+
+// Turn the per-size facePlan into a single announced LINE (check-call ⅓ · fold +,
+// bet-fold, check-raise…) plus a next-street intent. Pure summarisation of data the
+// coach already produced → the line never contradicts the node-by-node advice.
+function buildProPlan(
+  action: AdviceAction,
+  facePlan: FacePlanRow[] | undefined,
+  betFrac: number,
+  jam: boolean,
+  ctx: { isStrongValue: boolean; isOnePair: boolean; strongDraw: boolean; eq: number },
+): ProPlan | undefined {
+  if (!facePlan || facePlan.length === 0) return undefined
+  if (action !== 'CHECK' && action !== 'BET' && action !== 'CALL' && action !== 'RAISE') return undefined
+  const { isStrongValue, isOnePair, strongDraw, eq } = ctx
+  // Compact recommended-size token for the headline (the full sizingText is a sentence).
+  const sizingText = jam ? tt('cadv.tapisWord')
+    : betFrac >= 0.95 ? tt('cadv.potWord')
+    : betFrac >= 0.58 ? `⅔ ${tt('cadv.potWord')}`
+    : betFrac >= 0.42 ? `½ ${tt('cadv.potWord')}`
+    : `⅓ ${tt('cadv.potWord')}`
+  const callable = facePlan.filter(r => r.kind === 'call' || r.kind === 'reraise')
+  const reraises = facePlan.filter(r => r.kind === 'reraise')
+  const lastCallable = callable.length ? callable[callable.length - 1] : null
+  const allCall = callable.length === facePlan.length
+  const noneCall = callable.length === 0
+  const aFold = tt('plan.aFold'), aCall = tt('plan.aCall')
+  let line = '', turn = '', term = ''
+  const branches: ProPlan['branches'] = []
+
+  if (action === 'CHECK') {
+    if (reraises.length && (isStrongValue || strongDraw)) {
+      const semi = strongDraw && !isStrongValue
+      line = semi ? tt('plan.checkRaiseSemi') : tt('plan.checkRaiseValue'); term = 'check-raise'
+      branches.push({ cond: tt('plan.ifBets'), act: tt('plan.aCheckRaise'), kind: 'reraise' })
+      turn = semi ? tt('plan.turnSemibluff') : tt('plan.turnValueBarrel')
+    } else if (noneCall) {
+      line = tt('plan.checkFold'); term = 'check-fold'
+      branches.push({ cond: tt('plan.anyBet'), act: aFold, kind: 'fold' })
+      turn = tt('plan.turnGiveUp')
+    } else if (allCall) {
+      line = tt('plan.checkCallDown'); term = 'check-call'
+      branches.push({ cond: tt('plan.anyBet'), act: aCall, kind: 'call' })
+      turn = isOnePair ? tt('plan.turnBluffcatch') : tt('plan.turnValueBarrel')
+    } else {
+      line = tt('plan.checkCallUpTo', { size: lastCallable!.label }); term = 'check-call'
+      branches.push({ cond: tt('plan.upTo', { size: lastCallable!.label }), act: aCall, kind: 'call' })
+      branches.push({ cond: tt('plan.over', { size: lastCallable!.label }), act: aFold, kind: 'fold' })
+      turn = tt('plan.turnReeval')
+    }
+  } else if (action === 'BET') {
+    if (reraises.length) { line = tt('plan.betReraise', { size: sizingText }); term = 'bet-3bet'
+      branches.push({ cond: tt('plan.ifRaised'), act: tt('plan.a3bet'), kind: 'reraise' }); turn = tt('plan.turnValueBarrel') }
+    else if (callable.length) { line = tt('plan.betCall', { size: sizingText }); term = 'bet-call'
+      branches.push({ cond: tt('plan.ifRaised'), act: aCall, kind: 'call' }); turn = isStrongValue ? tt('plan.turnValueBarrel') : tt('plan.turnThinValue') }
+    else { line = tt('plan.betFold', { size: sizingText }); term = 'bet-fold'
+      branches.push({ cond: tt('plan.ifRaised'), act: aFold, kind: 'fold' })
+      turn = isStrongValue || eq >= 0.6 ? tt('plan.turnValueBarrel') : strongDraw ? tt('plan.turnSemibluff') : tt('plan.turnThinValue') }
+  } else if (action === 'CALL') {
+    line = tt('plan.call'); term = isOnePair ? 'bluff-catch' : 'call'
+    turn = isOnePair ? tt('plan.turnBluffcatch') : isStrongValue ? tt('plan.turnRaiseTurn') : tt('plan.turnReeval')
+  } else { // RAISE
+    line = isStrongValue ? tt('plan.raiseCall') : tt('plan.raiseSemi'); term = 'raise'
+    turn = isStrongValue ? tt('plan.turnValueBarrel') : tt('plan.turnSemibluff')
+  }
+  return { line, branches, turn, term }
 }
 
 // ── "How a pro thinks about it" — the equity-vs-pot-odds monologue ─────────────

@@ -5,7 +5,9 @@ import {
   GRID_RANKS, buildRangeMap, buildJamCallMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, type AdviceAction, type FacePlanRow, type OutCard, type EquityReasoning, type VillainTier } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, type AdviceAction, type FacePlanRow, type ProPlan, type OutCard, type EquityReasoning, type VillainTier } from '../lib/postflopAdvisor'
+import { useIsPro } from '../lib/entitlements'
+import { Lock, Zap } from 'lucide-react'
 import RangeHeatmap from './RangeHeatmap'
 import EquityReasoningBlock, { MiniCard, groupOuts } from './EquityReasoning'
 import type { RangeView } from '../lib/rangeEstimator'
@@ -35,6 +37,7 @@ interface UnifiedAdvice {
   reasons: string[]
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[]
+  proPlan?: ProPlan
   outs?: OutCard[]
 }
 
@@ -83,6 +86,7 @@ export default function RangeAssistant({
   representedMeta?: { move: string; effect: string } | null
 }) {
   const { t, i18n } = useTranslation()
+  const isPro = useIsPro()
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
@@ -163,7 +167,7 @@ export default function RangeAssistant({
     }
     if (board.length < 3) return null
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
-    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, strongDraw: a.strongDraw, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, outs: a.outs }
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, strongDraw: a.strongDraw, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, proPlan: a.proPlan, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // i18n.language: the reasons/sizing/madeHand are built with t() INSIDE this memo,
     // so they must rebuild when the language changes (otherwise the coach panel stays
@@ -275,6 +279,8 @@ export default function RangeAssistant({
                   <p className="text-[10px] text-white/45 mt-0.5">{t('coach.confidence')} <span className="font-bold" style={{ color: advice.color }}>{t(`coach.conf${advice.confidence.charAt(0).toUpperCase() + advice.confidence.slice(1)}`)}</span></p>
                 </div>
               </div>
+              {/* ── PRO PLAN — the announced multi-street line (Pro tier) ── */}
+              {!isPreflop && advice.proPlan && <ProPlanBand plan={advice.proPlan} isPro={isPro} />}
             </>
           )}
 
@@ -445,6 +451,56 @@ export default function RangeAssistant({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }}>
       {panel}
+    </div>
+  )
+}
+
+// Pro-tier "PLAN PRO" band: the announced multi-street line + a one-line glossary, a
+// condensed decision tree and the next-street intent. Free users see it blurred (upsell).
+const PLAN_GLOSS: Record<string, string> = {
+  'check-fold': 'plan.glossCheckFold', 'check-call': 'plan.glossCheckCall', 'check-raise': 'plan.glossCheckRaise',
+  'bet-fold': 'plan.glossBetFold', 'bet-call': 'plan.glossBetCall', 'bet-3bet': 'plan.glossBet3bet',
+  'bluff-catch': 'plan.glossBluffCatch', 'call': 'plan.glossCall', 'raise': 'plan.glossRaise',
+}
+const PLAN_KIND_COLOR: Record<string, string> = { call: '#34d399', fold: '#f87171', reraise: '#f0c060' }
+
+function ProPlanBand({ plan, isPro }: { plan: ProPlan; isPro: boolean }) {
+  const { t } = useTranslation()
+  const glossKey = PLAN_GLOSS[plan.term]
+  return (
+    <div className="relative rounded-xl border mb-4 overflow-hidden"
+      style={{ borderColor: 'rgba(167,139,255,0.4)', background: 'linear-gradient(135deg, rgba(124,92,240,0.12), rgba(40,30,90,0.18))' }}>
+      <div className="flex items-center justify-between px-3.5 pt-2.5">
+        <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>
+          <Zap size={12} /> {t('plan.title')}
+        </span>
+        <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: 'rgba(167,139,255,0.2)', color: '#c4b5fd' }}>PRO</span>
+      </div>
+      <div className="px-3.5 pb-3 pt-1.5" style={isPro ? undefined : { filter: 'blur(6px)', userSelect: 'none', pointerEvents: 'none' }}>
+        <p className="text-[17px] font-black tracking-wide" style={{ color: '#e9e2ff' }}>{plan.line}</p>
+        {glossKey && <p className="text-[10px] text-white/45 mt-0.5 leading-snug">{t(glossKey)}</p>}
+        {plan.branches.length > 0 && (
+          <div className="mt-2.5 space-y-1">
+            {plan.branches.map((b, i) => (
+              <div key={i} className="flex items-center gap-2 text-[11px]">
+                <span className="text-white/45">{b.cond}</span>
+                <span className="text-white/25">→</span>
+                <span className="font-black tracking-wide" style={{ color: PLAN_KIND_COLOR[b.kind] }}>{b.act}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-2.5 flex items-start gap-1.5 rounded-lg px-2 py-1.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          <span className="text-[8px] font-black uppercase tracking-widest mt-0.5 shrink-0" style={{ color: '#a78bfa' }}>{t('plan.turnLabel')}</span>
+          <span className="text-[10.5px] text-white/65 leading-snug">{plan.turn}</span>
+        </div>
+      </div>
+      {!isPro && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: 'rgba(12,9,22,0.35)' }}>
+          <Lock size={16} className="text-[#c4b5fd]" />
+          <span className="text-[11px] font-bold text-white/85">{t('plan.lockedCta')}</span>
+        </div>
+      )}
     </div>
   )
 }
