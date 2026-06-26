@@ -44,6 +44,10 @@ interface Seat {
   holeCards: [Card | null, Card | null]; cardsFaceUp: boolean
   bet: number; totalBet: number; isFolded: boolean; isAllIn: boolean
   isActive: boolean; lastAction: string | null; level: number
+  // Raise level at which this seat last voluntarily acted THIS street. With the table's
+  // raiseLevel, this enforces the incomplete-raise rule: a seat may re-raise only if a
+  // FULL raise has happened since it last acted (raiseLevel > actedLevel). -1 = not yet.
+  actedLevel?: number
   position: string; isDealer: boolean; isSB: boolean; isBB: boolean
   handStrength?: string; handScore?: number; isWinner?: boolean
   isEliminated: boolean; isSittingOut: boolean
@@ -52,6 +56,9 @@ interface Seat {
 interface GState {
   phase: Phase; deck: Card[]; seats: Seat[]; community: (Card | null)[]
   pot: number; currentBet: number; minRaise: number; actQueue: number[]
+  // Count of FULL bets/raises on the current street (incomplete all-ins don't bump it).
+  // Re-raising is only re-opened to a seat whose actedLevel is below this. Reset each street.
+  raiseLevel?: number
   dealerIdx: number; handNum: number; log: string[]; winners: number[]
   paused: boolean; autoRunning: boolean
 }
@@ -2215,6 +2222,18 @@ export default function GamePage(): JSX.Element {
     const seat = seats[seatIdx]
     if (!seat) return currentGs
 
+    // ── INCOMPLETE-RAISE RULE ──────────────────────────────────────────────
+    // A player FACING a bet whose action has NOT been re-opened (the last "raise"
+    // was an all-in for less than a full raise) may only CALL or FOLD. Any attempt
+    // to bet/raise — or to put in MORE than the call via all-in — is illegal and is
+    // demoted to a plain CALL. (You can always still call all-in for ≤ the call.)
+    const facingBet = currentGs.currentBet > seat.bet
+    const reopened = (currentGs.raiseLevel ?? 0) > (seat.actedLevel ?? -1)
+    if (facingBet && !reopened) {
+      if (action === 'BET' || action === 'RAISE') action = 'CALL'
+      else if (action === 'ALL-IN' && seat.bet + seat.stack > currentGs.currentBet) action = 'CALL'
+    }
+
     let newPot = currentGs.pot
     let newBet = currentGs.currentBet
     let newMinRaise = currentGs.minRaise
@@ -2281,6 +2300,17 @@ export default function GamePage(): JSX.Element {
     // Safety net: any committing action that empties the stack is all-in.
     if (!seat.isFolded && seat.stack <= 0) seat.isAllIn = true
 
+    // ── Re-open tracking ──────────────────────────────────────────────────
+    // A FULL bet/raise (increment ≥ the prior min-raise) bumps the raise level and
+    // re-opens re-raising for everyone; an incomplete all-in (or a demoted call) does
+    // not. Record the level at which this seat just acted.
+    let newRaiseLevel = currentGs.raiseLevel ?? 0
+    if (action !== 'FOLD') {
+      const raisedBy = newBet - currentGs.currentBet
+      if (raisedBy > 0 && raisedBy >= currentGs.minRaise) newRaiseLevel += 1
+      seat.actedLevel = newRaiseLevel
+    }
+
     // 🔊 Sound for the action (all-in trumps the base action).
     {
       const fx = seat.isAllIn ? 'allin'
@@ -2311,6 +2341,7 @@ export default function GamePage(): JSX.Element {
       pot: newPot,
       currentBet: newBet,
       minRaise: newMinRaise,
+      raiseLevel: newRaiseLevel,
       log: newLog,
     }
   }
@@ -2407,8 +2438,8 @@ export default function GamePage(): JSX.Element {
   function endStreet(state: GState): void {
     // Slide every committed bet into the central pot, then reset the bets.
     const collectMs = collectBetsToPot(state.seats)
-    const seats = state.seats.map(s => ({ ...s, bet: 0, lastAction: null, isActive: false }))
-    const newState = { ...state, seats, currentBet: 0, minRaise: bbAmt }
+    const seats = state.seats.map(s => ({ ...s, bet: 0, lastAction: null, isActive: false, actedLevel: -1 }))
+    const newState = { ...state, seats, currentBet: 0, minRaise: bbAmt, raiseLevel: 0 }
 
     if (newState.phase === 'river' || newState.phase === 'showdown') {
       // Clear the front bets now so they merge into the pot, then reveal — but only
@@ -2454,7 +2485,8 @@ export default function GamePage(): JSX.Element {
     // Record phase event
     recordAction({ phase, seatIdx: -1, name: '', isHero: false, actionType: PHASE_LABEL[phase], amount: 0 }, state.pot)
 
-    const newState = { ...state, deck, community, phase, currentBet: 0, minRaise: bbAmt }
+    const newState = { ...state, deck, community, phase, currentBet: 0, minRaise: bbAmt, raiseLevel: 0,
+      seats: state.seats.map(s => ({ ...s, actedLevel: -1 })) }
     setGs(newState)
     gsRef.current = newState
     // Let the board land, then open a fresh betting round on this street.
@@ -3735,7 +3767,12 @@ export default function GamePage(): JSX.Element {
   const minRaiseTo = gs.currentBet + gs.minRaise
   const heroMaxTo = heroBet + heroStack
   const isOpenBet = gs.currentBet === 0
-  const canRaise = isHeroTurn && heroStack > callAmt
+  // INCOMPLETE-RAISE RULE: when the hero faces a bet, the raise/all-in buttons are only
+  // live if the action has been re-opened — i.e. a FULL raise happened since the hero last
+  // acted (raiseLevel > the hero's actedLevel). An opponent's all-in for less than a full
+  // raise does NOT reopen it: the hero may only call or fold.
+  const heroReopened = isOpenBet || gs.currentBet <= heroBet || (gs.raiseLevel ?? 0) > (hero?.actedLevel ?? -1)
+  const canRaise = isHeroTurn && heroStack > callAmt && heroReopened
   const clampRaise = (v: number) => Math.max(Math.min(minRaiseTo, heroMaxTo), Math.min(v, heroMaxTo))
   // Pot shown in the center = everything committed minus the live bets that are
   // still sitting in front of players (those are drawn as separate stacks).
