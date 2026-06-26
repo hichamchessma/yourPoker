@@ -2191,8 +2191,13 @@ export default function GamePage(): JSX.Element {
       : action === 'CALL' ? t('rev.actCall') + amt
       : action === 'ALL-IN' ? t('rev.actAllin') + amt
       : (action === 'BET' ? t('rev.actBet') : t('rev.actRaise')) + amt
+    // Explicit "sizing read": a big bet polarizes the range (nuts/bluffs), a small one
+    // caps it (thin value included) — make the lesson visible in the film.
+    const sizingRead = ctx.betFrac !== undefined
+      ? (ctx.betFrac >= 0.9 ? t('rev.sizeBig') : ctx.betFrac >= 0.45 ? t('rev.sizeMed') : t('rev.sizeSmall'))
+      : ''
     ;(rangeHistoryRef.current[seatIdx] ??= []).push({
-      view: rangeView(rangeRef.current[seatIdx]), move: meta.move, effect: meta.effect,
+      view: rangeView(rangeRef.current[seatIdx]), move: meta.move, effect: meta.effect + sizingRead,
       caption: `${phaseLabel} · ${actLabel}`, ctx, observed: cat,
     })
   }
