@@ -687,7 +687,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
     const map = vsJam
       ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn, 1, raiserBehindJam)
       : buildRangeMap(scenario, hero.position, (scenario === 'rfi' || scenario === 'iso') ? playersBehind : undefined,
-          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, vsOpenerPos, reRaiseRatio, threeBettorIP,
+          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, numCallers: preflopCallers, vsOpenerPos, reRaiseRatio, threeBettorIP,
             effBB: record.bb > 0 ? effStack / record.bb : undefined,
             closingAction: playersBehind === 0, potOdds: toCall > 0 ? toCall / (pot + toCall) : 0 })
     const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
@@ -3753,7 +3753,7 @@ export default function GamePage(): JSX.Element {
       const map = vsJam
         ? buildJamCallMap(effBB, heroNumAllIn, icmTighten, heroRaiserBehindJam)
         : buildRangeMap(heroScenario as Scenario, h.position, heroPlayersBehind,
-            { effBB, raiseToBB: heroRaiseToBB, multiway: heroMultiway, vsOpenerPos: heroVsOpenerPos, reRaiseRatio: heroReRaiseRatio, threeBettorIP: heroThreeBettorIP, icmTighten, closingAction: heroPlayersBehind === 0, potOdds: potOddsPre })
+            { effBB, raiseToBB: heroRaiseToBB, multiway: heroMultiway, numCallers: preflopCallers, vsOpenerPos: heroVsOpenerPos, reRaiseRatio: heroReRaiseRatio, threeBettorIP: heroThreeBettorIP, icmTighten, closingAction: heroPlayersBehind === 0, potOdds: potOddsPre })
       const chart = map.get(heroKey) ?? 'fold'
       if (chart === 'fold') return { action: canCheck ? 'CHECK' : 'FOLD', amount: 0 }
       if (chart === 'call') return { action: canCheck ? 'CHECK' : 'CALL', amount: toCall }
@@ -4977,6 +4977,7 @@ export default function GamePage(): JSX.Element {
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
                 multiway={heroMultiway}
+                numCallers={preflopCallers}
                 vsOpenerPos={heroVsOpenerPos}
                 reRaiseRatio={heroReRaiseRatio}
                 threeBettorIP={heroThreeBettorIP}

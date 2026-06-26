@@ -44,7 +44,7 @@ interface UnifiedAdvice {
 export default function RangeAssistant({
   card1, card2, position, scenario, activePlayers, playersBehind,
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
-  raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0,
+  raiseToBB, multiway, numCallers = 0, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0,
   raiserBehindJam = false, aggressors, cappedRange, callPressure, donkLead, facingRaise,
   icmTighten = 1, icmPressure = 0, actionRecap, onClose, villainTier,
   embedded = false, representedView = null, representedMeta = null,
@@ -66,6 +66,7 @@ export default function RangeAssistant({
   bb: number
   raiseToBB: number
   multiway: boolean
+  numCallers?: number
   vsOpenerPos?: string
   reRaiseRatio?: number
   threeBettorIP?: boolean
@@ -96,7 +97,7 @@ export default function RangeAssistant({
   const closingAction = playersBehind === 0 // BB last to act preflop
   const rangeMap = !isPreflop ? null
     : vsJam ? buildJamCallMap(effBB, numAllIn, icmTighten, raiserBehindJam)
-    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, vsOpenerPos, reRaiseRatio, threeBettorIP, icmTighten, closingAction, potOdds: potOddsPre })
+    : buildRangeMap(scenario as Scenario, position, playersBehind, { effBB, raiseToBB, multiway, numCallers, vsOpenerPos, reRaiseRatio, threeBettorIP, icmTighten, closingAction, potOdds: potOddsPre })
   const heroChartAction: RangeAction | null = rangeMap && heroKey ? rangeMap.get(heroKey) ?? 'fold' : null
   // Re-shove (3-bet jam) zone: 14-25bb facing an open/squeeze, the chart marks jam
   // hands as 'raise' (not '3bet') → a 'raise' here means an ALL-IN re-shove, not an open.

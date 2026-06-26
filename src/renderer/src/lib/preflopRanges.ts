@@ -109,6 +109,7 @@ export interface RangeOpts {
   icmTighten?: number   // tournament ICM: <1 shrinks the gambling ranges near the bubble / pay jumps
   closingAction?: boolean // hero is LAST to act preflop (BB) → can defend by price
   potOdds?: number      // toCall / (pot + toCall) — drives the closing-action defense width
+  numCallers?: number   // squeeze: cold-callers already in — each extra one tightens the re-jam
 }
 
 // Action map for every hand in the grid, for a given scenario + hero position.
@@ -120,13 +121,19 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
   // Applies to opening / iso / facing-an-open / squeeze; the 'raise' cell means
   // ALL-IN here. Facing an actual jam is handled separately (buildJamCallMap).
   const icm = opts.icmTighten ?? 1
+  // Cold-callers already in the pot (squeeze): each one kills fold-equity and adds a
+  // range that can call/dominate, so the re-jam tightens with the count. Default to the
+  // multiway flag when the exact count isn't supplied (a squeeze always has ≥1 caller).
+  const nc = Math.max(1, opts.numCallers ?? (opts.multiway ? 2 : 1))
   const pb = opts.effBB !== undefined ? pushBucket(opts.effBB) : null
   if (pb && (scenario === 'rfi' || scenario === 'iso' || scenario === 'vsopen' || scenario === 'squeeze')) {
     // Jamming OVER a raiser is much tighter than an open-jam steal: you get called by
     // a real raising range, not the blinds. A SQUEEZE jam over a raise + caller(s) is
-    // tighter still — two ranges can call and your weak aces are dominated. (An open
-    // steal — rfi/iso — keeps the full wide push range.)
-    const ctx = scenario === 'vsopen' ? 0.8 : scenario === 'squeeze' ? (opts.multiway ? 0.55 : 0.7) : 1
+    // tighter still — and over an open + 2 CALLERS there's almost no fold-equity (the
+    // callers are often priced-in/committed) and your weak aces are dominated, so it
+    // collapses toward the premiums (A9s is a FOLD there, not a "jam or you're leaking").
+    const sqCtx = nc >= 3 ? 0.24 : nc === 2 ? 0.30 : 0.42
+    const ctx = scenario === 'vsopen' ? 0.8 : scenario === 'squeeze' ? sqCtx : 1
     let shove = trimWeakest(pushFoldRange(opts.effBB!, playersBehind, position), icm * ctx) // tighter near the bubble + over a raiser
     // Micro-stack open-jam: pushBucket is flat below 8bb, but at 1–5bb you have NO fold
     // equity left and are committed, so the jam widens toward ANY TWO. Widen the open
@@ -151,7 +158,7 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
   if (opts.effBB !== undefined && opts.effBB > 13 && opts.effBB <= 27 && (scenario === 'vsopen' || scenario === 'squeeze')) {
     const e = opts.effBB
     let pct = e <= 16 ? 20 : e <= 19 ? 16 : e <= 22 ? 12 : e <= 25 ? 9 : 7.5
-    if (scenario === 'squeeze') pct *= opts.multiway ? 0.6 : 0.78        // 2+ ranges behind / in → tighter
+    if (scenario === 'squeeze') pct *= nc >= 3 ? 0.45 : nc === 2 ? 0.55 : 0.72   // each extra caller → tighter
     const openerW = opts.vsOpenerPos ? openPctFor(opts.vsOpenerPos) : 25 // vs a wide late open → re-shove wider
     pct *= Math.max(0.75, Math.min(1.4, openerW / 25))
     pct *= icm                                                          // ICM: tighter near the bubble / pay jumps
