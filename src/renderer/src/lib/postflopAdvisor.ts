@@ -391,18 +391,22 @@ function textureClass(board: Card[]): TextureClass {
   if (maxSuit >= 3) return 'monotone'                                   // 3+ to a flush → small (parabola)
   const vals = [...new Set(board.map(c => RV[c.rank]))].sort((a, b) => a - b)
   for (let lo = 2; lo <= 10; lo++) if (vals.filter(v => v >= lo && v < lo + 5).length >= 3) return 'connected' // straights live → size DOWN
-  if (maxSuit === 2) return 'dynamic'                                   // two-tone, draws to charge → BIG
-  let conn = 0; for (let i = 1; i < vals.length; i++) if (vals[i] - vals[i - 1] <= 2) conn++
-  return conn >= 1 ? 'dynamic' : 'dry'
+  if (maxSuit === 2 && board.length < 5) return 'dynamic'              // two-tone = a flush DRAW to charge (only pre-river) → BIG
+  return 'dry'                                                          // rainbow / no live draw → dry
 }
 // Recommended value c-bet / value-raise size as a fraction of the pot, by texture.
 // Multiway leans a touch bigger (value-heavier, less fold equity needed).
-function cbetFrac(board: Card[], opponents: number, forRaise: boolean): number {
+function cbetFrac(board: Card[], opponents: number, forRaise: boolean, strongValue: boolean): number {
   const cls = textureClass(board)
-  let f = cls === 'dynamic' ? 0.75      // two-tone / gappy → charge draws big
+  // Ranges polarize toward the river → STRONG value bets grow by street on dry/dynamic
+  // boards. A MEDIUM one-pair value hand does NOT get the polar bump (on the river it has
+  // no protection value and only thin value — bloating just folds out worse / gets called
+  // by better). Monotone/connected stay cautious for everyone.
+  const polar = strongValue ? (board.length >= 5 ? 0.15 : board.length >= 4 ? 0.07 : 0) : 0
+  let f = cls === 'dynamic' ? 0.75 + polar   // two-tone / gappy → charge draws big
     : cls === 'connected' ? 0.5         // straights in the defender's range → size down
     : cls === 'monotone' ? 0.4          // wetness parabola → small (fold only trash otherwise)
-    : 0.55                              // dry/static → medium-small
+    : 0.55 + polar                      // dry/static → medium, more polar by street for value
   if (forRaise) f += 0.1
   if (Math.max(1, opponents) >= 2) f += 0.08
   return Math.min(forRaise ? 1.0 : 0.9, f)
@@ -564,8 +568,8 @@ export function getPostflopAdvice(input: {
   if (beatenMultiway) reasons.push(tt('cadv.beatenMultiway', { eq: pct(eq) }))
   // Texture-driven value sizing (wetness parabola) — replaces the old "wetter = bigger"
   // binary, which wrongly sized UP on monotone boards (those want SMALL).
-  const vbFrac = cbetFrac(board, opponents, false)
-  const vrFrac = cbetFrac(board, opponents, true)
+  const vbFrac = cbetFrac(board, opponents, false, isStrongValue)
+  const vrFrac = cbetFrac(board, opponents, true, isStrongValue)
   const fracLabel = (f: number) => f >= 0.7 ? '¾' : f >= 0.58 ? '⅔' : f >= 0.45 ? '½' : '⅓'
   const valueRaiseSize = round(pot * vrFrac)
   const valueBetSize = round(pot * vbFrac)
