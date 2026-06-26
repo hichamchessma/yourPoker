@@ -3113,6 +3113,29 @@ export default function GamePage(): JSX.Element {
 
     const currentBet = seats.reduce((m, s) => Math.max(m, s.bet), 0)
 
+    // Reconstruct the incomplete-raise bookkeeping for THIS street so the revived sandbox
+    // enforces re-opening exactly like live play: a prior under-raise all-in must not let
+    // anyone re-raise. Replay the street's "bet-to" amounts to count FULL raises and tag
+    // the raise level at which each seat last acted.
+    const recBB = record.bb || bbAmt
+    const reopenActs = record.actions.slice(0, stepIdx + 1)
+      .filter(a => a.seatIdx >= 0 && a.phase === phase && a.actionType !== 'SB' && a.actionType !== 'BB')
+    let rlCur = phase === 'preflop' ? recBB : 0   // running current bet
+    let rlMin = recBB                              // running min-raise increment
+    let raiseLevel = 0
+    const actedLevelByIdx: Record<number, number> = {}
+    for (const a of reopenActs) {
+      const amt = a.amount ?? 0
+      if ((a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN') && amt > rlCur) {
+        const raisedBy = amt - rlCur
+        if (raisedBy >= rlMin) raiseLevel += 1   // a FULL raise re-opens; an under-raise all-in doesn't
+        if (raisedBy > rlMin) rlMin = raisedBy
+        rlCur = amt
+      }
+      actedLevelByIdx[a.seatIdx] = raiseLevel
+    }
+    seats = seats.map(s => ({ ...s, actedLevel: actedLevelByIdx[s.idx] ?? -1 }))
+
     // Continue the SAME hand's bookkeeping → live coach (aggression/barrels/
     // priorRaises) stays coherent with what built the spot.
     currentHandActionsRef.current = record.actions.slice(0, stepIdx + 1).map(a => ({ ...a }))
@@ -3121,7 +3144,7 @@ export default function GamePage(): JSX.Element {
     record.players.forEach(p => { handStartStacksRef.current[p.idx] = p.startStack })
 
     const state: GState = {
-      phase, deck, seats, community, pot: step.pot, currentBet, minRaise: bbAmt,
+      phase, deck, seats, community, pot: step.pot, currentBet, minRaise: Math.max(bbAmt, rlMin), raiseLevel,
       actQueue: [], dealerIdx, handNum: record.handNum,
       log: [i18n.t('xtra.simLog', { phase: i18n.t('phase.' + phase) }) as string], winners: [],
       paused: false, autoRunning: true,
