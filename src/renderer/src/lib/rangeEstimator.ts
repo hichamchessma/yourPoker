@@ -217,6 +217,9 @@ function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: 
   }
   if (strength >= p.raiseValue) return { fold: 0, check: 0, call: 0, aggr: 1 }
   let aggr = draw ? p.semiBluff * 0.7 : 0
+  // A SMALL raise merges in some thin/medium value (linear); a BIG raise stays polar
+  // (only nuts + bluffs). Mirrors the bet read so the size verdict is honest on raises.
+  if (betFrac < 0.5 && strength >= potOdds + p.callEdge + 0.08 && strength < p.raiseValue) aggr = Math.max(aggr, 0.22)
   let call = (strength >= potOdds + p.callEdge) ? 1 : (draw && strength + 0.18 >= potOdds) ? 1 : p.spew
   const bluffR = tier >= 2 ? p.bluff * 0.6 : 0
   aggr = Math.min(1, aggr + bluffR * (1 - call))
