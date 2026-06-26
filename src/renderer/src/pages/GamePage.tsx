@@ -701,11 +701,19 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
     // A 'raise' cell in a vs-open/squeeze map is a RE-SHOVE (3-bet jam) — the 14-25bb
     // jam-or-fold zone marks jam hands 'raise' (the normal path would use '3bet').
     const isReshoveCrit = rec === 'raise' && (scenario === 'vsopen' || scenario === 'squeeze')
+    // MICRO-STACK forced jam: at ≤~7bb the open range widens toward ANY TWO — you're
+    // committed (the blinds dwarf your stack), so a trash hand "opens" only because of
+    // that widening. That's a desperation jam, NOT a strength open → narrate it honestly
+    // (otherwise it reads as the absurd "72s is strong enough to open, folding is a leak").
+    const heroEffBB = record.bb > 0 ? effStack / record.bb : 100
+    const microJamOpen = (scenario === 'rfi' || scenario === 'iso') && rec === 'raise'
+      && heroEffBB <= 7 && handOpenRank(key) > openPctFor(hero.position, playersBehind)
     const recLabel = rec === 'fold' ? 'FOLD'
       : rec === 'call' ? (vsJam ? tc('crit.recCallJam') : tc('crit.recCall'))
       : rec === '3bet' ? (scenario === 'squeeze' ? tc('crit.recSqueeze') : tc('crit.rec3bet'))
       : rec === '4bet' ? (scenario === 'vs4bet' ? tc('crit.rec5betJam') : tc('crit.rec4bet'))
       : isReshoveCrit ? tc('crit.recReshove')
+      : microJamOpen ? tc('crit.recMicroJam')
       : scenario === 'iso' ? tc('crit.recIso') : tc('crit.recOpen')
     const from = lastAggressorName ? tc('crit.ctxFrom', { name: lastAggressorName }) : ''
     const ctx = vsJam ? tc('crit.ctxJam', { pos: hero.position, n: numAllIn })
@@ -724,6 +732,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
     else if (recCat === 'fold' && heroCat === 'aggr' && openMargin <= 12) { verdict = 'ok'; headline = tc('crit.hOpenBorderline'); lines.push(tc('crit.lOpenBorderline', { key, rec: rec === 'fold' ? tc('crit.foldWord') : recLabel })) }
     else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hTooWide'); lines.push(tc('crit.lTooWide', { key })) }
     else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = tc('crit.hTooPassive'); lines.push(tc('crit.lTooPassivePre', { key, rec: recLabel })) }
+    else if (recCat === 'aggr' && heroCat === 'fold' && microJamOpen) { verdict = 'ok'; headline = tc('crit.hMicroJamFold'); lines.push(tc('crit.lMicroJamFold', { key, bb: Math.round(heroEffBB) })) }
     else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hFoldTooTight'); lines.push(tc('crit.lFoldTooTight', { key, rec: recLabel })) }
     else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = tc('crit.hOverAggro'); lines.push(tc('crit.lOverAggroPre', { key })) }
     else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = tc('crit.hFoldSlightlyTight'); lines.push(tc('crit.lFoldSlightlyTight', { key })) }
