@@ -922,6 +922,9 @@ function reconstructRanges(record: HandHistoryRecord, stepIdx: number): Record<n
         tier: Math.max(1, Math.min(3, p.level)),
         human: p.seatType === 'human', mood: 0,
         priorRaises: preRaises,
+        // size of a BET (first aggression this street) as a fraction of the pot →
+        // a big bet polarizes the read, a small bet merges it.
+        betFrac: !preflop && cat === 'aggr' && toCall <= 0 && pot > 0 ? a.amount / pot : undefined,
       })
     }
     if (a.actionType === 'FOLD') { /* stays */ }
@@ -2174,6 +2177,9 @@ export default function GamePage(): JSX.Element {
       human: seat.seatType === 'human',
       mood: moodRef.current[seatIdx] ?? 0,
       priorRaises: raisesSoFar,  // # of raises this player faced (0/1/2/≥3) → open/3-bet/4-bet logic
+      // size of a BET (first aggression this street) as a fraction of the pot before it →
+      // a big bet polarizes the read (medium hands cut), a small bet merges it.
+      betFrac: !preflop && cat === 'aggr' && toCall <= 0 && (currentGs.pot - seat.bet) > 0 ? seat.bet / (currentGs.pot - seat.bet) : undefined,
     }
     rangeRef.current[seatIdx] = applyAction(rangeRef.current[seatIdx], cat, ctx)
     const meta = actionSummary(cat, { preflop, numCallers, was3betPlus: cat === 'aggr' && raisesSoFar >= 1 })

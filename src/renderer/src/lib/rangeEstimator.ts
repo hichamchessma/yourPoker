@@ -201,10 +201,18 @@ export function preflopProbs(psv: number, posBonus: number, priorRaises: number,
 }
 
 // ── Probability of each action category for a given hand strength ────────────
-function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: number, potOdds: number, posBonus: number, tier: number, p: PolicyParams, priorRaises: number): Record<ActCat, number> {
+function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: number, potOdds: number, posBonus: number, tier: number, p: PolicyParams, priorRaises: number, betFrac = 0.66): Record<ActCat, number> {
   if (preflop) return preflopProbs(strength, posBonus, priorRaises, tier, toCall)
   if (toCall <= 0) {
-    const aggr = strength >= p.betValue ? p.betFreqStrong : draw ? p.semiBluff : p.bluff
+    // SIZE-AWARE betting range. A BIG bet is POLARIZED — strong value + bluffs, the
+    // MEDIUM made hands check (pot control). A SMALL bet is MERGED — medium hands bet
+    // thin / for protection too. So a medium-strength made hand bets often at a small
+    // size and rarely at a big one; strong value always bets, air bluffs at either size.
+    let aggr: number
+    if (strength >= p.betValue) aggr = p.betFreqStrong
+    else if (draw) aggr = p.semiBluff
+    else if (strength >= 0.42) aggr = betFrac >= 1 ? 0.05 : betFrac >= 0.66 ? 0.14 : betFrac >= 0.45 ? 0.30 : 0.48
+    else aggr = p.bluff
     return { fold: 0, check: 1 - aggr, call: 0, aggr }
   }
   if (strength >= p.raiseValue) return { fold: 0, check: 0, call: 0, aggr: 1 }
@@ -227,6 +235,8 @@ export interface ActionCtx {
   human: boolean
   mood: number
   priorRaises: number  // preflop: # of raises made before this player acted (0/1/2/≥3)
+  betFrac?: number     // postflop: size of the BET this player made (fraction of pot) —
+                       // a big bet POLARIZES the read (medium hands cut), small MERGES it
 }
 
 const RANK_BLOCK = (board: Card[]) => {
@@ -246,7 +256,7 @@ export function applyAction(range: RangeWeights, observed: ActCat, ctx: ActionCt
     // Pre-flop: raw chart value (1..10); post-flop: made-hand strength (0..1).
     const strength = ctx.preflop ? preflopStrength(a, b) : madeStrength([a, b], ctx.board)
     const draw = ctx.preflop ? false : hasStrongDraw([a, b], ctx.board)
-    const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, p, ctx.priorRaises)
+    const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, p, ctx.priorRaises, ctx.betFrac)
     out[h.key] = w * probs[observed]
   }
   return out
@@ -288,7 +298,7 @@ export function explainHandStep(handKey: string, observed: ActCat, ctx: ActionCt
   const pol = policyFor(ctx.tier, ctx.human, ctx.mood)
   const strength = ctx.preflop ? preflopStrength(a, b) : madeStrength([a, b], ctx.board)
   const draw = ctx.preflop ? false : hasStrongDraw([a, b], ctx.board)
-  const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, pol, ctx.priorRaises)
+  const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, pol, ctx.priorRaises, ctx.betFrac)
   const prob = probs[observed]
   const pc = (x: number) => `${Math.round(x * 100)}%`
   let reason = ''

@@ -9,6 +9,7 @@
 // flake them. A failing line prints "❌ <reason>". Green = no behavioural regression.
 import { getPostflopAdvice } from '../src/renderer/src/lib/postflopAdvisor'
 import { buildRangeMap } from '../src/renderer/src/lib/preflopRanges'
+import { applyAction, initRange } from '../src/renderer/src/lib/rangeEstimator'
 
 const C = (r: string, s: string) => ({ rank: r, suit: s })
 const H = (s: string) => { const x = s.replace(/\s/g, ''); return [C(x[0], x[1]), C(x[2], x[3])] as any }
@@ -85,6 +86,23 @@ console.log('F. Jams short-stack RFI UTG+1:')
 t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 10 }).get('72s') === 'fold', '72s fold à 10bb')
 t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 1 }).get('72s') === 'raise', '72s jam à 1bb (any two)')
 t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 10 }).get('AA') === 'raise', 'AA jam/open à 10bb')
+
+// ════ G. LECTURE des sizings (estimateur : gros = polarisé, petit = mergé) ════
+console.log('G. Lecture des sizings:')
+{
+  const bd = BD('Kc 8h 3d')
+  const base: any = { preflop: false, board: bd, toCall: 0, potOdds: 0, posBonus: 0.85, tier: 2, human: false, mood: 0, priorRaises: 0 }
+  const r0 = initRange(bd)
+  const small = applyAction(r0, 'aggr', { ...base, betFrac: 0.33 }) as any
+  const big = applyAction(r0, 'aggr', { ...base, betFrac: 1.5 }) as any
+  const sum = (r: any) => Object.values(r).reduce((a: any, b: any) => a + b, 0) as number
+  const wt = (r: any, k: string) => (r[k] ?? 0) / sum(r)
+  // medium made hand (2nd pair A8s) : kept after a SMALL bet, CUT after a big one
+  t(wt(small, 'A8s') > wt(big, 'A8s') * 1.5, 'A8s (2e paire, medium) coupée par le GROS bet (polarise)')
+  // strong value (top set KK) : present at BOTH sizes
+  t(wt(big, 'KK') >= wt(small, 'KK') * 0.8, 'KK (set) gardé au gros bet (value polaire)')
+  console.log(`   A8s: petit ${(wt(small,'A8s')*100).toFixed(2)}% > gros ${(wt(big,'A8s')*100).toFixed(2)}%  ✓ polarise`)
+}
 
 console.log('\n' + '═'.repeat(52))
 console.log(fail.length === 0 ? `✅ ${n} INVARIANTS — TOUS PASSENT` : `⚠️  ${fail.length}/${n} ÉCHEC(S):\n  - ` + fail.join('\n  - '))
