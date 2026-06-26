@@ -782,6 +782,7 @@
     "thinValue": "Opponent range CAPPED (repeated checks): your pair beats most of their hands → THIN value. Bet SMALL (~1/3 pot) to get paid by worse pairs — a big bet would fold them out.",
     "valueBet": "Strong hand: bet for value and make the draws pay.",
     "overbet": "Nut advantage on a high-card board: polarize and OVERBET — their inelastic range (top pairs) can't fold, so you max value.",
+    "exploitStation": "EXPLOIT — loose/station opponent: they pay off, so size your value UP (and don't waste chips bluffing, they won't fold).",
     "szOverbet": "overbet for value (~{{mult}}x pot, ${{amt}})",
     "semiBluff": "Strong draw: a semi-bluff wins the pot right away or by hitting.",
     "onePairCheck": "Medium pair: check to control the pot size and bluff-catch later.",
@@ -993,6 +994,7 @@
     "goalCall": "paying because the price is right",
     "goalSemiBluff": "folding him out now OR hitting my draw",
     "goalValue": "extracting maximum value",
+    "exploitStation": "And above all: this is a loose player who pays off everything — so I size my value UP instead of hiding it, and I don't waste time bluffing, he won't fold.",
     "pConclusion": "Bottom line: {{action}}, to {{goal}}."
   },
   "pstory": {

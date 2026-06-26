@@ -104,6 +104,19 @@ console.log('G. Lecture des sizings:')
   console.log(`   A8s: petit ${(wt(small,'A8s')*100).toFixed(2)}% > gros ${(wt(big,'A8s')*100).toFixed(2)}%  ✓ polarise`)
 }
 
+// ════ H. EXPLOIT vs loose/station (Lot 4) ════
+console.log('H. Exploit vs station (value up):')
+{
+  const loose = (h: any, b: any) => getPostflopAdvice({ hole: h, board: b, pot: 1000, toCall: 0, heroStack: 9000,
+    effStack: 9000, opponents: 1, inPosition: true, aggression: 0, barrels: 0, bb: 50, villainLoose: true } as any)
+  const sTP = bf(A(H('AsKd'), BD('Ad Kc 6h'))), lTP = bf(loose(H('AsKd'), BD('Ad Kc 6h')))
+  console.log(`   top paire: std ${sTP.toFixed(2)} → station ${lTP.toFixed(2)}`)
+  t(lTP > sTP + 0.08, 'value-bet PLUS GROS vs station')
+  t(loose(H('AsKd'), BD('Ad Kc 6h')).action === 'BET', 'value garde BET vs station')
+  // air still doesn't bet (don't bluff a station) — exploit must not turn checks into bets
+  t(loose(H('7s2d'), BD('Ad Kc 6h')).action !== 'BET', 'air ne se met PAS à bluffer vs station')
+}
+
 console.log('\n' + '═'.repeat(52))
 console.log(fail.length === 0 ? `✅ ${n} INVARIANTS — TOUS PASSENT` : `⚠️  ${fail.length}/${n} ÉCHEC(S):\n  - ` + fail.join('\n  - '))
 if (fail.length) process.exit(1)

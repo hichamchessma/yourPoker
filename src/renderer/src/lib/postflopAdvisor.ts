@@ -397,7 +397,7 @@ function textureClass(board: Card[]): TextureClass {
 }
 // Recommended value c-bet / value-raise size as a fraction of the pot, by texture.
 // Multiway leans a touch bigger (value-heavier, less fold equity needed).
-function cbetFrac(board: Card[], opponents: number, forRaise: boolean, strongValue: boolean): number {
+function cbetFrac(board: Card[], opponents: number, forRaise: boolean, strongValue: boolean, loose = false): number {
   const cls = textureClass(board)
   // Ranges polarize toward the river → STRONG value bets grow by street on dry/dynamic
   // boards. A MEDIUM one-pair value hand does NOT get the polar bump (on the river it has
@@ -410,7 +410,10 @@ function cbetFrac(board: Card[], opponents: number, forRaise: boolean, strongVal
     : 0.55 + polar                      // dry/static → medium, more polar by street for value
   if (forRaise) f += 0.1
   if (Math.max(1, opponents) >= 2) f += 0.08
-  return Math.min(forRaise ? 1.0 : 0.9, f)
+  // EXPLOIT vs a loose / calling-station opponent: they pay off, so size value UP (more
+  // chips in when you're ahead). Only when it's genuinely a value hand.
+  if (loose && strongValue) f += 0.18
+  return Math.min(forRaise ? 1.15 : 1.0, f)
 }
 
 // ── Main advice ──────────────────────────────────────────────────────────────
@@ -418,6 +421,7 @@ export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
   aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number; donkLead?: boolean; facingRaise?: boolean
+  villainLoose?: boolean   // EXPLOIT: the relevant opponent is a loose-passive / calling-station type (tier-1 fish) → value bigger, bluff less
 }): Advice {
   const { hole, board, pot, opponents, inPosition } = input
   // You can NEVER call more than your remaining stack. Facing a bet bigger than your
@@ -569,8 +573,8 @@ export function getPostflopAdvice(input: {
   if (beatenMultiway) reasons.push(tt('cadv.beatenMultiway', { eq: pct(eq) }))
   // Texture-driven value sizing (wetness parabola) — replaces the old "wetter = bigger"
   // binary, which wrongly sized UP on monotone boards (those want SMALL).
-  const vbFrac = cbetFrac(board, opponents, false, isStrongValue)
-  const vrFrac = cbetFrac(board, opponents, true, isStrongValue)
+  const vbFrac = cbetFrac(board, opponents, false, isStrongValue, !!input.villainLoose)
+  const vrFrac = cbetFrac(board, opponents, true, isStrongValue, !!input.villainLoose)
   const fracLabel = (f: number) => f >= 0.7 ? '¾' : f >= 0.58 ? '⅔' : f >= 0.45 ? '½' : '⅓'
   const valueRaiseSize = round(pot * vrFrac)
   const valueBetSize = round(pot * vbFrac)
@@ -592,7 +596,8 @@ export function getPostflopAdvice(input: {
   // A/Broadway/low boards are overbet most (AK6r); overbets need nut advantage + an
   // inelastic range. Tightly gated so it only fires on genuine monsters.
   const maxBoardRank = board.length >= 3 ? Math.max(...board.map(c => RV[c.rank])) : 0
-  const overbetSpot = toCall === 0 && effCat >= 3 && eq >= 0.80 && Math.max(1, opponents) === 1
+  // vs a loose/station opponent the overbet pays off more readily → relax the equity bar.
+  const overbetSpot = toCall === 0 && effCat >= 3 && eq >= (input.villainLoose ? 0.74 : 0.80) && Math.max(1, opponents) === 1
     && maxBoardRank >= 12 && !flushPossibleB && !straightPossibleB
     && (textureClass(board) === 'dry' || textureClass(board) === 'dynamic')
 
@@ -774,6 +779,9 @@ export function getPostflopAdvice(input: {
     })
   }
 
+  // EXPLOIT note vs a loose / calling-station opponent: value bigger, don't bother bluffing.
+  if (input.villainLoose && (action === 'BET' || action === 'RAISE') && (isStrongValue || (isOnePair && eq >= 0.6))) reasons.push(tt('cadv.exploitStation'))
+
   // ── PRO PLAN: synthesise the announced "line" from facePlan + the made-hand read ──
   const proPlan = buildProPlan(action, facePlan, betFrac, jam, { isStrongValue, isOnePair, strongDraw, eq, inPosition })
 
@@ -789,6 +797,7 @@ export function getPostflopAdvice(input: {
     action, sizingText, eq, potOdds, toCall, madeHand, draws, strongDraw,
     isStrongValue, isOnePair, outsN: computeOuts(hole, board).length,
     inPosition, opponents: Math.max(1, opponents), spr, aggression, capped: cappedActive, donkLead: !!input.donkLead, proPlan,
+    villainLoose: !!input.villainLoose,
   })
   return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, story, outs: computeOuts(hole, board), betFrac, jam }
 }
@@ -835,7 +844,7 @@ function buildPostflopStory(f: {
   action: AdviceAction; sizingText: string; eq: number; potOdds: number; toCall: number
   madeHand: string; draws: string[]; strongDraw: boolean; isStrongValue: boolean; isOnePair: boolean
   outsN: number; inPosition: boolean; opponents: number; spr: number; aggression: number
-  capped: boolean; donkLead: boolean; proPlan?: ProPlan
+  capped: boolean; donkLead: boolean; proPlan?: ProPlan; villainLoose?: boolean
 }): string[] {
   const pct = (x: number) => `${Math.round(x * 100)}%`
   const beats: string[] = []
@@ -860,6 +869,7 @@ function buildPostflopStory(f: {
       : f.action === 'FOLD' ? tt('story.lFold', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
       : tt('story.lBetThin'),
   )
+  if (f.villainLoose && f.isStrongValue && (f.action === 'BET' || f.action === 'RAISE')) beats.push(tt('story.exploitStation'))
   if (f.spr < 3.5 && (f.action === 'BET' || f.action === 'RAISE' || f.action === 'CALL')) beats.push(tt('story.pSpr', { spr: f.spr.toFixed(1) }))
   beats.push(tt('story.pDecision', { action: f.action, sizing: f.sizingText }))
   if (f.proPlan && (f.proPlan.branches.length || f.proPlan.turn)) {

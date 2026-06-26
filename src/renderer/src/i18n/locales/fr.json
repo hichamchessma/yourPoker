@@ -782,6 +782,7 @@
     "thinValue": "Range adverse PLAFONNÉE (checks répétés) : ta paire bat la plupart de ses mains → value FINE. Mise PETIT (~⅓ pot) pour te faire payer par les pires paires — un gros bet les ferait coucher.",
     "valueBet": "Main forte : mise pour la valeur et fais payer les tirages.",
     "overbet": "Avantage de nuts sur board haute carte : polarise et OVERBET — sa range inélastique (top paires) ne peut pas folder, tu maximises la value.",
+    "exploitStation": "EXPLOIT — adversaire loose/station : il paie large, donc grossis ta value (et ne perds pas de jetons à bluffer, il ne fold pas).",
     "szOverbet": "overbet pour la valeur (~{{mult}}× pot, ${{amt}})",
     "semiBluff": "Tirage fort : un semi-bluff gagne le pot tout de suite ou en touchant.",
     "onePairCheck": "Paire moyenne : checke pour contrôler la taille du pot et bluffcatcher ensuite.",
@@ -993,6 +994,7 @@
     "goalCall": "payer parce que le prix est bon",
     "goalSemiBluff": "le faire folder maintenant OU toucher mon tirage",
     "goalValue": "extraire un maximum de value",
+    "exploitStation": "Et surtout : c'est un joueur loose qui paie tout — donc je grossis ma value au lieu de la cacher, et je ne perds pas mon temps à bluffer, il ne fold pas.",
     "pConclusion": "Conclusion : {{action}}, pour {{goal}}."
   },
   "pstory": {

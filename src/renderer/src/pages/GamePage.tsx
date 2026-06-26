@@ -3692,6 +3692,10 @@ export default function GamePage(): JSX.Element {
     ((((seatIdx - gs.dealerIdx) % seatsN + seatsN) % seatsN) - firstOffsetN + seatsN) % seatsN
   const inHand = (s: Seat) => !s.isSittingOut && !s.isEliminated && (s.holeCards[0] !== null || s.holeCards[1] !== null)
   const heroActiveCount = gs.seats.filter(s => inHand(s) && !s.isFolded).length // players still live in the hand
+  // EXPLOIT signal: every live opponent is a tier-1 loose-passive "station" (level 1) →
+  // the coach sizes value UP and skips bluffs. Conservative: any reg in the field cancels it.
+  const heroLiveVillains = hero ? gs.seats.filter(s => s.idx !== hero.idx && inHand(s) && !s.isFolded) : []
+  const heroVillainLoose = heroLiveVillains.length > 0 && heroLiveVillains.every(s => (s.level ?? 2) <= 1)
   const heroPlayersBehind = hero
     ? gs.seats.filter(s => s.idx !== hero.idx && inHand(s) && !s.isFolded && actIndexOf(s.idx) > actIndexOf(hero.idx)).length
     : 1
@@ -4989,6 +4993,7 @@ export default function GamePage(): JSX.Element {
                 aggression={heroAggression}
                 barrels={heroBarrels}
                 villainTier={heroVillainTier}
+                villainLoose={heroVillainLoose}
                 aggressors={heroAggressors}
                 cappedRange={heroCappedRange}
                 donkLead={heroDonkLead}
