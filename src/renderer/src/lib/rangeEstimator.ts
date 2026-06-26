@@ -135,21 +135,32 @@ export function policyFor(tier: number, human: boolean, mood = 0): PolicyParams 
 export function preflopProbs(psv: number, posBonus: number, priorRaises: number, tier: number, toCall: number, priceBB = 0): Record<ActCat, number> {
   // Chen-scale thresholds. openTh maps to realistic widths:
   //   UTG≈6.7 (~17%) · HJ≈5.9 (~24%) · CO≈5.3 (~27%) · BTN≈4.7 (~42%).
-  const openTh = 10.0 - posBonus * 5.3
+  // ── Tier PERSONALITY (preflop) ──
+  //   Beginner (1) = the FISH: opens wider, OPEN-LIMPS a lot, flat-calls raises too wide
+  //   and (almost) never 3-bets. Expert (3) = tighter opens + more 3-bets. Pro (2) = the
+  //   solid baseline (no modifier → identical to before). The anti-jam discipline below
+  //   still applies to EVERY tier (nobody calls off 100bb with trash).
+  const fish = tier === 1, shark = tier === 3
+  const openTh = (10.0 - posBonus * 5.3) - (fish ? 0.9 : 0) + (shark ? 0.3 : 0)
   const RAISE: Record<ActCat, number> = { fold: 0, check: 0, call: 0, aggr: 1 }
 
   // Unopened pot — open our position range, otherwise check (BB) / fold.
   if (priorRaises <= 0) {
-    if (toCall <= 0) return psv >= openTh ? RAISE : { fold: 0, check: 1, call: 0, aggr: 0 }
-    if (psv >= openTh) return RAISE              // raise-first-in over limpers / blinds
-    const call = tier === 1 && psv >= openTh - 1.5 ? 0.5 : 0   // only the fish limp along
-    return { fold: 1 - call, check: 0, call, aggr: 0 }
+    if (toCall <= 0) return psv >= openTh ? RAISE : { fold: 0, check: 1, call: 0, aggr: 0 }  // BB option: raise limpers or check free
+    if (psv >= openTh) {
+      // The fish OPEN-LIMPS half of its (non-premium) opening range instead of raising.
+      if (fish && psv < 11) return { fold: 0, check: 0, call: 0.5, aggr: 0.5 }
+      return RAISE                               // raise-first-in over limpers / blinds
+    }
+    // Below opening strength: the fish LIMPS a wide junk range; pros/experts fold.
+    const limp = fish && psv >= openTh - 3 ? 0.55 : 0
+    return { fold: 1 - limp, check: 0, call: limp, aggr: 0 }
   }
 
   // vs a single OPEN → 3-bet (value QQ+/AK/strong broadways + a few bluffs) / FLAT / fold.
   if (priorRaises === 1) {
-    const value3bet = 10                         // ~ QQ+, JJ, TT, AK, AQs, AJs, KQs
-    const flatLo = openTh - 0.5
+    const value3bet = 10 - (shark ? 0.5 : 0)     // ~ QQ+, JJ, TT, AK, AQs… (expert a touch wider)
+    const flatLo = (openTh - 0.5) - (fish ? 1.2 : 0) + (shark ? 0.4 : 0)   // fish calls wider, expert tighter
     // The flat/continue range TIGHTENS with the PRICE: you can flat a 2-3bb open wide,
     // but a big re-raise / ALL-IN (e.g. a 100bb jam) is a CALL-OFF — only strong hands
     // continue. Without this the bots flat-called shoves with trash (87o vs a 100bb jam).
@@ -158,7 +169,8 @@ export function preflopProbs(psv: number, posBonus: number, priorRaises: number,
     const contLo = flatLo + jamLift * Math.max(0, value3bet + 1 - flatLo)
     if (psv >= value3bet) return RAISE
     if (psv >= contLo) {
-      const bluff = tier >= 2 && jamLift < 0.4 && psv < contLo + 1.5 ? (tier === 3 ? 0.12 : 0.07) : 0  // light 3-bets only vs a normal open
+      // Light 3-bet bluffs: expert most, pro some, FISH never (it just flats).
+      const bluff = jamLift < 0.4 && psv < contLo + 1.5 ? (shark ? 0.15 : tier === 2 ? 0.07 : 0) : 0
       return { fold: 0, check: 0, call: 1 - bluff, aggr: bluff }
     }
     return { fold: 1, check: 0, call: 0, aggr: 0 }
@@ -168,15 +180,15 @@ export function preflopProbs(psv: number, posBonus: number, priorRaises: number,
   // suited broadways, suited connectors…), fold the junk. This makes a "call vs
   // 3-bet" range correctly capped & condensed (~9%) instead of a 27%-wide soup.
   if (priorRaises === 2) {
-    const value4bet = 14                         // AA, KK, QQ
-    const flatLoBase = 8                         // down to 88, AKo, ATs, KTs, suited broadways…
+    const value4bet = 14 - (shark ? 1 : 0)       // AA, KK, QQ (expert 4-bets a touch wider)
+    const flatLoBase = 8 - (fish ? 1.5 : 0) + (shark ? 0.5 : 0)   // fish pays 3-bets too wide
     // Same call-off tightening for a 3-bet JAM (a normal 3-bet ~8bb doesn't tighten; a
     // 3-bet shove for 30bb+ does → fold the flat core, keep only the call-off premiums).
     const jamLift = Math.max(0, Math.min(1, (priceBB - 18) / 30))
     const flatLo = flatLoBase + jamLift * Math.max(0, value4bet - 1 - flatLoBase)
     if (psv >= value4bet) return RAISE
     if (psv >= flatLo) {
-      const bluff = tier === 3 && jamLift < 0.4 && psv < flatLo + 1 ? 0.10 : 0
+      const bluff = shark && jamLift < 0.4 && psv < flatLo + 1 ? 0.10 : 0
       return { fold: 0, check: 0, call: 1 - bluff, aggr: bluff }
     }
     return { fold: 1, check: 0, call: 0, aggr: 0 }
