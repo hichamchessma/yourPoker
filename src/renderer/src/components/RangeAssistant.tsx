@@ -459,6 +459,7 @@ export default function RangeAssistant({
 // Pro-tier "PLAN PRO" band: the announced multi-street line + a one-line glossary, a
 // condensed decision tree and the next-street intent. Free users see it blurred (upsell).
 const PLAN_GLOSS: Record<string, string> = {
+  'check-back': 'plan.glossCheckBack',
   'check-fold': 'plan.glossCheckFold', 'check-call': 'plan.glossCheckCall', 'check-raise': 'plan.glossCheckRaise',
   'bet-fold': 'plan.glossBetFold', 'bet-call': 'plan.glossBetCall', 'bet-3bet': 'plan.glossBet3bet',
   'bluff-catch': 'plan.glossBluffCatch', 'call': 'plan.glossCall', 'raise': 'plan.glossRaise',

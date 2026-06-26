@@ -682,7 +682,10 @@ export function getPostflopAdvice(input: {
   // the full move set incl. RE-RAISE / 4-BET, not just call/fold. Shown whenever
   // we'd CHECK, BET or CALL (i.e. the action isn't already a fold/raise).
   let facePlan: FacePlanRow[] | undefined
-  if (action === 'CHECK' || action === 'BET' || action === 'CALL') {
+  // A CHECK only faces a bet "behind" when we're OUT of position (someone acts after us).
+  // IN position a check CLOSES the street — there's nothing to call here, so the "vs a
+  // bet behind" plan must NOT be built (it read as a nonsensical check-call).
+  if ((action === 'CHECK' && !inPosition) || action === 'BET' || action === 'CALL') {
     const potW = tt('cadv.potWord')
     const sizes: { label: string; fracTxt: string; reqTxt: string; frac?: number; allin?: boolean; pen: number }[] = [
       { label: `⅓ ${potW}`, fracTxt: `⅓·${potW}`, reqTxt: '1/5', frac: 1 / 3, pen: 0.00 },
@@ -718,7 +721,7 @@ export function getPostflopAdvice(input: {
   }
 
   // ── PRO PLAN: synthesise the announced "line" from facePlan + the made-hand read ──
-  const proPlan = buildProPlan(action, facePlan, betFrac, jam, { isStrongValue, isOnePair, strongDraw, eq })
+  const proPlan = buildProPlan(action, facePlan, betFrac, jam, { isStrongValue, isOnePair, strongDraw, eq, inPosition })
 
   // Honest hand label: a "pair" that is ONLY the board's pair (your hole cards add
   // nothing) is really just your high card + the shared board pair — never call it
@@ -738,11 +741,21 @@ function buildProPlan(
   facePlan: FacePlanRow[] | undefined,
   betFrac: number,
   jam: boolean,
-  ctx: { isStrongValue: boolean; isOnePair: boolean; strongDraw: boolean; eq: number },
+  ctx: { isStrongValue: boolean; isOnePair: boolean; strongDraw: boolean; eq: number; inPosition: boolean },
 ): ProPlan | undefined {
+  const { isStrongValue, isOnePair, strongDraw, eq, inPosition } = ctx
+  // IN POSITION, a CHECK closes the street (you're last to act) → you take a free card
+  // and see the turn. There is no bet to face here, so show a "check back" plan keyed on
+  // the NEXT street, not a phantom check-call.
+  if (action === 'CHECK' && inPosition) {
+    const turn = isStrongValue ? tt('plan.turnTrapBet')
+      : (isOnePair || eq >= 0.5) ? tt('plan.turnPotControl')
+      : strongDraw ? tt('plan.turnFreeCardDraw')
+      : tt('plan.turnGiveUp')
+    return { line: tt('plan.checkBack'), branches: [], turn, term: 'check-back' }
+  }
   if (!facePlan || facePlan.length === 0) return undefined
   if (action !== 'CHECK' && action !== 'BET' && action !== 'CALL' && action !== 'RAISE') return undefined
-  const { isStrongValue, isOnePair, strongDraw, eq } = ctx
   // Compact recommended-size token for the headline (the full sizingText is a sentence).
   const sizingText = jam ? tt('cadv.tapisWord')
     : betFrac >= 0.95 ? tt('cadv.potWord')
