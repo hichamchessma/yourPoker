@@ -38,6 +38,7 @@ interface UnifiedAdvice {
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[]
   proPlan?: ProPlan
+  story?: string[]
   outs?: OutCard[]
 }
 
@@ -88,6 +89,7 @@ export default function RangeAssistant({
 }) {
   const { t, i18n } = useTranslation()
   const isPro = useIsPro()
+  const [storyTab, setStoryTab] = useState<'range' | 'story'>('range')
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
@@ -168,7 +170,7 @@ export default function RangeAssistant({
     }
     if (board.length < 3) return null
     const a = getPostflopAdvice({ hole: [card1, card2], board, pot, toCall, heroStack, effStack, opponents, inPosition, aggression, barrels, bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise })
-    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, strongDraw: a.strongDraw, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, proPlan: a.proPlan, outs: a.outs }
+    return { actionText: a.action, color: ADVICE_COLOR[a.action], sizingText: a.sizingText, equity: a.equity, potOdds: a.potOdds, madeHand: a.madeHand, draws: a.draws, strongDraw: a.strongDraw, reasons: a.reasons, confidence: a.confidence, facePlan: a.facePlan, proPlan: a.proPlan, story: a.story, outs: a.outs }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // i18n.language: the reasons/sizing/madeHand are built with t() INSIDE this memo,
     // so they must rebuild when the language changes (otherwise the coach panel stays
@@ -331,14 +333,50 @@ export default function RangeAssistant({
 
           {advice && (
             <>
-              {/* Represented range (perceived) — postflop, all streets */}
-              {!isPreflop && representedView && (
-                <div className="mb-4 flex flex-col items-center">
-                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">{t('coach.representedRange')}</p>
-                  <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
-                    name={t('coach.youRepresented')} heroKey={heroKey}/>
-                </div>
-              )}
+              {/* Represented range / "In a pro's head" — tabbed (postflop) */}
+              {!isPreflop && representedView && (() => {
+                const hasStory = !!advice.story && advice.story.length > 0
+                const tab = hasStory ? storyTab : 'range'
+                return (
+                  <div className="mb-4">
+                    {hasStory && (
+                      <div className="flex gap-1.5 mb-2">
+                        {(['range', 'story'] as const).map(k => (
+                          <button key={k} onClick={() => setStoryTab(k)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${tab === k
+                              ? (k === 'story' ? 'bg-[#a78bfa]/20 border-[#a78bfa]/50 text-[#c4b5fd]' : 'bg-[#c9a227]/15 border-[#c9a227]/45 text-[#f0c060]')
+                              : 'bg-white/5 border-white/10 text-white/45 hover:bg-white/10'}`}>
+                            {t(k === 'story' ? 'story.tabStory' : 'story.tabRange')}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {tab === 'range' ? (
+                      <div className="flex flex-col items-center">
+                        {!hasStory && <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">{t('coach.representedRange')}</p>}
+                        <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
+                          name={t('coach.youRepresented')} heroKey={heroKey}/>
+                      </div>
+                    ) : (
+                      <motion.div key={`story-${boardSig}`} initial="hidden" animate="show"
+                        variants={{ show: { transition: { staggerChildren: 0.28 } } }}
+                        className="rounded-xl border p-4 space-y-2.5"
+                        style={{ borderColor: 'rgba(167,139,255,0.3)', background: 'linear-gradient(180deg, rgba(124,92,240,0.10), rgba(40,30,90,0.10))' }}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-1" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
+                        {advice.story!.map((beat, i) => (
+                          <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
+                            className={i === advice.story!.length - 1
+                              ? 'text-[13px] font-bold leading-relaxed pt-1.5 border-t border-white/10'
+                              : 'text-[12.5px] text-white/85 leading-relaxed'}
+                            style={i === advice.story!.length - 1 ? { color: '#e9e2ff' } : undefined}>
+                            {beat}
+                          </motion.p>
+                        ))}
+                      </motion.div>
+                    )}
+                  </div>
+                )
+              })()}
               {/* Equity / pot odds */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-[10px] mb-1">

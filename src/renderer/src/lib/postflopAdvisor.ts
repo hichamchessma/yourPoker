@@ -54,6 +54,7 @@ export interface Advice {
   confidence: 'haute' | 'moyenne' | 'basse'
   facePlan?: FacePlanRow[] // plan vs a bet/raise behind — when CHECK / BET / CALL
   proPlan?: ProPlan        // synthesised multi-street "line" (Pro tier)
+  story?: string[]         // "in a pro's head" — flowing reasoning beats (the narrative tab)
   outs: OutCard[]          // specific cards (flop/turn) that improve the hero's hand
   betFrac?: number         // recommended bet/raise size as a fraction of the pot (for auto-play)
   jam?: boolean            // recommended size is all-in
@@ -783,7 +784,60 @@ export function getPostflopAdvice(input: {
   const madeHand = boardOnlyPair ? tt('hand.madeBoardOnly', { hi: heroHi })
     : boardLeanTwoPair ? tt('hand.madeBoardLean', { pair: pairLabel(effPair) })
     : name
-  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, outs: computeOuts(hole, board), betFrac, jam }
+  // ── "In a pro's head" — weave the same facts into a flowing first-person monologue ──
+  const story = buildPostflopStory({
+    action, sizingText, eq, potOdds, toCall, madeHand, draws, strongDraw,
+    isStrongValue, isOnePair, outsN: computeOuts(hole, board).length,
+    inPosition, opponents: Math.max(1, opponents), spr, aggression, capped: cappedActive, donkLead: !!input.donkLead, proPlan,
+  })
+  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, story, outs: computeOuts(hole, board), betFrac, jam }
+}
+
+// ── Coach STORY — the same data, told as a pro reasoning out loud (for the "Dans la
+//    tête d'un pro" tab). Each beat is one sentence; the UI renders them as a flowing,
+//    self-developing monologue that lands on the conclusion. Deterministic, offline. ──
+function buildPostflopStory(f: {
+  action: AdviceAction; sizingText: string; eq: number; potOdds: number; toCall: number
+  madeHand: string; draws: string[]; strongDraw: boolean; isStrongValue: boolean; isOnePair: boolean
+  outsN: number; inPosition: boolean; opponents: number; spr: number; aggression: number
+  capped: boolean; donkLead: boolean; proPlan?: ProPlan
+}): string[] {
+  const pct = (x: number) => `${Math.round(x * 100)}%`
+  const beats: string[] = []
+  const pos = f.inPosition ? tt('story.ip') : tt('story.oop')
+  const read = f.capped ? tt('story.readCapped')
+    : f.toCall <= 0 && f.aggression <= 0 ? tt('story.readChecked')
+    : f.donkLead ? tt('story.readDonk')
+    : f.aggression >= 0.55 ? tt('story.readStrong')
+    : f.toCall > 0 ? tt('story.readBet') : tt('story.readQuiet')
+  beats.push(tt('story.pSetup', { n: f.opponents + 1, pos, read }))
+  const drawTxt = f.draws.length ? ' + ' + f.draws.join(' + ') : ''
+  const outsTxt = f.strongDraw && f.outsN > 0 ? tt('story.outs', { n: f.outsN }) : ''  // outs matter for draws, not made hands
+  const oddsTxt = f.toCall > 0 ? tt('story.vsOdds', { odds: pct(f.potOdds) }) : ''
+  beats.push(tt('story.pHand', { hand: f.madeHand, draws: drawTxt, eq: Math.round(f.eq * 100), outs: outsTxt, odds: oddsTxt }))
+  const semiBluff = f.action === 'BET' && f.strongDraw && f.eq < 0.55
+  beats.push(
+    semiBluff ? tt('story.lSemiBluff')
+      : (f.action === 'BET' || f.action === 'RAISE') && f.isStrongValue ? tt('story.lValue')
+      : f.action === 'CALL' && f.isOnePair ? tt('story.lBluffCatch', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
+      : f.action === 'CALL' ? tt('story.lCall', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
+      : f.action === 'CHECK' ? tt('story.lCheck')
+      : f.action === 'FOLD' ? tt('story.lFold', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
+      : tt('story.lBetThin'),
+  )
+  if (f.spr < 3.5 && (f.action === 'BET' || f.action === 'RAISE' || f.action === 'CALL')) beats.push(tt('story.pSpr', { spr: f.spr.toFixed(1) }))
+  beats.push(tt('story.pDecision', { action: f.action, sizing: f.sizingText }))
+  if (f.proPlan && (f.proPlan.branches.length || f.proPlan.turn)) {
+    const br = f.proPlan.branches[0]
+    beats.push(tt('story.pPlan', { cond: br ? `${br.cond} → ${br.act}` : f.proPlan.line, turn: f.proPlan.turn }))
+  }
+  const goal = f.action === 'FOLD' ? tt('story.goalFold')
+    : f.action === 'CHECK' ? tt('story.goalCheck')
+    : f.action === 'CALL' ? tt('story.goalCall')
+    : semiBluff ? tt('story.goalSemiBluff')
+    : tt('story.goalValue')
+  beats.push(tt('story.pConclusion', { action: f.action, goal }))
+  return beats
 }
 
 // Turn the per-size facePlan into a single announced LINE (check-call ⅓ · fold +,
