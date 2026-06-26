@@ -5,7 +5,7 @@ import {
   GRID_RANKS, buildRangeMap, buildJamCallMap, handKeyFromCards, cellKey,
   ACTION_LABEL, SCENARIO_LABEL, type Scenario, type RangeAction,
 } from '../lib/preflopRanges'
-import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, type AdviceAction, type FacePlanRow, type ProPlan, type OutCard, type EquityReasoning, type VillainTier } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, buildPreflopStory, type AdviceAction, type FacePlanRow, type ProPlan, type OutCard, type EquityReasoning, type VillainTier } from '../lib/postflopAdvisor'
 import { useIsPro } from '../lib/entitlements'
 import { Lock, Zap } from 'lucide-react'
 import RangeHeatmap from './RangeHeatmap'
@@ -162,9 +162,13 @@ export default function RangeAssistant({
         reasons.push(t('padv.closing', { eq: pct(equity), odds: pct(potOddsPre) }))
       if (icmPressure > 0.3)
         reasons.push(t('padv.icm', { n: Math.round(icmPressure * 100) }))
+      const story = heroKey ? buildPreflopStory({
+        position, scenario: vsJam ? 'vsJam' : (scenario as string), heroKey, chart, eq: equity,
+        raiseToBB, vsJam, effBB, inPosition, reshove,
+      }) : undefined
       return {
         actionText: reshove ? t('padv.reshoveAction') : ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
-        equity, potOdds, madeHand: heroKey ?? '—', draws: [], strongDraw: false, reasons,
+        equity, potOdds, madeHand: heroKey ?? '—', draws: [], strongDraw: false, reasons, story,
         confidence: chart === 'fold' && equity < 0.35 ? 'haute' : (chart === 'raise' || chart === '3bet') && equity > 0.55 ? 'haute' : 'moyenne',
       }
     }
@@ -287,9 +291,26 @@ export default function RangeAssistant({
             </>
           )}
 
-          {/* Preflop grid */}
-          {isPreflop && rangeMap && (
+          {/* Preflop grid / "in a pro's head" — tabbed */}
+          {isPreflop && rangeMap && (() => {
+            const hasStory = !!advice?.story?.length
+            const ptab = hasStory ? storyTab : 'range'
+            return (
             <>
+              {hasStory && (
+                <div className="flex gap-1.5 mb-2">
+                  {(['range', 'story'] as const).map(k => (
+                    <button key={k} onClick={() => setStoryTab(k)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${ptab === k
+                        ? (k === 'story' ? 'bg-[#a78bfa]/20 border-[#a78bfa]/50 text-[#c4b5fd]' : 'bg-[#c9a227]/15 border-[#c9a227]/45 text-[#f0c060]')
+                        : 'bg-white/5 border-white/10 text-white/45 hover:bg-white/10'}`}>
+                      {t(k === 'story' ? 'story.tabStory' : 'story.tabRange')}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {ptab === 'story' ? <StoryPanel story={advice!.story!} sig={heroKey ?? 'pf'} /> : (
+              <>
               <div className="mx-auto" style={{ width: 'min(100%, 520px)' }}>
                 <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
                   {GRID_RANKS.map((_, i) =>
@@ -328,8 +349,11 @@ export default function RangeAssistant({
                   </div>
                 ))}
               </div>
+              </>
+              )}
             </>
-          )}
+            )
+          })()}
 
           {advice && (
             <>
@@ -358,21 +382,7 @@ export default function RangeAssistant({
                           name={t('coach.youRepresented')} heroKey={heroKey}/>
                       </div>
                     ) : (
-                      <motion.div key={`story-${boardSig}`} initial="hidden" animate="show"
-                        variants={{ show: { transition: { staggerChildren: 0.28 } } }}
-                        className="rounded-xl border p-4 space-y-2.5"
-                        style={{ borderColor: 'rgba(167,139,255,0.3)', background: 'linear-gradient(180deg, rgba(124,92,240,0.10), rgba(40,30,90,0.10))' }}>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-1" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
-                        {advice.story!.map((beat, i) => (
-                          <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
-                            className={i === advice.story!.length - 1
-                              ? 'text-[13px] font-bold leading-relaxed pt-1.5 border-t border-white/10'
-                              : 'text-[12.5px] text-white/85 leading-relaxed'}
-                            style={i === advice.story!.length - 1 ? { color: '#e9e2ff' } : undefined}>
-                            {beat}
-                          </motion.p>
-                        ))}
-                      </motion.div>
+                      <StoryPanel story={advice.story!} sig={boardSig} />
                     )}
                   </div>
                 )
@@ -496,6 +506,27 @@ export default function RangeAssistant({
 
 // Pro-tier "PLAN PRO" band: the announced multi-street line + a one-line glossary, a
 // condensed decision tree and the next-street intent. Free users see it blurred (upsell).
+// "In a pro's head" — the flowing narrative box, beats revealed with a stagger so the
+// story develops. Shared by the postflop and preflop tabs.
+function StoryPanel({ story, sig }: { story: string[]; sig: string }) {
+  const { t } = useTranslation()
+  return (
+    <motion.div key={`story-${sig}`} initial="hidden" animate="show"
+      variants={{ show: { transition: { staggerChildren: 0.28 } } }}
+      className="rounded-xl border p-4 space-y-2.5"
+      style={{ borderColor: 'rgba(167,139,255,0.3)', background: 'linear-gradient(180deg, rgba(124,92,240,0.10), rgba(40,30,90,0.10))' }}>
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-1" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
+      {story.map((beat, i) => (
+        <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
+          className={i === story.length - 1 ? 'text-[13px] font-bold leading-relaxed pt-1.5 border-t border-white/10' : 'text-[12.5px] text-white/85 leading-relaxed'}
+          style={i === story.length - 1 ? { color: '#e9e2ff' } : undefined}>
+          {beat}
+        </motion.p>
+      ))}
+    </motion.div>
+  )
+}
+
 const PLAN_GLOSS: Record<string, string> = {
   'check-back': 'plan.glossCheckBack',
   'check-fold': 'plan.glossCheckFold', 'check-call': 'plan.glossCheckCall', 'check-raise': 'plan.glossCheckRaise',

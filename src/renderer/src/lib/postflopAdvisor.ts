@@ -793,6 +793,41 @@ export function getPostflopAdvice(input: {
   return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, story, outs: computeOuts(hole, board), betFrac, jam }
 }
 
+// PREFLOP "in a pro's head" — same idea, told from the preflop facts (position, what
+// happened, the hand, the range decision, the anticipation). Built in RangeAssistant's
+// preflop path and shown in the same narrative tab.
+export function buildPreflopStory(f: {
+  position: string; scenario: string; heroKey: string; chart: string
+  eq: number; raiseToBB: number; vsJam: boolean; effBB: number; inPosition: boolean; reshove: boolean
+}): string[] {
+  const pos = f.position, key = f.heroKey
+  const short = f.effBB <= 15
+  const beats: string[] = []
+  beats.push(
+    f.vsJam ? tt('pstory.setJam', { pos, bb: Math.round(f.effBB) })
+      : f.scenario === 'rfi' ? tt('pstory.setRfi', { pos })
+      : f.scenario === 'iso' ? tt('pstory.setIso', { pos })
+      : f.scenario === 'vsopen' ? tt('pstory.setVsopen', { pos, size: f.raiseToBB ? f.raiseToBB.toFixed(1) : '?' })
+      : f.scenario === 'squeeze' ? tt('pstory.setSqueeze', { pos })
+      : f.scenario === 'vs3bet' ? tt('pstory.setVs3bet', { pos })
+      : tt('pstory.setVs4bet', { pos }),
+  )
+  beats.push(tt('pstory.hand', { key }))
+  const aggr = f.chart === 'raise' || f.chart === '3bet' || f.chart === '4bet'
+  let dec: string, goal: string, action: string
+  if (f.vsJam && f.chart === 'call') { dec = tt('pstory.decCallJam', { key, eq: Math.round(f.eq * 100) }); goal = tt('pstory.goalCallJam'); action = tt('crit.recCallJam') }
+  else if (f.reshove || (short && aggr && f.scenario !== 'rfi' && f.scenario !== 'iso')) { dec = tt('pstory.decJam', { key }); goal = tt('pstory.goalJam'); action = tt('crit.recReshove') }
+  else if (f.chart === '4bet') { dec = tt('pstory.dec4bet', { key }); goal = tt('pstory.goal3bet'); action = '4-BET' }
+  else if (f.chart === '3bet') { dec = f.eq < 0.5 ? tt('pstory.dec3betBluff', { key }) : tt('pstory.dec3betValue', { key }); goal = tt('pstory.goal3bet'); action = '3-BET' }
+  else if (f.chart === 'raise') { dec = f.scenario === 'iso' ? tt('pstory.decIso', { key }) : tt('pstory.decOpen', { key }); goal = tt('pstory.goalOpen'); action = tt('crit.recOpen') }
+  else if (f.chart === 'call') { dec = tt('pstory.decCall', { key, ip: f.inPosition ? tt('pstory.ipNote') : '' }); goal = tt('pstory.goalCall'); action = tt('crit.recCall') }
+  else { dec = tt('pstory.decFold', { key }); goal = tt('pstory.goalFold'); action = tt('crit.foldWord') }
+  beats.push(dec)
+  if (f.chart === '3bet' && !short) beats.push(tt('pstory.antiVs4bet', { cont: f.eq >= 0.6 ? tt('pstory.contJam') : tt('pstory.contFold') }))
+  beats.push(tt('pstory.concl', { action, key, goal }))
+  return beats
+}
+
 // ── Coach STORY — the same data, told as a pro reasoning out loud (for the "Dans la
 //    tête d'un pro" tab). Each beat is one sentence; the UI renders them as a flowing,
 //    self-developing monologue that lands on the conclusion. Deterministic, offline. ──
