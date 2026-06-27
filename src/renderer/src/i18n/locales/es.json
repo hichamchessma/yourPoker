@@ -661,6 +661,8 @@
     "confMoyenne": "media",
     "confBasse": "baja",
     "representedRange": "Tu rango representado (percibido)",
+    "detailsBtn": "Detalles",
+    "backToCoach": "El coach",
     "youRepresented": "Tú — rango representado",
     "yourEquity": "Tu equidad",
     "odds": "odds {{n}}%",

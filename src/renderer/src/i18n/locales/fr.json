@@ -661,6 +661,8 @@
     "confMoyenne": "moyenne",
     "confBasse": "basse",
     "representedRange": "Ta range représentée (perçue)",
+    "detailsBtn": "Détails",
+    "backToCoach": "Le coach",
     "youRepresented": "Toi — range représentée",
     "yourEquity": "Ton équité",
     "odds": "cote {{n}}%",

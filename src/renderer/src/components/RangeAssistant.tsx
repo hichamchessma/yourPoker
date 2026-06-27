@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import {
@@ -7,7 +7,7 @@ import {
 } from '../lib/preflopRanges'
 import { getPostflopAdvice, monteCarloEquity, buildEquityReasoning, buildPreflopStory, type AdviceAction, type FacePlanRow, type ProPlan, type OutCard, type EquityReasoning, type VillainTier } from '../lib/postflopAdvisor'
 import { useIsPro } from '../lib/entitlements'
-import { Lock, Zap } from 'lucide-react'
+import { Lock, Zap, ChevronDown, ChevronUp } from 'lucide-react'
 import RangeHeatmap from './RangeHeatmap'
 import EquityReasoningBlock, { MiniCard, groupOuts } from './EquityReasoning'
 import type { RangeView } from '../lib/rangeEstimator'
@@ -194,6 +194,11 @@ export default function RangeAssistant({
     : null
 
   const [answer, setAnswer] = useState<string | null>(null)
+  // Two-stage reveal: on open the coach "steps out" with the story + range only; the
+  // DETAILS button expands the full analysis (equity, reasons, plan…) WITHOUT the story.
+  // Reset to the intro whenever the spot changes so every hand opens on the coach.
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  useEffect(() => { setDetailsOpen(false) }, [boardSig, heroKey, scenario, toCall])
 
   function ask(q: string) {
     if (!advice) return
@@ -287,8 +292,12 @@ export default function RangeAssistant({
                   <p className="text-[10px] text-white/45 mt-0.5">{t('coach.confidence')} <span className="font-bold" style={{ color: advice.color }}>{t(`coach.conf${advice.confidence.charAt(0).toUpperCase() + advice.confidence.slice(1)}`)}</span></p>
                 </div>
               </div>
-              {/* ── PRO PLAN — the announced multi-street line (Pro tier) ── */}
-              {!isPreflop && advice.proPlan && <ProPlanBand plan={advice.proPlan} isPro={isPro} />}
+              {/* ── PRO PLAN — the announced multi-street line (Pro tier) ── details only */}
+              {detailsOpen && !isPreflop && advice.proPlan && <ProPlanBand plan={advice.proPlan} isPro={isPro} />}
+              {/* Stage 1 — the coach "steps out" FIRST, above the range (story hidden in details) */}
+              {!detailsOpen && !!advice.story?.length && (
+                <div className="mb-4"><StoryPanel story={advice.story} sig={isPreflop ? (heroKey ?? 'pf') : boardSig} /></div>
+              )}
             </>
           )}
 
@@ -333,13 +342,12 @@ export default function RangeAssistant({
                   </div>
                 ))}
               </div>
-              {!!advice?.story?.length && <StoryPanel story={advice.story} sig={heroKey ?? 'pf'} />}
             </>
           )}
 
           {advice && (
             <>
-              {/* Represented range + "In a pro's head" story (postflop) */}
+              {/* Represented range (postflop) — shown in BOTH stages; story only in intro */}
               {!isPreflop && representedView && (
                 <div className="mb-4">
                   <div className="flex flex-col items-center">
@@ -347,9 +355,24 @@ export default function RangeAssistant({
                     <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
                       name={t('coach.youRepresented')} heroKey={heroKey}/>
                   </div>
-                  {!!advice.story?.length && <div className="mt-3"><StoryPanel story={advice.story} sig={boardSig} /></div>}
                 </div>
               )}
+
+              {/* Stage 1 → the coach + range came first; DETAILS expands the full analysis */}
+              {!detailsOpen && (
+                <button onClick={() => setDetailsOpen(true)}
+                  className="w-full mt-1 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#f0c060] text-[11px] font-black uppercase tracking-[0.18em] hover:bg-[#c9a227]/20 transition-all flex items-center justify-center gap-2">
+                  {t('coach.detailsBtn')} <ChevronDown size={14} />
+                </button>
+              )}
+
+              {/* Stage 2 — the full analysis (story already shown up front, so omitted here) */}
+              {detailsOpen && (
+                <>
+                <button onClick={() => setDetailsOpen(false)}
+                  className="mb-3 text-[10px] text-white/45 hover:text-[#c9a227] uppercase tracking-widest flex items-center gap-1">
+                  <ChevronUp size={12} /> {t('coach.backToCoach')}
+                </button>
               {/* Equity / pot odds */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-[10px] mb-1">
@@ -454,6 +477,8 @@ export default function RangeAssistant({
               <p className="text-[9px] text-white/25 text-center mt-4 leading-relaxed">
                 {isPreflop ? t('coach.footerPreflop') : t('coach.footerPostflop')}
               </p>
+                </>
+              )}
             </>
           )}
         </div>
