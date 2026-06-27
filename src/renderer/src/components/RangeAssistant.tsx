@@ -474,35 +474,40 @@ export default function RangeAssistant({
 // next to / under the range table (no longer a tab).
 function StoryPanel({ story, sig }: { story: string[]; sig: string }) {
   const { t } = useTranslation()
+  const cloud = { borderColor: 'rgba(167,139,255,0.45)', background: 'rgb(49,38,90)' }
+  // small → big puffs climbing from beside the avatar up to the big thought cloud
+  const puffs = [{ s: 6, l: -20, b: -2, d: 0.18 }, { s: 9, l: -13, b: 7, d: 0.30 }, { s: 13, l: -6, b: 18, d: 0.42 }]
   return (
-    <div className="flex gap-2.5 items-start mt-1">
-      {/* Coach avatar — caught mid-thought */}
-      <motion.div className="shrink-0 flex flex-col items-center gap-1 pt-0.5"
+    <div key={`story-${sig}`} className="flex gap-3 items-end mt-1">
+      {/* Coach avatar — the pro, mid-thought */}
+      <motion.div className="relative shrink-0 w-[56px] h-[56px] rounded-full overflow-hidden border-2"
+        style={{ borderColor: '#a78bfa', boxShadow: '0 0 16px rgba(167,139,255,0.55)' }}
         initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
-        <div className="relative w-[52px] h-[52px] rounded-full overflow-hidden border-2"
-          style={{ borderColor: '#a78bfa', boxShadow: '0 0 14px rgba(167,139,255,0.55)' }}>
-          <img src="/assets/player-avatar.webp" alt="coach" draggable={false} className="w-full h-full object-cover" />
-        </div>
-        <motion.span className="text-[15px] leading-none"
-          animate={{ y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}>💭</motion.span>
+        <img src="/assets/player-avatar.webp" alt="coach" draggable={false} className="w-full h-full object-cover" />
       </motion.div>
-      {/* Thought bubble */}
-      <motion.div key={`story-${sig}`} initial="hidden" animate="show"
-        variants={{ show: { transition: { staggerChildren: 0.28, delayChildren: 0.1 } } }}
-        className="relative flex-1 rounded-2xl border p-3.5 space-y-2"
-        style={{ borderColor: 'rgba(167,139,255,0.32)', background: 'linear-gradient(180deg, rgba(124,92,240,0.12), rgba(40,30,90,0.12))' }}>
-        {/* little tail pointing at the avatar */}
-        <span className="absolute -left-[7px] top-6 w-3 h-3 rotate-45 border-l border-b"
-          style={{ borderColor: 'rgba(167,139,255,0.32)', background: 'rgb(47,36,86)' }} />
-        <p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
-        {story.map((beat, i) => (
-          <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
-            className={i === story.length - 1 ? 'text-[12.5px] font-bold leading-relaxed pt-1.5 border-t border-white/10' : 'text-[12px] text-white/85 leading-relaxed'}
-            style={i === story.length - 1 ? { color: '#e9e2ff' } : undefined}>
-            {beat}
-          </motion.p>
+      <div className="relative flex-1">
+        {/* comic thought-trail: the little bubbles pop in, growing toward the cloud */}
+        {puffs.map((p, i) => (
+          <motion.span key={i} className="absolute rounded-full border"
+            style={{ ...cloud, width: p.s, height: p.s, left: p.l, bottom: p.b }}
+            initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: p.d, type: 'spring', stiffness: 520, damping: 16 }} />
         ))}
-      </motion.div>
+        {/* the big thought cloud — beats reveal one by one, after the trail */}
+        <motion.div initial="hidden" animate="show"
+          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.26, delayChildren: 0.55 } } }}
+          className="relative rounded-[22px] border p-3.5 space-y-2"
+          style={{ borderColor: 'rgba(167,139,255,0.4)', background: 'linear-gradient(180deg, rgba(124,92,240,0.14), rgba(40,30,90,0.16))' }}>
+          <p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
+          {story.map((beat, i) => (
+            <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
+              className={i === story.length - 1 ? 'text-[12.5px] font-bold leading-relaxed pt-1.5 border-t border-white/10' : 'text-[12px] text-white/85 leading-relaxed'}
+              style={i === story.length - 1 ? { color: '#e9e2ff' } : undefined}>
+              {beat}
+            </motion.p>
+          ))}
+        </motion.div>
+      </div>
     </div>
   )
 }
