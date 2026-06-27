@@ -4034,8 +4034,8 @@ export default function GamePage(): JSX.Element {
         <div className="flex-1"/>
 
         {/* History button — replaced by Restart inside a Revive sandbox. */}
-        {/* Accélérer — tournament only: bots act near-instantly, flow stops only at the hero's decision. */}
-        {tournament && !simMode && gs.phase !== 'idle' && (
+        {/* Accélérer — cash & tournament: bots act near-instantly, flow stops only at the hero's decision. */}
+        {sessionFormat && !simMode && gs.phase !== 'idle' && (
           <button onClick={() => {
               // Cycle: Normal → Accéléré → Turbo → Normal.
               let nf: boolean, nt: boolean
