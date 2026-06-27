@@ -847,8 +847,9 @@ export function evaluateSession(records: HandHistoryRecord[]): SessionEval {
   const rated = STREETS.filter(k => streets[k].n >= 3)
   const worstStreet = rated.length ? rated.reduce((w, k) => streets[k].acc < streets[w].acc ? k : w) : null
   const bestStreet = rated.length ? rated.reduce((b, k) => streets[k].acc > streets[b].acc ? k : b) : null
-  // Mistakes first, then sizing/borderline 'ok's; keep the 6 worst to review.
-  const topMistakes = flagged.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === 'mistake' ? -1 : 1)).slice(0, 6)
+  // Mistakes first, then sizing/borderline 'ok's. Show ALL flagged spots (the modal
+  // scrolls) so nothing is hidden — a capped list silently dropped real mistakes.
+  const topMistakes = flagged.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === 'mistake' ? -1 : 1))
   return { score, grade, decisions, good, ok, mistake, streets, leaks, worstStreet, bestStreet: worstStreet === bestStreet ? null : bestStreet, topMistakes }
 }
 
