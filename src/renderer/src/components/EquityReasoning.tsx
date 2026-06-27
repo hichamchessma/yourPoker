@@ -50,7 +50,9 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
     : r.verdict === 'raise-bluff' ? '#3aa0d8'
     : '#34d399'
   const verdictKey =
-    r.verdict === 'fold' ? 'equity.vFold'
+    // Folding even though the raw price IS met (eq ≥ pot odds) is a REALIZATION fold
+    // (range domination / position) — never claim "I don't have the price" then.
+    r.verdict === 'fold' ? (r.hasOdds ? 'equity.vFoldRealize' : 'equity.vFold')
     : r.verdict === 'call' ? 'equity.vCall'
     : r.verdict === 'implied' ? 'equity.vImplied'
     : r.verdict === 'raise-value' ? 'equity.vRaiseValue'

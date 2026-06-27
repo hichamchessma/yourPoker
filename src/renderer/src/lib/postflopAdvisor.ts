@@ -541,7 +541,14 @@ export function getPostflopAdvice(input: {
   // coach calls a c-bet with ace-high (e.g. A5 high on J-Q-7) that beats the price on
   // raw equity but is a clear fold once realization is accounted for.
   const airNoDraw = effCat === 0 && !playsBoard && !drawIsOnlyEquity && !strongDraw
-  const airMargin = 0.05 + (!inPosition ? 0.05 : 0) + (Math.max(1, opponents) >= 2 ? 0.04 : 0)
+  // A no-pair hand still draws via its OUTS. A real out-count (gutshot + overcards ≈ 8-10
+  // outs) realizes like a draw and must NOT pay the full "pure air" reverse-implied cushion
+  // — that folds a 10-out draw that's getting the price, a clear leak. Scale by the outs.
+  const outsList = computeOuts(hole, board)
+  const outsN = outsList.length
+  const airMargin = outsN >= 8 ? -0.02                                                          // genuine draw (gutshot+overs / double gutshot)
+    : outsN >= 6 ? 0.02 + (!inPosition ? 0.02 : 0) + (Math.max(1, opponents) >= 2 ? 0.02 : 0)   // overcards-ish: modest cushion
+    : 0.05 + (!inPosition ? 0.05 : 0) + (Math.max(1, opponents) >= 2 ? 0.04 : 0)                // true air: full cushion
   const rawCallMargin = drawIsOnlyEquity
     ? (vulnerableDraw ? (aggression >= 0.5 ? 0.05 : 0.03) : (board.length <= 3 ? -0.05 : -0.01))
     : airNoDraw ? airMargin
@@ -795,11 +802,11 @@ export function getPostflopAdvice(input: {
   // ── "In a pro's head" — weave the same facts into a flowing first-person monologue ──
   const story = buildPostflopStory({
     action, sizingText, eq, potOdds, toCall, madeHand, draws, strongDraw,
-    isStrongValue, isOnePair, outsN: computeOuts(hole, board).length,
+    isStrongValue, isOnePair, outsN,
     inPosition, opponents: Math.max(1, opponents), spr, aggression, capped: cappedActive, donkLead: !!input.donkLead, proPlan,
     villainLoose: !!input.villainLoose,
   })
-  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, story, outs: computeOuts(hole, board), betFrac, jam }
+  return { action, sizingText, equity: eq, potOdds, madeHand, madeCat: cat, draws, strongDraw, reasons, confidence, facePlan, proPlan, story, outs: outsList, betFrac, jam }
 }
 
 // PREFLOP "in a pro's head" — same idea, told from the preflop facts (position, what
@@ -867,7 +874,7 @@ function buildPostflopStory(f: {
       : f.action === 'CALL' && f.isOnePair ? tt('story.lBluffCatch', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
       : f.action === 'CALL' ? tt('story.lCall', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
       : f.action === 'CHECK' ? tt('story.lCheck')
-      : f.action === 'FOLD' ? tt('story.lFold', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
+      : f.action === 'FOLD' ? tt(f.eq >= f.potOdds ? 'story.lFoldRealize' : 'story.lFold', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
       : tt('story.lBetThin'),
   )
   if (f.villainLoose && f.isStrongValue && (f.action === 'BET' || f.action === 'RAISE')) beats.push(tt('story.exploitStation'))

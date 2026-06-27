@@ -7,7 +7,7 @@
 //
 // Assertions use clear-cut hands (not razor-edge equities) so Monte-Carlo noise can't
 // flake them. A failing line prints "❌ <reason>". Green = no behavioural regression.
-import { getPostflopAdvice } from '../src/renderer/src/lib/postflopAdvisor'
+import { getPostflopAdvice, buildEquityReasoning } from '../src/renderer/src/lib/postflopAdvisor'
 import { buildRangeMap } from '../src/renderer/src/lib/preflopRanges'
 import { applyAction, initRange } from '../src/renderer/src/lib/rangeEstimator'
 
@@ -115,6 +115,29 @@ console.log('H. Exploit vs station (value up):')
   t(loose(H('AsKd'), BD('Ad Kc 6h')).action === 'BET', 'value garde BET vs station')
   // air still doesn't bet (don't bluff a station) — exploit must not turn checks into bets
   t(loose(H('7s2d'), BD('Ad Kc 6h')).action !== 'BET', 'air ne se met PAS à bluffer vs station')
+}
+
+// ════ I. ÉQUITÉ vs COTE — comparaison & cohérence du texte (anti-bug screenshot) ════
+console.log('I. Équité vs cote:')
+{
+  // Un tirage à ~10 outs (gutshot + 2 surcartes) qui A la cote ne doit JAMAIS folder —
+  // c'était le bug : classé "air", cushion trop sévère → fold à 35% vs 23%.
+  const gut = A(H('KhQd'), BD('Ts 9c 2d'), { toCall: 250, opp: 1 })   // potOdds ≈ 20%
+  console.log(`   gutshot+overs: ${gut.action} eq ${Math.round(gut.equity * 100)}% vs cote ${Math.round(gut.potOdds * 100)}% (${gut.outs.length} outs)`)
+  t(gut.outs.length >= 8, 'gutshot + 2 surcartes = un vrai tirage (≥8 outs), pas de l’air')
+  t(gut.equity >= gut.potOdds, 'ce tirage a la cote brute (eq ≥ potOdds)')
+  t(gut.action !== 'FOLD', 'un tirage qui a la cote ne FOLD pas (call ou raise)')
+  // De l’air sans équité reste un FOLD face à une grosse mise
+  t(A(H('7s2d'), BD('Ah Kc 6d'), { toCall: 700, opp: 2 }).action === 'FOLD', 'air sans équité fold vs grosse mise')
+  // buildEquityReasoning : hasOdds == (eq ≥ potOdds), TOUJOURS — la base de tout le texte
+  const r1 = buildEquityReasoning({ hole: H('KhQd'), board: BD('Ts 9c 2d'), pot: 1000, toCall: 250, equity: 0.35, decision: 'call' })!
+  t(r1.hasOdds === (0.35 >= r1.potOdds) && r1.hasOdds, 'hasOdds = (eq ≥ potOdds) → vrai à 35% vs ~20%')
+  const r2 = buildEquityReasoning({ hole: H('Ah2d'), board: BD('Kh Qc 7d'), pot: 1000, toCall: 700, equity: 0.10, decision: 'fold' })!
+  t(!r2.hasOdds && r2.verdict === 'fold', 'sous le prix (10% vs 41%) → PAS la cote, verdict fold')
+  // FOLD alors qu’on A la cote (réalisation) → hasOdds reste VRAI → le rendu choisit
+  // "vFoldRealize" (jamais "je n'ai PAS la cote" en se contredisant).
+  const r3 = buildEquityReasoning({ hole: H('KhQd'), board: BD('Ts 9c 2d'), pot: 1000, toCall: 250, equity: 0.35, decision: 'fold' })!
+  t(r3.hasOdds && r3.verdict === 'fold', 'fold AVEC la cote → hasOdds reste vrai (texte realize, pas de contradiction)')
 }
 
 console.log('\n' + '═'.repeat(52))
