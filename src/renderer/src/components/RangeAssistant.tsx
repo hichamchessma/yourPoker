@@ -252,8 +252,8 @@ export default function RangeAssistant({
   const panel = (
       <motion.div initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         className={embedded
-          ? 'w-[620px] max-w-[94vw] max-h-[88vh] overflow-y-auto rounded-2xl border border-[#c9a227]/30 shadow-2xl'
-          : 'w-full max-w-[680px] max-h-[92vh] overflow-y-auto rounded-2xl border border-[#c9a227]/30'}
+          ? 'w-[900px] max-w-[96vw] rounded-2xl border border-[#c9a227]/30 shadow-2xl'
+          : 'w-full max-w-[900px] rounded-2xl border border-[#c9a227]/30'}
         style={{ background: '#070d1a' }}>
 
         {/* Header */}
@@ -274,24 +274,15 @@ export default function RangeAssistant({
                 className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10">✕</button>}
         </div>
 
-        <div className="p-5">
+        <div className="p-5 flex gap-4 items-start">
+          {/* ══ LEFT: the analysis (scrolls on its own) ══ */}
+          <div className="flex-1 min-w-0 overflow-y-auto pr-1.5 -mr-1.5" style={{ maxHeight: '74vh' }}>
           {/* Postflop before the flop is dealt */}
           {!advice && !isPreflop && <p className="text-white/50 text-sm text-center py-8">{t('coach.waitFlop')}</p>}
 
           {advice && (
             <>
-              {/* Situation + recommendation banner */}
-              {isPreflop && (
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">
-                  {t('coach.situation')} <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? t('coach.vsJam', { n: numAllIn }) : t(SCENARIO_LABEL[scenario as Scenario])}
-                </p>
-              )}
-              {isPreflop && icmPressure > 0.3 && (
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-2 py-1 rounded-md inline-block"
-                  style={{ color: '#f0c060', background: 'rgba(200,120,40,0.16)', border: '1px solid rgba(240,192,96,0.4)' }}>
-                  {t('coach.icmBanner', { n: Math.round(icmPressure * 100) })}
-                </p>
-              )}
+              {/* recommendation banner */}
               <div className="flex items-center gap-4 rounded-xl border p-4 mb-4"
                 style={{ background: advice.color + '1f', borderColor: advice.color + '88' }}>
                 <div className="text-center min-w-[72px]">
@@ -308,28 +299,6 @@ export default function RangeAssistant({
               {/* Non-embedded (trainer) shows the story inline; in-game it lives in the intro view */}
               {!embedded && !!advice.story?.length && (
                 <div className="mb-4"><StoryHero action={advice.actionText} color={advice.color} hand={heroKey} sizing={advice.sizingText} story={advice.story} sig={isPreflop ? (heroKey ?? 'pf') : boardSig} /></div>
-              )}
-            </>
-          )}
-
-          {/* Preflop range grid */}
-          {isPreflop && rangeMap && (
-            <div className="mx-auto mb-2" style={{ width: 'min(100%, 520px)' }}>
-              <RangeGrid rangeMap={rangeMap} heroKey={heroKey} legend={preLegend} isReshove={isReshove} />
-            </div>
-          )}
-
-          {advice && (
-            <>
-              {/* Represented range (postflop) — shown in BOTH stages; story only in intro */}
-              {!isPreflop && representedView && (
-                <div className="mb-4">
-                  <div className="flex flex-col items-center">
-                    <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">{t('coach.representedRange')}</p>
-                    <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
-                      name={t('coach.youRepresented')} heroKey={heroKey}/>
-                  </div>
-                </div>
               )}
 
               {/* Equity / pot odds */}
@@ -438,6 +407,33 @@ export default function RangeAssistant({
               </p>
             </>
           )}
+          </div>
+
+          {/* ══ RIGHT: the range — always on its own column, fully visible ══ */}
+          {advice && (isPreflop ? !!rangeMap : !!representedView) && (
+            <div className="w-[300px] shrink-0">
+              {isPreflop ? (
+                <>
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1.5 text-center">
+                    <span className="text-[#c9a227] font-bold">{position}</span> — {vsJam ? t('coach.vsJam', { n: numAllIn }) : t(SCENARIO_LABEL[scenario as Scenario])}
+                  </p>
+                  {icmPressure > 0.3 && (
+                    <p className="text-[9px] font-bold uppercase tracking-widest mb-2 px-2 py-1 rounded-md text-center"
+                      style={{ color: '#f0c060', background: 'rgba(200,120,40,0.16)', border: '1px solid rgba(240,192,96,0.4)' }}>
+                      {t('coach.icmBanner', { n: Math.round(icmPressure * 100) })}
+                    </p>
+                  )}
+                  {rangeMap && <RangeGrid rangeMap={rangeMap} heroKey={heroKey} legend={preLegend} isReshove={isReshove} />}
+                </>
+              ) : representedView && (
+                <>
+                  <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5">{t('coach.representedRange')}</p>
+                  <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
+                    name={t('coach.youRepresented')} heroKey={heroKey} width={300}/>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </motion.div>
   )
@@ -467,10 +463,8 @@ export default function RangeAssistant({
           {isPreflop && rangeMap
             ? <RangeGrid rangeMap={rangeMap} heroKey={heroKey} legend={preLegend} isReshove={isReshove} compact />
             : representedView && (
-              <div className="origin-top scale-[0.82] -mb-6">
-                <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
-                  name={t('coach.youRepresented')} heroKey={heroKey} />
-              </div>
+              <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
+                name={t('coach.youRepresented')} heroKey={heroKey} width={246} />
             )}
           <button onClick={() => setDetailsOpen(true)}
             className="w-full mt-3 py-2 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#f0c060] text-[10px] font-black uppercase tracking-[0.18em] hover:bg-[#c9a227]/20 transition-all flex items-center justify-center gap-1.5">
@@ -549,7 +543,8 @@ function StoryHero({ action, color, hand, sizing, story, sig }: {
   action: string; color: string; hand?: string | null; sizing?: string; story: string[]; sig: string
 }) {
   const { t } = useTranslation()
-  const cloud = { borderColor: 'rgba(167,139,255,0.45)', background: 'rgb(49,38,90)' }
+  // Opaque cloud so the bubble READS clearly against any (dark/blurred) table background.
+  const cloud = { borderColor: 'rgba(167,139,255,0.6)', background: 'rgb(36,26,82)' }
   const puffs = [{ s: 6, l: -20, b: -2, d: 0.18 }, { s: 9, l: -13, b: 7, d: 0.30 }, { s: 13, l: -6, b: 18, d: 0.42 }]
   return (
     <div key={`story-${sig}`} className="flex gap-3 items-end">
@@ -568,8 +563,9 @@ function StoryHero({ action, color, hand, sizing, story, sig }: {
         ))}
         <motion.div initial="hidden" animate="show"
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.5 } } }}
-          className="relative rounded-[22px] border p-3.5 space-y-2"
-          style={{ borderColor: 'rgba(167,139,255,0.4)', background: 'linear-gradient(180deg, rgba(124,92,240,0.16), rgba(40,30,90,0.2))' }}>
+          className="relative rounded-[22px] border-2 p-3.5 space-y-2"
+          style={{ borderColor: 'rgba(167,139,255,0.55)', background: 'linear-gradient(180deg, #241a52, #181232)',
+            boxShadow: '0 14px 44px rgba(0,0,0,0.6), 0 0 0 1px rgba(167,139,255,0.12)' }}>
           <p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
           {/* LEAD with the action, highlighted */}
           <motion.div variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
