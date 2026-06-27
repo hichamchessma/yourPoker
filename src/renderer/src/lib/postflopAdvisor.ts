@@ -902,13 +902,21 @@ function buildPostflopStory(f: {
   const oddsTxt = f.toCall > 0 ? tt('story.vsOdds', { odds: pct(f.potOdds) }) : ''
   beats.push(tt('story.pHand', { hand: f.madeHand, draws: drawTxt, eq: Math.round(f.eq * 100), outs: outsTxt, odds: oddsTxt }))
   const semiBluff = f.action === 'BET' && f.strongDraw && f.eq < 0.55
+  // A realization fold cites the ACTUAL spot factors (never a hardcoded "out of position"
+  // that contradicts the setup beat). When the raw edge is razor-thin it's noise, not a
+  // real edge — so the wording says the equity is OVERSTATED here, not "I have the price but".
+  const realiz: string[] = []
+  if (f.opponents >= 2) realiz.push(tt('story.realMultiway'))
+  if (!f.inPosition) realiz.push(tt('story.realOop'))
+  if (f.aggression >= 0.55 || f.donkLead) realiz.push(tt('story.realBarrel'))
+  const realWhy = realiz.length ? realiz.join(' · ') : tt('story.realDominated')
   beats.push(
     semiBluff ? tt('story.lSemiBluff')
       : (f.action === 'BET' || f.action === 'RAISE') && f.isStrongValue ? tt('story.lValue')
       : f.action === 'CALL' && f.isOnePair ? tt('story.lBluffCatch', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
       : f.action === 'CALL' ? tt('story.lCall', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
       : f.action === 'CHECK' ? tt('story.lCheck')
-      : f.action === 'FOLD' ? tt(f.eq >= f.potOdds ? 'story.lFoldRealize' : 'story.lFold', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds) })
+      : f.action === 'FOLD' ? tt(f.eq >= f.potOdds ? 'story.lFoldRealize' : 'story.lFold', { eq: Math.round(f.eq * 100), odds: pct(f.potOdds), why: realWhy })
       : tt('story.lBetThin'),
   )
   if (f.villainLoose && f.isStrongValue && (f.action === 'BET' || f.action === 'RAISE')) beats.push(tt('story.exploitStation'))
