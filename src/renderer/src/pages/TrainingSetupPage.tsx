@@ -185,6 +185,10 @@ export default function TrainingSetupPage(): JSX.Element {
   const [sb, setSb] = useState(1)
   const [bb, setBb] = useState(2)
   const [ante, setAnte] = useState(0)
+  const [currency, setCurrency] = useState('$')
+  // BB is the editable money value of one big blind; SB tracks at half (min 1).
+  const setBigBlind = (v: number) => { const b = Math.max(1, Math.round(v)); setBb(b); setSb(Math.max(1, Math.round(b / 2))) }
+  const fmt = (n: number) => currency === 'DH' ? `${Math.round(n).toLocaleString()} DH` : `${currency}${Math.round(n).toLocaleString()}`
   const [decisionTimer, setDecisionTimer] = useState(30)
   const [gameVariant, setGameVariant] = useState<'NLH'|'PLO'|'PLO5'>('NLH')
   const [gameSpeed, setGameSpeed] = useState<'slow'|'normal'|'fast'>('normal')
@@ -281,7 +285,7 @@ export default function TrainingSetupPage(): JSX.Element {
 
   const handleConfirm = () => {
     navigate('/game', {
-      state: { numPlayers, selectedSeat: safeSelectedSeat, stackBB, sb, bb, ante, decisionTimer, gameVariant, gameSpeed, anonymousMode, slots, displayName }
+      state: { numPlayers, selectedSeat: safeSelectedSeat, stackBB, sb, bb, ante, decisionTimer, gameVariant, gameSpeed, anonymousMode, slots, displayName, currency }
     })
   }
 
@@ -404,8 +408,8 @@ export default function TrainingSetupPage(): JSX.Element {
                 {[
                   { label: t('train.sumPlayers'), val: `${numPlayers}` },
                   { label: 'Pos',                 val: myPosition },
-                  { label: 'Stack',               val: `${stackChips} (${stackBB}BB)` },
-                  { label: 'Blinds',              val: `${sb} / ${bb}${ante > 0 ? ` / ${ante}` : ''}` },
+                  { label: 'Stack',               val: `${fmt(stackChips)} (${stackBB}BB)` },
+                  { label: 'Blinds',              val: `${fmt(sb)} / ${fmt(bb)}${ante > 0 ? ` / ${fmt(ante)}` : ''}` },
                   { label: t('train.sumActive'),  val: `${activeCount} / ${numPlayers}` },
                   { label: t('train.sumSettings'),val: `${gameVariant} · ${decisionTimer}s` },
                 ].map(r => (
@@ -588,28 +592,55 @@ export default function TrainingSetupPage(): JSX.Element {
           {/* ── RIGHT PANEL ── */}
           <div className="w-40 md:w-52 flex-shrink-0 flex flex-col gap-1.5 md:gap-2 overflow-y-auto md:overflow-hidden">
 
-            {/* Stack */}
+            {/* Currency + Big-blind value + Stack */}
             <div className="glass-card p-3 flex-shrink-0">
-              <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest mb-2">{t('train.stackInit')}</p>
+              {/* Currency */}
+              <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest mb-1.5">{t('train.currency')}</p>
+              <div className="grid grid-cols-3 gap-1 mb-3">
+                {[{ sym: '$', name: 'USD' }, { sym: '€', name: 'EUR' }, { sym: 'DH', name: 'MAD' }].map(c => (
+                  <motion.button key={c.sym} whileTap={{ scale: 0.92 }} onClick={() => setCurrency(c.sym)}
+                    className={`py-1.5 rounded-lg border text-center text-[10px] font-black transition-all ${
+                      currency === c.sym ? 'bg-poker-gold/25 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/8 text-white/40 hover:border-white/22'
+                    }`}>{c.sym} <span className="text-[7px] font-bold opacity-60">{c.name}</span></motion.button>
+                ))}
+              </div>
+
+              {/* Big-blind value — makes "1 BB" explicit */}
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest">{t('train.bbValue')}</p>
+                  <p className="text-[9px] text-white/40 mt-0.5">{t('train.oneBbIs', { v: fmt(bb) })} · SB {fmt(sb)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setBigBlind(bb - (bb > 10 ? 5 : 1))} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Minus size={10} className="text-white/55"/></button>
+                  <input type="number" min={1} value={bb} onChange={e => setBigBlind(+e.target.value || 1)}
+                    className="w-14 bg-white/5 border border-white/10 rounded-lg py-1 text-center text-sm font-bold text-poker-gold focus:border-poker-gold/60 outline-none"/>
+                  <button onClick={() => setBigBlind(bb + (bb >= 10 ? 5 : 1))} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Plus size={10} className="text-white/55"/></button>
+                </div>
+              </div>
+
+              {/* Stack in BB — quick presets + FREE input (no cap) */}
+              <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest mb-1.5">{t('train.stackInit')}</p>
               <div className="grid grid-cols-5 gap-1 mb-2">
                 {[20,50,100,200,500].map(cnt => (
-                  <motion.button key={cnt} whileTap={{ scale: 0.92 }}
-                    onClick={() => setStackBB(cnt)}
+                  <motion.button key={cnt} whileTap={{ scale: 0.92 }} onClick={() => setStackBB(cnt)}
                     className={`py-1 rounded-lg border text-center text-[8px] font-bold transition-all ${
-                      stackBB === cnt
-                        ? 'bg-poker-gold/25 border-poker-gold text-poker-gold'
-                        : 'bg-white/4 border-white/8 text-white/38 hover:border-white/22'
+                      stackBB === cnt ? 'bg-poker-gold/25 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/8 text-white/38 hover:border-white/22'
                     }`}>{cnt}BB</motion.button>
                 ))}
               </div>
-              <div className="bg-white/4 rounded-xl p-2.5 flex items-center justify-between">
-                <div>
-                  <p className="text-base font-bold text-white">{stackChips.toLocaleString()}</p>
-                  <p className="text-[8px] text-white/38">{t('train.chipsBB', { bb: stackBB })}</p>
+              <div className="bg-white/4 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-1">
+                    <input type="number" min={1} value={stackBB} onChange={e => setStackBB(Math.max(1, Math.round(+e.target.value || 1)))}
+                      className="w-16 bg-transparent text-base font-bold text-white outline-none border-b border-white/15 focus:border-poker-gold/60"/>
+                    <span className="text-[9px] font-bold text-white/45">BB</span>
+                  </div>
+                  <p className="text-[8px] text-white/38 mt-0.5 truncate">= {fmt(stackChips)}</p>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <button onClick={() => setStackBB(n => Math.min(500, n + 10))} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Plus size={10} className="text-white/55"/></button>
-                  <button onClick={() => setStackBB(n => Math.max(10, n - 10))}  className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Minus size={10} className="text-white/55"/></button>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <button onClick={() => setStackBB(n => n + 10)} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Plus size={10} className="text-white/55"/></button>
+                  <button onClick={() => setStackBB(n => Math.max(1, n - 10))}  className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Minus size={10} className="text-white/55"/></button>
                 </div>
               </div>
             </div>

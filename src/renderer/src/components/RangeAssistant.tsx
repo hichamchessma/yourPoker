@@ -10,6 +10,7 @@ import { useIsPro } from '../lib/entitlements'
 import { Lock, Zap, ChevronDown, ChevronUp } from 'lucide-react'
 import RangeHeatmap from './RangeHeatmap'
 import EquityReasoningBlock, { MiniCard, groupOuts } from './EquityReasoning'
+import { money } from '../lib/money'
 import type { RangeView } from '../lib/rangeEstimator'
 
 interface Card { rank: string; suit: string }
@@ -232,7 +233,7 @@ export default function RangeAssistant({
       const semi = advice.draws.length > 0
       setAnswer(t('cask.bluff', {
         verb: toCall > 0 ? t('cask.bluffVerbRaise') : t('cask.bluffVerbBet'),
-        size: betSize, pot, fe: pct(fe), eq: pct(advice.equity),
+        size: money(betSize), pot: money(pot), fe: pct(fe), eq: pct(advice.equity),
         tail: semi ? t('cask.bluffSemi', { draws: advice.draws.join(' / ') }) : t('cask.bluffPure'),
       }))
     }

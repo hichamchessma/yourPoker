@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import i18n from '../i18n'
+import { money } from './money'
 const tt = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 
 export interface Card { rank: string; suit: string }
@@ -503,7 +504,7 @@ export function getPostflopAdvice(input: {
     : aggression > 0 ? tt('cadv.eqVsRange', { q: barrels >= 2 ? tt('cadv.eqRangeStrong') : tt('cadv.eqRangeTight') })
     : tt('cadv.eqVsOpp', { count: opponents })
   reasons.push(tt('cadv.equityReal', { eq: pct(eq), suffix: eqSuffix }))
-  if (toCall > 0) reasons.push(tt('cadv.potOdds', { odds: pct(potOdds), toCall }))
+  if (toCall > 0) reasons.push(tt('cadv.potOdds', { odds: pct(potOdds), toCall: money(toCall) }))
   if (cappedActive && toCall > 0) reasons.push(tt('cadv.capped'))
   if (input.donkLead && !input.facingRaise && toCall > 0) reasons.push(tt('cadv.donkLead'))
   if (input.facingRaise && toCall > 0) reasons.push(tt('cadv.facingRaise'))
@@ -645,25 +646,25 @@ export function getPostflopAdvice(input: {
     if (isStrongValue && eq >= 0.55 && !raiseGetsOnlyValue) {
       // Strong made hand with the edge → value raise.
       if (spr <= 1.5) { action = 'RAISE'; sizingText = tt('cadv.szRaiseAllinLowSpr'); jam = true }
-      else { action = 'RAISE'; sizingText = tt('cadv.szValueRaise', { frac: fracLabel(vrFrac), amt: valueRaiseSize }); betFrac = vrFrac }
+      else { action = 'RAISE'; sizingText = tt('cadv.szValueRaise', { frac: fracLabel(vrFrac), amt: money(valueRaiseSize) }); betFrac = vrFrac }
       reasons.push(tt('cadv.valueRaise'))
       confidence = eq >= 0.7 ? 'haute' : 'moyenne'
     } else if (eq >= potOdds + callMargin) {
       // Profitable continue, given the required margin (implied odds lower it for clean
       // draws, reverse implied odds raise it for vulnerable ones). Frame by hand type.
       action = 'CALL'
-      if (raiseGetsOnlyValue) { sizingText = tt('cadv.szBluffCatch', { toCall }); reasons.push(tt('cadv.bluffCatchBoard', { tex: straightPossibleB ? tt('cadv.straightWord') : tt('cadv.flushWord'), name: name.toLowerCase(), tex2: straightPossibleB ? tt('cadv.straightsWord') : tt('cadv.flushesWord') })); confidence = 'moyenne' }
-      else if (isStrongValue) { sizingText = tt('cadv.szCall', { toCall }); reasons.push(tt('cadv.strongValueCall')); confidence = 'moyenne' }
+      if (raiseGetsOnlyValue) { sizingText = tt('cadv.szBluffCatch', { toCall: money(toCall) }); reasons.push(tt('cadv.bluffCatchBoard', { tex: straightPossibleB ? tt('cadv.straightWord') : tt('cadv.flushWord'), name: name.toLowerCase(), tex2: straightPossibleB ? tt('cadv.straightsWord') : tt('cadv.flushesWord') })); confidence = 'moyenne' }
+      else if (isStrongValue) { sizingText = tt('cadv.szCall', { toCall: money(toCall) }); reasons.push(tt('cadv.strongValueCall')); confidence = 'moyenne' }
       else if (drawIsOnlyEquity) {
-        sizingText = tt('cadv.szDrawCall', { toCall })
+        sizingText = tt('cadv.szDrawCall', { toCall: money(toCall) })
         reasons.push(callMargin < 0
           ? tt('cadv.drawCallImplied', { eq: pct(eq) })
           : tt('cadv.drawCallTight', { eq: pct(eq), req: pct(potOdds + callMargin) }))
         if (vulnerableDraw) reasons.push(tt('cadv.vulnDraw'))
         confidence = 'basse'
       }
-      else if (isOnePair) { sizingText = tt('cadv.szBluffcatch', { toCall }); reasons.push(tt('cadv.bluffcatch', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
-      else { sizingText = tt('cadv.szCall', { toCall }); reasons.push(tt('cadv.callProfit', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
+      else if (isOnePair) { sizingText = tt('cadv.szBluffcatch', { toCall: money(toCall) }); reasons.push(tt('cadv.bluffcatch', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
+      else { sizingText = tt('cadv.szCall', { toCall: money(toCall) }); reasons.push(tt('cadv.callProfit', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
     } else {
       action = 'FOLD'; sizingText = tt('cadv.szFold')
       if (vulnerableDraw) reasons.push(tt('cadv.foldVulnDraw', { eq: pct(eq), req: pct(potOdds + callMargin) }))
@@ -711,25 +712,25 @@ export function getPostflopAdvice(input: {
     } else if (isStrongValue || (isOnePair && effPair === 'top' && eq >= 0.6) || thinValueVsCapped || protectionBet || protectVsDraw) {
       action = 'BET'
       if (protectionBet) {
-        sizingText = tt('cadv.szProtectionHalf', { amt: round(pot * 0.5) }); betFrac = 0.5
+        sizingText = tt('cadv.szProtectionHalf', { amt: money(round(pot * 0.5)) }); betFrac = 0.5
         reasons.push(tt('cadv.protectionBet'))
       } else if (protectVsDraw) {
-        sizingText = tt('cadv.szProtectionTwoThird', { amt: round(pot * 0.66) }); betFrac = 0.66
+        sizingText = tt('cadv.szProtectionTwoThird', { amt: money(round(pot * 0.66)) }); betFrac = 0.66
         reasons.push(tt('cadv.protectVsDraw'))
       } else if (thinValueVsCapped && eq < 0.8) {
-        sizingText = tt('cadv.szThinValue', { amt: round(pot * 0.4) }); betFrac = 0.4
+        sizingText = tt('cadv.szThinValue', { amt: money(round(pot * 0.4)) }); betFrac = 0.4
         reasons.push(tt('cadv.thinValue'))
       } else if (overbetSpot) {
         const obFrac = board.length >= 5 ? 1.5 : board.length >= 4 ? 1.35 : 1.25   // polarity grows by street
-        sizingText = tt('cadv.szOverbet', { mult: String(obFrac), amt: round(pot * obFrac) }); betFrac = obFrac
+        sizingText = tt('cadv.szOverbet', { mult: String(obFrac), amt: money(round(pot * obFrac)) }); betFrac = obFrac
         reasons.push(tt('cadv.overbet'))
       } else {
-        sizingText = tt('cadv.szValueBet', { frac: fracLabel(vbFrac), amt: valueBetSize }); betFrac = vbFrac
+        sizingText = tt('cadv.szValueBet', { frac: fracLabel(vbFrac), amt: money(valueBetSize) }); betFrac = vbFrac
         reasons.push(tt('cadv.valueBet'))
       }
       confidence = eq >= 0.72 ? 'haute' : 'moyenne'
     } else if (strongDraw) {
-      action = 'BET'; sizingText = tt('cadv.szSemiBluff', { amt: round(pot * 0.5) }); betFrac = 0.5
+      action = 'BET'; sizingText = tt('cadv.szSemiBluff', { amt: money(round(pot * 0.5)) }); betFrac = 0.5
       reasons.push(tt('cadv.semiBluff'))
       confidence = 'basse'
     } else if (isOnePair) {
@@ -754,7 +755,7 @@ export function getPostflopAdvice(input: {
       if (lateStreet && noSDV && villainGaveUp && repValue && inPosition) {
         action = 'BET'
         jam = spr <= 1.2; betFrac = 0.9
-        sizingText = jam ? tt('cadv.szBluffAllin') : tt('cadv.szBluffPolarized', { amt: round(pot * 0.9) })
+        sizingText = jam ? tt('cadv.szBluffAllin') : tt('cadv.szBluffPolarized', { amt: money(round(pot * 0.9)) })
         reasons.push(tt('cadv.bluffNoSdv', { eq: pct(eq) }))
         reasons.push(tt('cadv.bluffRepNuts', { tex: wet >= 0.5 ? tt('cadv.texCompleted') : tt('cadv.texConnected') }))
         confidence = 'moyenne'
@@ -791,8 +792,8 @@ export function getPostflopAdvice(input: {
       const effEq = Math.max(0, eq - s.pen)
       const small = !s.allin && (s.frac as number) <= 0.5
       const equation = s.allin
-        ? `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${round(B)}/(${round(pot)}+2·${round(B)}) ≈ ${pct(reqEq)}`
-        : `B = ${s.fracTxt} ($${round(B)}) ; req = B/(pot+2B) = ${s.reqTxt} ≈ ${pct(reqEq)}`
+        ? `B = ${s.fracTxt} (${money(round(B))}) ; req = B/(pot+2B) = ${round(B)}/(${round(pot)}+2·${round(B)}) ≈ ${pct(reqEq)}`
+        : `B = ${s.fracTxt} (${money(round(B))}) ; req = B/(pot+2B) = ${s.reqTxt} ≈ ${pct(reqEq)}`
       let act: string, why: string, kind: FacePlanRow['kind']
       if (isStrongValue) {
         if (s.allin || spr <= 1.5) { act = tt('cadv.fpCallAllinValue'); why = tt('cadv.fpWhyStrong', { eq: pct(eq) }); kind = 'call' }

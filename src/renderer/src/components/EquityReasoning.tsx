@@ -1,5 +1,6 @@
 import { Trans, useTranslation } from 'react-i18next'
 import type { EquityReasoning, OutCard } from '../lib/postflopAdvisor'
+import { money } from '../lib/money'
 
 // Shared <Trans> tag → styled element map (white / gold / green / dim-white bolds).
 const TAGS = {
@@ -33,7 +34,6 @@ export function groupOuts(outs: OutCard[]): { label: string; cards: OutCard[] }[
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
-const money = (x: number) => `$${Math.round(x).toLocaleString('en-US')}`
 
 // "How a pro reasons about the price" — pot → call → pot odds → outs (as cards) →
 // quick rule-of-2/4 estimate → real equity → verdict (I have the odds or not).

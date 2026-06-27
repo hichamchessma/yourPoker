@@ -16,6 +16,7 @@ import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
 import { bestHandScore, computeSidePots, resolveAction } from '../lib/pokerEngine'
+import { setCurrency, money, curSymbol } from '../lib/money'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal, playSiren } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
@@ -65,7 +66,7 @@ interface GState {
 }
 interface GameConfig {
   numPlayers: number; selectedSeat: number; stackBB: number; sb: number
-  bb: number; ante: number; decisionTimer: number; displayName: string
+  bb: number; ante: number; decisionTimer: number; displayName: string; currency?: string
   slots: Array<{ type: string; level: number }>
   scenario?: ScenarioCfg
   playLive?: boolean
@@ -368,7 +369,7 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.7)]"/>
               <span className={`text-[12px] font-bold font-mono tabular-nums tracking-tight ${isLoser?'text-emerald-300/60':'text-emerald-300'}`}
                 style={{textShadow:'0 1px 3px rgba(0,0,0,0.9)'}}>
-                ${seat.stack.toLocaleString()}
+                {money(seat.stack)}
               </span>
             </div>
           </div>
@@ -1163,7 +1164,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, initia
                         {pl.position && <span className="text-[8px] font-black px-1 rounded bg-[#c9a227]/15 text-[#c9a227]/90 border border-[#c9a227]/25 uppercase tracking-wider">{pl.position}</span>}
                       </div>
                       <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">
-                        ${isEnd && isWinner
+                        {curSymbol()}{isEnd && isWinner
                           ? <CountUp from={stepPl?.stack ?? pl.startStack} to={pl.endStack} />
                           : stack.toLocaleString()}
                       </div>
@@ -1434,6 +1435,9 @@ export default function GamePage(): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
   const cfg = (location.state ?? {}) as Partial<GameConfig>
+  // Denominate every on-table amount in the currency picked at table creation ($/€/DH).
+  // (A resumed session spreads its saved cfg, so cfg.currency is already present.)
+  setCurrency(cfg.currency)
 
   const numPlayers = cfg.numPlayers ?? 6
   const selectedSeat = cfg.selectedSeat ?? 0
@@ -2146,7 +2150,7 @@ export default function GamePage(): JSX.Element {
     rangeMetaRef.current[seatIdx] = meta
     // Append this action's snapshot to the film (for the animated hover popup).
     const phaseLabel = t(preflop ? 'crit.phasePreflop' : board.length === 3 ? 'crit.phaseFlop' : board.length === 4 ? 'crit.phaseTurn' : 'crit.phaseRiver')
-    const amt = amount ? ` $${Math.round(amount)}` : ''
+    const amt = amount ? ` ${money(amount)}` : ''
     const actLabel = action === 'FOLD' ? t('rev.actFold') : action === 'CHECK' ? t('rev.actCheck')
       : action === 'CALL' ? t('rev.actCall') + amt
       : action === 'ALL-IN' ? t('rev.actAllin') + amt
@@ -4030,7 +4034,7 @@ export default function GamePage(): JSX.Element {
         <div className="h-4 w-px bg-white/10"/>
         <div className="flex items-center gap-1.5">
           <span className="text-[9px] text-white/30 uppercase tracking-wide">Pot</span>
-          <span className="text-[11px] font-bold text-[#c9a227] font-mono">${gs.pot.toLocaleString()}</span>
+          <span className="text-[11px] font-bold text-[#c9a227] font-mono">{money(gs.pot)}</span>
         </div>
         <div className="flex-1"/>
 
@@ -4338,7 +4342,7 @@ export default function GamePage(): JSX.Element {
                   {collectedPot > 0 && <ChipStack amount={collectedPot} sz={compactTable?10:20} maxVisible={6}/>}
                   <div className="flex flex-col leading-none">
                     <span className="text-[7px] text-white/40 uppercase tracking-widest">Pot total</span>
-                    <span className="text-[13px] font-bold text-[#c9a227] font-mono">${gs.pot.toLocaleString()}</span>
+                    <span className="text-[13px] font-bold text-[#c9a227] font-mono">{money(gs.pot)}</span>
                   </div>
                 </div>
               </div>
@@ -4467,7 +4471,7 @@ export default function GamePage(): JSX.Element {
                   {/* Gold pill — dark text on a gold gradient pops on the felt and reads at a glance */}
                   <span className={`font-mono font-black tracking-tight text-[#1a1206] rounded-full whitespace-nowrap ${compactTable?'text-[8px] px-1.5 py-px':'text-[11px] px-2 py-0.5'}`}
                     style={{ background:'linear-gradient(135deg,#f7e58a 0%,#e8c84a 45%,#c9a227 100%)', border:'1px solid rgba(255,244,190,0.7)', boxShadow:'0 2px 9px rgba(0,0,0,0.6), 0 0 14px rgba(201,162,39,0.45)' }}>
-                    ${seat.bet.toLocaleString()}
+                    {money(seat.bet)}
                   </span>
                 </motion.div>
               )
@@ -4575,14 +4579,14 @@ export default function GamePage(): JSX.Element {
                         className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-purple-500/55 bg-[#1a1030] hover:bg-purple-900/60 transition-all shadow-lg shadow-black/50">
                         <span className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-500/30 text-purple-100 border border-purple-400/40 leading-none">MAX</span>
                         <span className="text-[9px] text-white/55 uppercase tracking-wide">All-in</span>
-                        <span className="ml-auto text-[11px] font-black font-mono text-purple-100">${heroMaxTo.toLocaleString()}</span>
+                        <span className="ml-auto text-[11px] font-black font-mono text-purple-100">{money(heroMaxTo)}</span>
                       </motion.button>
                       {presets.map(p => (
                         <motion.button key={p.label} whileTap={{ scale: 0.96 }} onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', p.amt)}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-[#c9a227]/50 bg-[#1a1408] hover:bg-[#c9a227]/25 transition-all shadow-lg shadow-black/50">
                           <span className="text-[8px] font-black px-1 py-0.5 rounded bg-[#c9a227]/25 text-[#f6dd85] border border-[#c9a227]/40 leading-none">{fmtBB(p.amt)}BB</span>
                           <span className="text-[9px] text-white/55 uppercase tracking-wide">{p.label}</span>
-                          <span className="ml-auto text-[11px] font-black font-mono text-[#f6dd85]">${p.amt.toLocaleString()}</span>
+                          <span className="ml-auto text-[11px] font-black font-mono text-[#f6dd85]">{money(p.amt)}</span>
                         </motion.button>
                       ))}
                     </div>
@@ -4607,7 +4611,7 @@ export default function GamePage(): JSX.Element {
                   <motion.button whileTap={{scale:0.95}}
                     onClick={() => heroAction('CALL', callAmt)}
                     className="px-8 py-2.5 rounded-xl border border-emerald-700/40 bg-emerald-900/20 text-emerald-400 font-bold text-sm uppercase tracking-widest hover:bg-emerald-900/35 transition-all">
-                    Call ${callAmt.toLocaleString()} <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">C</kbd>
+                    Call {money(callAmt)} <kbd className="ml-1 px-1 rounded bg-black/30 text-[8px] font-mono opacity-70 align-middle">C</kbd>
                   </motion.button>
                 )}
 
@@ -4638,7 +4642,7 @@ export default function GamePage(): JSX.Element {
                     <motion.button whileTap={{scale:0.95}}
                       onClick={() => heroAction(isOpenBet ? 'BET' : 'RAISE', clampRaise(heroBetAmt))}
                       className="px-6 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/15 text-[#c9a227] font-bold text-sm uppercase tracking-widest hover:bg-[#c9a227]/25 transition-all whitespace-nowrap">
-                      {clampRaise(heroBetAmt) >= heroMaxTo ? 'All-in' : isOpenBet ? `Bet $${heroBetAmt.toLocaleString()}` : `Raise $${heroBetAmt.toLocaleString()}`}
+                      {clampRaise(heroBetAmt) >= heroMaxTo ? 'All-in' : isOpenBet ? `Bet ${money(heroBetAmt)}` : `Raise ${money(heroBetAmt)}`}
                     </motion.button>
                   </div>
                 )}
@@ -4679,7 +4683,7 @@ export default function GamePage(): JSX.Element {
                           ? (preCanCheck ? 'border-sky-400 bg-sky-600/30 text-sky-100 shadow-[0_0_16px_rgba(40,140,220,0.35)]' : 'border-emerald-400 bg-emerald-600/30 text-emerald-100 shadow-[0_0_16px_rgba(40,200,120,0.35)]')
                           : (preCanCheck ? 'border-sky-700/40 bg-sky-900/15 text-sky-400/80 hover:bg-sky-900/30' : 'border-emerald-700/40 bg-emerald-900/15 text-emerald-400/80 hover:bg-emerald-900/30')}`}>
                       <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${preAction==='checkcall'?(preCanCheck?'bg-sky-400 border-sky-300 text-white':'bg-emerald-400 border-emerald-300 text-white'):(preCanCheck?'border-sky-500/50':'border-emerald-500/50')}`}>{preAction==='checkcall'?'✓':''}</span>
-                      {preCanCheck ? 'Check' : `Call $${preCallAmt.toLocaleString()}`}
+                      {preCanCheck ? 'Check' : `Call ${money(preCallAmt)}`}
                     </button>
                   </div>
                 ) : gs.phase === 'showdown' ? (
@@ -4738,7 +4742,7 @@ export default function GamePage(): JSX.Element {
                     className="flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest border border-red-700/40 bg-red-900/25 text-red-300 hover:bg-red-900/40">Fold</button>
                   <button onClick={() => manualAct(manualPanel, canCheck ? 'CHECK' : 'CALL', toCall)}
                     className="flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest border border-emerald-600/40 bg-emerald-900/25 text-emerald-300 hover:bg-emerald-900/40">
-                    {canCheck ? 'Check' : `Call $${toCall}`}</button>
+                    {canCheck ? 'Check' : `Call ${money(toCall)}`}</button>
                 </div>
                 <div className="mt-2.5 rounded-xl border border-white/10 bg-black/30 p-2.5">
                   <div className="flex items-center gap-2 mb-2">
