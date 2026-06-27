@@ -262,8 +262,8 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
   return false
 }
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
-function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42, compact=false }: {
-  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void; avatarSize?:number; compact?:boolean
+function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, onAddChips, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42, compact=false }: {
+  seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; onAddChips?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void; avatarSize?:number; compact?:boolean
 }) {
   const { t } = useTranslation()
   const [bgD,bgL] = seat.seatType === 'human' ? HUMAN_GRAD : (LGRAD[seat.level] ?? LGRAD[2])
@@ -371,6 +371,12 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25,
                 style={{textShadow:'0 1px 3px rgba(0,0,0,0.9)'}}>
                 {money(seat.stack)}
               </span>
+              {/* Sandbox: top this seat up (deep-play any player, incl. yourself) */}
+              {onAddChips && (
+                <button onClick={(e) => { e.stopPropagation(); onAddChips() }}
+                  title="+50 BB" aria-label="+50 BB"
+                  className="shrink-0 ml-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[11px] font-black leading-none text-[#c9a227] bg-[#c9a227]/15 border border-[#c9a227]/40 hover:bg-[#c9a227]/35 hover:text-white transition-colors">+</button>
+              )}
             </div>
           </div>
         </div>
@@ -3223,6 +3229,15 @@ export default function GamePage(): JSX.Element {
     }))
   }
 
+  // Sandbox top-up: drop +50 BB onto ANY seat (incl. the hero) so you can build a deep
+  // table and play whoever you want. Cash/sandbox only — it would break a tournament.
+  function addChips(seatIdx: number) {
+    const inc = Math.max(1, Math.round(bbAmt)) * 50
+    const apply = (st: GState): GState => ({ ...st, seats: st.seats.map((s, i) => i === seatIdx ? { ...s, stack: s.stack + inc, isEliminated: false } : s) })
+    gsRef.current = apply(gsRef.current)
+    setGs(apply)
+  }
+
   // Hero rebuy with a chosen amount: refund the stack and resume the flow.
   function rebuyHero(amount: number) {
     const amt = Math.max(bbAmt, Math.round(amount))
@@ -4366,6 +4381,7 @@ export default function GamePage(): JSX.Element {
                   turnPaused={gs.paused || coachOpen || manualMode || rangeFilmOpen}
                   hideTimer={manualMode || (seat.isHero && !noHelp)}
                   onRebuy={!tournament && seat.isEliminated ? () => rebuyPlayer(seat.idx) : undefined}
+                  onAddChips={!tournament && !seat.isEliminated ? () => addChips(seat.idx) : undefined}
                   onHoverCards={manualMode ? (entering) => {
                     // Manual authoring only: hovering the cards hides the bet panel
                     // (cards = range view). In normal play, ranges open on CLICK.
