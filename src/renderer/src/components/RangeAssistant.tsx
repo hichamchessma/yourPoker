@@ -547,6 +547,9 @@ function StoryHero({ action, color, hand, sizing, story, sig }: {
   // Opaque cloud so the bubble READS clearly against any (dark/blurred) table background.
   const cloud = { borderColor: 'rgba(167,139,255,0.6)', background: 'rgb(36,26,82)' }
   const puffs = [{ s: 6, l: -20, b: -2, d: 0.18 }, { s: 9, l: -13, b: 7, d: 0.30 }, { s: 13, l: -6, b: 18, d: 0.42 }]
+  // FOLD's chart colour is a near-black grey (#1a2230) / dark brick (#c0392b) → invisible on
+  // the dark pill. Use a bright readable tone for the highlighted action instead.
+  const ink = (color === '#1a2230' || color === '#c0392b') ? '#f87171' : color
   return (
     <div key={`story-${sig}`} className="flex gap-3 items-end">
       {/* Coach avatar — the pro, mid-thought */}
@@ -571,9 +574,9 @@ function StoryHero({ action, color, hand, sizing, story, sig }: {
           {/* LEAD with the action, highlighted — dark neutral pill so the action colour pops */}
           <motion.div variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
             className="inline-flex items-baseline gap-2 px-3 py-1.5 rounded-lg"
-            style={{ background: 'rgba(0,0,0,0.34)', border: `1.5px solid ${color}`, boxShadow: `0 0 12px ${color}44` }}>
+            style={{ background: 'rgba(0,0,0,0.34)', border: `1.5px solid ${ink}`, boxShadow: `0 0 12px ${ink}44` }}>
             <span className="text-[11px] text-white/65">{t('story.hereI')}</span>
-            <span className="text-[16px] font-black tracking-wide" style={{ color, textShadow: `0 0 10px ${color}66` }}>{action} !</span>
+            <span className="text-[16px] font-black tracking-wide" style={{ color: ink, textShadow: `0 0 10px ${ink}66` }}>{action} !</span>
             {(hand || sizing) && <span className="text-[11px] text-white/65 font-mono">{[hand, sizing].filter(Boolean).join(' · ')}</span>}
           </motion.div>
           {/* …then the explanation */}
