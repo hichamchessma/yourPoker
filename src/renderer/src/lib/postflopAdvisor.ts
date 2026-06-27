@@ -271,8 +271,33 @@ function preflopWeight(a: Card, b: Card, tier: VillainTier): number {
 // would actually be betting/continuing it (see betFrequency), scaled by `aggression`
 // (0 = random range … ~0.85 = multi-barreled, very polarized to value), and by the
 // pre-flop pot type (`tier`: a 3-bet/4-bet pot is premium-heavy).
+// Seeded PRNG (mulberry32) + a string hash, so the Monte-Carlo equity is a DETERMINISTIC
+// function of the spot. Without this, re-opening the very same spot re-samples and the
+// equity wobbles (e.g. 30% vs 34%) — on a borderline hand that flips the verdict between
+// CALL and FOLD, which reads as the coach "changing its mind" for no reason.
+function mulberry32(seed: number): () => number {
+  let s = seed >>> 0
+  return () => {
+    s = (s + 0x6d2b79f5) | 0
+    let t = Math.imul(s ^ (s >>> 15), 1 | s)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+function seedFrom(parts: (string | number)[]): number {
+  let h = 2166136261
+  const str = parts.join('|')
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return h >>> 0
+}
+
 export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggression: number, iters = 1800, tier?: VillainTier, aggressors?: number, donkLead = false, facingRaise = false): number {
   if (opponents < 1) return 1
+  // Deterministic per spot → the same situation always returns the same equity.
+  const rnd = mulberry32(seedFrom([
+    hole.map(c => c.rank + c.suit).join(''), board.map(c => c.rank + c.suit).join(''),
+    opponents, Math.round(aggression * 100), tier ?? '', aggressors ?? -1, donkLead ? 1 : 0, facingRaise ? 1 : 0, iters,
+  ]))
   const known = new Set([...hole, ...board].map(c => c.rank + c.suit))
   const deck = fullDeck().filter(c => !known.has(c.rank + c.suit))
   const needBoard = 5 - board.length
@@ -304,7 +329,7 @@ export function rangeEquity(hole: Card[], board: Card[], opponents: number, aggr
     const need = needBoard + opponents * 2
     const pool = deck.slice()
     for (let i = 0; i < need; i++) {
-      const j = i + Math.floor(Math.random() * (pool.length - i))
+      const j = i + Math.floor(rnd() * (pool.length - i))
       ;[pool[i], pool[j]] = [pool[j], pool[i]]
     }
     const fullBoard = board.concat(pool.slice(0, needBoard))
