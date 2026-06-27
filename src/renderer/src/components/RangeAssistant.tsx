@@ -47,7 +47,7 @@ export default function RangeAssistant({
   board, pot, toCall, heroStack, effStack, inPosition, aggression, barrels, bb,
   raiseToBB, multiway, numCallers = 0, vsOpenerPos, reRaiseRatio, threeBettorIP, numAllIn = 0,
   raiserBehindJam = false, aggressors, cappedRange, callPressure, donkLead, facingRaise,
-  icmTighten = 1, icmPressure = 0, actionRecap, onClose, villainTier, villainLoose = false,
+  icmTighten = 1, icmPressure = 0, actionRecap, onClose, villainTier, villainLoose = false, heroOpened = false,
   embedded = false, representedView = null, representedMeta = null,
 }: {
   card1: Card | null
@@ -82,6 +82,7 @@ export default function RangeAssistant({
   icmPressure?: number
   villainTier?: VillainTier
   villainLoose?: boolean
+  heroOpened?: boolean
   actionRecap: string[]
   onClose: () => void
   embedded?: boolean
@@ -90,7 +91,6 @@ export default function RangeAssistant({
 }) {
   const { t, i18n } = useTranslation()
   const isPro = useIsPro()
-  const [storyTab, setStoryTab] = useState<'range' | 'story'>('range')
   const isPreflop = scenario !== 'postflop'
   const heroKey = card1 && card2 ? handKeyFromCards(card1, card2) : null
   const effBB = bb > 0 ? effStack / bb : 100
@@ -165,7 +165,7 @@ export default function RangeAssistant({
         reasons.push(t('padv.icm', { n: Math.round(icmPressure * 100) }))
       const story = heroKey ? buildPreflopStory({
         position, scenario: vsJam ? 'vsJam' : (scenario as string), heroKey, chart, eq: equity,
-        raiseToBB, vsJam, effBB, inPosition, reshove,
+        raiseToBB, vsJam, effBB, inPosition, reshove, heroRaised: heroOpened,
       }) : undefined
       return {
         actionText: reshove ? t('padv.reshoveAction') : ACTION_LABEL[chart], color: ACTION_COLOR[chart].bg, sizingText,
@@ -292,26 +292,9 @@ export default function RangeAssistant({
             </>
           )}
 
-          {/* Preflop grid / "in a pro's head" — tabbed */}
-          {isPreflop && rangeMap && (() => {
-            const hasStory = !!advice?.story?.length
-            const ptab = hasStory ? storyTab : 'range'
-            return (
+          {/* Preflop grid + "in a pro's head" story */}
+          {isPreflop && rangeMap && (
             <>
-              {hasStory && (
-                <div className="flex gap-1.5 mb-2">
-                  {(['range', 'story'] as const).map(k => (
-                    <button key={k} onClick={() => setStoryTab(k)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${ptab === k
-                        ? (k === 'story' ? 'bg-[#a78bfa]/20 border-[#a78bfa]/50 text-[#c4b5fd]' : 'bg-[#c9a227]/15 border-[#c9a227]/45 text-[#f0c060]')
-                        : 'bg-white/5 border-white/10 text-white/45 hover:bg-white/10'}`}>
-                      {t(k === 'story' ? 'story.tabStory' : 'story.tabRange')}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {ptab === 'story' ? <StoryPanel story={advice!.story!} sig={heroKey ?? 'pf'} /> : (
-              <>
               <div className="mx-auto" style={{ width: 'min(100%, 520px)' }}>
                 <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
                   {GRID_RANKS.map((_, i) =>
@@ -350,44 +333,23 @@ export default function RangeAssistant({
                   </div>
                 ))}
               </div>
-              </>
-              )}
+              {!!advice?.story?.length && <StoryPanel story={advice.story} sig={heroKey ?? 'pf'} />}
             </>
-            )
-          })()}
+          )}
 
           {advice && (
             <>
-              {/* Represented range / "In a pro's head" — tabbed (postflop) */}
-              {!isPreflop && representedView && (() => {
-                const hasStory = !!advice.story && advice.story.length > 0
-                const tab = hasStory ? storyTab : 'range'
-                return (
-                  <div className="mb-4">
-                    {hasStory && (
-                      <div className="flex gap-1.5 mb-2">
-                        {(['range', 'story'] as const).map(k => (
-                          <button key={k} onClick={() => setStoryTab(k)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${tab === k
-                              ? (k === 'story' ? 'bg-[#a78bfa]/20 border-[#a78bfa]/50 text-[#c4b5fd]' : 'bg-[#c9a227]/15 border-[#c9a227]/45 text-[#f0c060]')
-                              : 'bg-white/5 border-white/10 text-white/45 hover:bg-white/10'}`}>
-                            {t(k === 'story' ? 'story.tabStory' : 'story.tabRange')}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {tab === 'range' ? (
-                      <div className="flex flex-col items-center">
-                        {!hasStory && <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">{t('coach.representedRange')}</p>}
-                        <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
-                          name={t('coach.youRepresented')} heroKey={heroKey}/>
-                      </div>
-                    ) : (
-                      <StoryPanel story={advice.story!} sig={boardSig} />
-                    )}
+              {/* Represented range + "In a pro's head" story (postflop) */}
+              {!isPreflop && representedView && (
+                <div className="mb-4">
+                  <div className="flex flex-col items-center">
+                    <p className="text-[9px] text-white/35 uppercase tracking-widest mb-1.5 self-start">{t('coach.representedRange')}</p>
+                    <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
+                      name={t('coach.youRepresented')} heroKey={heroKey}/>
                   </div>
-                )
-              })()}
+                  {!!advice.story?.length && <div className="mt-3"><StoryPanel story={advice.story} sig={boardSig} /></div>}
+                </div>
+              )}
               {/* Equity / pot odds */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-[10px] mb-1">
@@ -507,24 +469,41 @@ export default function RangeAssistant({
 
 // Pro-tier "PLAN PRO" band: the announced multi-street line + a one-line glossary, a
 // condensed decision tree and the next-street intent. Free users see it blurred (upsell).
-// "In a pro's head" — the flowing narrative box, beats revealed with a stagger so the
-// story develops. Shared by the postflop and preflop tabs.
+// "In a pro's head" — a comic-style panel: the coach avatar reasoning out loud into a
+// thought bubble whose beats reveal with a stagger so the story develops. Shown right
+// next to / under the range table (no longer a tab).
 function StoryPanel({ story, sig }: { story: string[]; sig: string }) {
   const { t } = useTranslation()
   return (
-    <motion.div key={`story-${sig}`} initial="hidden" animate="show"
-      variants={{ show: { transition: { staggerChildren: 0.28 } } }}
-      className="rounded-xl border p-4 space-y-2.5"
-      style={{ borderColor: 'rgba(167,139,255,0.3)', background: 'linear-gradient(180deg, rgba(124,92,240,0.10), rgba(40,30,90,0.10))' }}>
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-1" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
-      {story.map((beat, i) => (
-        <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
-          className={i === story.length - 1 ? 'text-[13px] font-bold leading-relaxed pt-1.5 border-t border-white/10' : 'text-[12.5px] text-white/85 leading-relaxed'}
-          style={i === story.length - 1 ? { color: '#e9e2ff' } : undefined}>
-          {beat}
-        </motion.p>
-      ))}
-    </motion.div>
+    <div className="flex gap-2.5 items-start mt-1">
+      {/* Coach avatar — caught mid-thought */}
+      <motion.div className="shrink-0 flex flex-col items-center gap-1 pt-0.5"
+        initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
+        <div className="relative w-[52px] h-[52px] rounded-full overflow-hidden border-2"
+          style={{ borderColor: '#a78bfa', boxShadow: '0 0 14px rgba(167,139,255,0.55)' }}>
+          <img src="/assets/player-avatar.webp" alt="coach" draggable={false} className="w-full h-full object-cover" />
+        </div>
+        <motion.span className="text-[15px] leading-none"
+          animate={{ y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}>💭</motion.span>
+      </motion.div>
+      {/* Thought bubble */}
+      <motion.div key={`story-${sig}`} initial="hidden" animate="show"
+        variants={{ show: { transition: { staggerChildren: 0.28, delayChildren: 0.1 } } }}
+        className="relative flex-1 rounded-2xl border p-3.5 space-y-2"
+        style={{ borderColor: 'rgba(167,139,255,0.32)', background: 'linear-gradient(180deg, rgba(124,92,240,0.12), rgba(40,30,90,0.12))' }}>
+        {/* little tail pointing at the avatar */}
+        <span className="absolute -left-[7px] top-6 w-3 h-3 rotate-45 border-l border-b"
+          style={{ borderColor: 'rgba(167,139,255,0.32)', background: 'rgb(47,36,86)' }} />
+        <p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
+        {story.map((beat, i) => (
+          <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
+            className={i === story.length - 1 ? 'text-[12.5px] font-bold leading-relaxed pt-1.5 border-t border-white/10' : 'text-[12px] text-white/85 leading-relaxed'}
+            style={i === story.length - 1 ? { color: '#e9e2ff' } : undefined}>
+            {beat}
+          </motion.p>
+        ))}
+      </motion.div>
+    </div>
   )
 }
 

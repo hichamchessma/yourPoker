@@ -808,6 +808,7 @@ export function getPostflopAdvice(input: {
 export function buildPreflopStory(f: {
   position: string; scenario: string; heroKey: string; chart: string
   eq: number; raiseToBB: number; vsJam: boolean; effBB: number; inPosition: boolean; reshove: boolean
+  heroRaised?: boolean   // did the hero already open/raise this pre-flop? (else vs-3bet/4bet is a COLD spot)
 }): string[] {
   const pos = f.position, key = f.heroKey
   const short = f.effBB <= 15
@@ -818,8 +819,8 @@ export function buildPreflopStory(f: {
       : f.scenario === 'iso' ? tt('pstory.setIso', { pos })
       : f.scenario === 'vsopen' ? tt('pstory.setVsopen', { pos, size: f.raiseToBB ? f.raiseToBB.toFixed(1) : '?' })
       : f.scenario === 'squeeze' ? tt('pstory.setSqueeze', { pos })
-      : f.scenario === 'vs3bet' ? tt('pstory.setVs3bet', { pos })
-      : tt('pstory.setVs4bet', { pos }),
+      : f.scenario === 'vs3bet' ? tt(f.heroRaised ? 'pstory.setVs3bet' : 'pstory.setVs3betCold', { pos })
+      : tt(f.heroRaised ? 'pstory.setVs4bet' : 'pstory.setVs4betCold', { pos }),
   )
   beats.push(tt('pstory.hand', { key }))
   const aggr = f.chart === 'raise' || f.chart === '3bet' || f.chart === '4bet'

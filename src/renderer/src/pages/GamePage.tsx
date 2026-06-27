@@ -3537,6 +3537,11 @@ export default function GamePage(): JSX.Element {
     : preflopRaiseActions === 2 ? 'vs3bet'
     : preflopRaiseActions === 1 ? (preflopCallers > 0 ? 'squeeze' : 'vsopen')
     : preflopCallers > 0 ? 'iso' : 'rfi'
+  // Did the HERO themselves already put in a pre-flop raise? In a 2-raise (vs-3bet) or
+  // 3-raise (vs-4bet) pot this distinguishes "I opened and got 3-bet" from facing the
+  // raises COLD in the blinds (SB/BB never opened) — the story must not claim "I opened".
+  const heroRaisedPre = !!hero && handActions.some(a => a.seatIdx === hero.idx && a.phase === 'preflop'
+    && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN'))
   // The last GENUINE pre-flop raiser (opener for vs-open, 3-bettor for vs-3bet) —
   // a dead short jam is not the raiser we're facing.
   const lastPreRaiserSeat = pfLive.lastRaiserSeat
@@ -4936,6 +4941,7 @@ export default function GamePage(): JSX.Element {
                 barrels={heroBarrels}
                 villainTier={heroVillainTier}
                 villainLoose={heroVillainLoose}
+                heroOpened={heroRaisedPre}
                 aggressors={heroAggressors}
                 cappedRange={heroCappedRange}
                 donkLead={heroDonkLead}
