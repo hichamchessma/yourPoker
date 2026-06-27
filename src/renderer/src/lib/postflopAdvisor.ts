@@ -858,13 +858,20 @@ export function buildPreflopStory(f: {
   const aggr = f.chart === 'raise' || f.chart === '3bet' || f.chart === '4bet'
   // The recommended ACTION is shown highlighted at the top of the bubble by the UI, so the
   // story only carries the EXPLANATION (and the anticipation) — no decision/conclusion line.
+  // A pocket pair facing a 3-bet (or in a vs-open / squeeze pot) is a SET-MINE question —
+  // its value is implied odds (flop a set), not "am I ahead". Frame it that way instead of
+  // the generic "too dominated".
+  const isPair = key.length === 2 && key[0] === key[1]
+  const setMineSpot = isPair && (f.scenario === 'vs3bet' || f.scenario === 'squeeze' || f.scenario === 'vsopen')
   let dec: string
   if (f.vsJam && f.chart === 'call') dec = tt('pstory.decCallJam', { key, eq: Math.round(f.eq * 100) })
   else if (f.reshove || (short && aggr && f.scenario !== 'rfi' && f.scenario !== 'iso')) dec = tt('pstory.decJam', { key })
   else if (f.chart === '4bet') dec = tt('pstory.dec4bet', { key })
   else if (f.chart === '3bet') dec = f.eq < 0.5 ? tt('pstory.dec3betBluff', { key }) : tt('pstory.dec3betValue', { key })
   else if (f.chart === 'raise') dec = f.scenario === 'iso' ? tt('pstory.decIso', { key }) : tt('pstory.decOpen', { key })
+  else if (f.chart === 'call' && setMineSpot) dec = tt('pstory.decSetMine', { key })
   else if (f.chart === 'call') dec = tt('pstory.decCall', { key, ip: f.inPosition ? tt('pstory.ipNote') : '' })
+  else if (setMineSpot) dec = tt('pstory.decFoldPair', { key })
   else dec = tt('pstory.decFold', { key })
   beats.push(dec)
   if (f.chart === '3bet' && !short) beats.push(tt('pstory.antiVs4bet', { cont: f.eq >= 0.6 ? tt('pstory.contJam') : tt('pstory.contFold') }))

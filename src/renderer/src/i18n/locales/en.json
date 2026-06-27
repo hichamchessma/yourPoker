@@ -1022,6 +1022,8 @@
     "decJam": "{{key}}: at this depth it's jam-or-fold — I shove, fold equity + my equity do the rest.",
     "decCallJam": "{{key}}: I call the jam — my equity ({{eq}}%) beats the price.",
     "decFold": "{{key}} is out of my range here → too dominated to enter.",
+    "decSetMine": "{{key}} calls to set-mine: the dead money and the multiway pot give the implied odds — I flop a set ~1 in 8 and get paid by the bloated pot.",
+    "decFoldPair": "{{key}} would love to set-mine, but the implied odds are too thin here (heads-up, a short 3-bettor, or ICM pressure) → I pass rather than call blind.",
     "ipNote": " and I realize well in position",
     "antiVs4bet": "And if he 4-bets me? I already know: {{cont}}.",
     "contJam": "I jam (strong enough to stack off)",

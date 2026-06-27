@@ -230,6 +230,14 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
         : call.has(h.key) ? 'call' : 'fold'
       map.set(h.key, a)
     }
+    // MULTIWAY 3-bet pot: a cold-caller put DEAD MONEY in and the pot is now 3-way, so
+    // set-mining medium pairs is +EV AT DEPTH (you flop a set ~1/8 and the bloated pot pays
+    // you off). The blanket multiway trim above wrongly drops exactly those pairs — add them
+    // back as CALLS when deep AND there's no ICM pressure (near the bubble we keep folding,
+    // and short stacks lack the implied odds to set-mine).
+    if (opts.multiway && (opts.effBB ?? 100) >= 40 && icm >= 0.98) {
+      for (const pk of ['99', '88', '77', '66']) if (map.get(pk) === 'fold') map.set(pk, 'call')
+    }
   }
   return map
 }

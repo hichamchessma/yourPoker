@@ -1022,6 +1022,8 @@
     "decJam": "{{key}} : à cette profondeur c'est jam-or-fold — je shove, la fold equity + mon équité font le reste.",
     "decCallJam": "{{key}} : je paie le tapis — mon équité ({{eq}}%) bat la cote.",
     "decFold": "{{key}} est hors de ma range ici → trop dominé pour entrer.",
+    "decSetMine": "{{key}} paie pour set-miner : l'argent mort et le pot multiway donnent les implied odds — je touche un brelan ~1 fois sur 8 et je fais payer la grosse cagnotte.",
+    "decFoldPair": "{{key}} voudrait set-miner, mais les implied odds sont trop minces ici (heads-up, 3-betteur court, ou pression ICM) → je passe plutôt que de payer à l'aveugle.",
     "ipNote": " et je réalise bien en position",
     "antiVs4bet": "Et s'il me 4-bet ? Je sais déjà : {{cont}}.",
     "contJam": "je jam (assez fort pour stacker)",

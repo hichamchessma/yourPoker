@@ -1022,6 +1022,8 @@
     "decJam": "{{key}}: a esta profundidad es jam-or-fold — shoveo, la fold equity + mi equity hacen el resto.",
     "decCallJam": "{{key}}: pago el all-in — mi equity ({{eq}}%) supera el precio.",
     "decFold": "{{key}} está fuera de mi rango aquí → demasiado dominado para entrar.",
+    "decSetMine": "{{key}} paga para set-minear: el dinero muerto y el bote multiway dan las implied odds — ligo trío ~1 de cada 8 y cobro el bote inflado.",
+    "decFoldPair": "{{key}} querría set-minear, pero las implied odds son demasiado finas aquí (heads-up, un 3-betteur corto, o presión ICM) → paso en vez de pagar a ciegas.",
     "ipNote": " y realizo bien en posición",
     "antiVs4bet": "¿Y si me 4-betea? Ya lo sé: {{cont}}.",
     "contJam": "hago jam (suficiente para ir al all-in)",

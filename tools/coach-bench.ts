@@ -81,6 +81,16 @@ const sq1 = buildRangeMap('squeeze', 'BTN', 2, { effBB: 10, multiway: true, numC
 t(sq2.get('A9s') === 'fold', 'A9s fold le squeeze vs open+2 callers (10bb)')
 t(sq1.get('A9s') === 'raise', 'A9s jam le squeeze vs open+1 caller (10bb)')
 
+// vs-3bet MULTIWAY set-mine: a medium pair (99) folds heads-up but CALLS to set-mine when
+// a cold-caller adds dead money AND it's deep AND no ICM pressure. Near the bubble or short,
+// it folds again (no implied odds). Premiums/JJ-TT are untouched.
+const v3 = (o: any) => buildRangeMap('vs3bet', 'UTG+1', undefined, { raiseToBB: 6, reRaiseRatio: 3, ...o })
+t(v3({ effBB: 100 }).get('99') === 'fold', '99 fold vs 3-bet HEADS-UP (inchangé)')
+t(v3({ effBB: 100, multiway: true, numCallers: 1 }).get('99') === 'call', '99 CALL set-mine en pot 3-bet multiway deep (dead money)')
+t(v3({ effBB: 100, multiway: true, numCallers: 1, icmTighten: 0.7 }).get('99') === 'fold', '99 refold le multiway sous pression ICM (bulle)')
+t(v3({ effBB: 30, multiway: true, numCallers: 1 }).get('99') === 'fold', '99 refold le multiway en court (pas d’implied odds)')
+{ const m = v3({ effBB: 100, multiway: true, numCallers: 1 }); t(m.get('AA') === '4bet' && m.get('JJ') === 'call' && m.get('TT') === 'call', 'premiums/JJ-TT intacts en multiway') }
+
 // ════ F. JAMS short-stack ════
 console.log('F. Jams short-stack RFI UTG+1:')
 t(buildRangeMap('rfi', 'UTG+1', 6, { effBB: 10 }).get('72s') === 'fold', '72s fold à 10bb')
