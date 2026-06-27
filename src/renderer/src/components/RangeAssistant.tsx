@@ -567,12 +567,13 @@ function StoryHero({ action, color, hand, sizing, story, sig }: {
           style={{ borderColor: 'rgba(167,139,255,0.55)', background: 'linear-gradient(180deg, #241a52, #181232)',
             boxShadow: '0 14px 44px rgba(0,0,0,0.6), 0 0 0 1px rgba(167,139,255,0.12)' }}>
           <p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
-          {/* LEAD with the action, highlighted */}
+          {/* LEAD with the action, highlighted — dark neutral pill so the action colour pops */}
           <motion.div variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
             className="inline-flex items-baseline gap-2 px-3 py-1.5 rounded-lg"
-            style={{ background: color + '26', border: `1px solid ${color}77` }}>
-            <span className="text-[15px] font-black tracking-wide" style={{ color }}>{action}</span>
-            {(hand || sizing) && <span className="text-[11px] text-white/70 font-mono">{[hand, sizing].filter(Boolean).join(' · ')}</span>}
+            style={{ background: 'rgba(0,0,0,0.34)', border: `1.5px solid ${color}`, boxShadow: `0 0 12px ${color}44` }}>
+            <span className="text-[11px] text-white/65">{t('story.hereI')}</span>
+            <span className="text-[16px] font-black tracking-wide" style={{ color, textShadow: `0 0 10px ${color}66` }}>{action} !</span>
+            {(hand || sizing) && <span className="text-[11px] text-white/65 font-mono">{[hand, sizing].filter(Boolean).join(' · ')}</span>}
           </motion.div>
           {/* …then the explanation */}
           {story.map((beat, i) => (
