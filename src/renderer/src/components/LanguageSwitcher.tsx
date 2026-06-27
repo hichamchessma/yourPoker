@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Globe, Check } from 'lucide-react'
 import { LANGS } from '../i18n'
@@ -25,33 +26,50 @@ export function Flag({ code, size = 18 }: { code: string; size?: number }) {
   )
 }
 
-// Compact language picker. Drop it in any header.
+// Compact language picker. Drop it in any header. The menu is portalled to <body> with a
+// click-outside backdrop, so it (1) stays open until you pick (no hover-gap auto-close) and
+// (2) floats ABOVE everything — it can never be trapped behind a HUD's stacking context.
 export default function LanguageSwitcher({ className = '', up = false }: { className?: string; up?: boolean }) {
   const { i18n } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
   const cur = (i18n.resolvedLanguage || i18n.language || 'en').slice(0, 2)
   const active = LANGS.find(l => l.code === cur) ?? LANGS[1]
 
+  const toggle = () => {
+    if (open) { setOpen(false); return }
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: up ? r.top - 4 : r.bottom + 4, right: window.innerWidth - r.right })
+    setOpen(true)
+  }
+
   return (
-    <div className={`relative ${className}`} onMouseLeave={() => setOpen(false)}>
-      <button onClick={() => setOpen(o => !o)}
+    <div className={`relative ${className}`}>
+      <button ref={btnRef} onClick={toggle}
         className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/70"
         title="Language">
         <Globe size={14} className="opacity-60" />
         <Flag code={active.code} size={18} />
       </button>
-      {open && (
-        <div className={`absolute right-0 py-1 rounded-lg bg-[#0c1424] border border-white/10 shadow-xl z-[100] min-w-[150px] ${up ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-          {LANGS.map(l => (
-            <button key={l.code}
-              onClick={() => { i18n.changeLanguage(l.code); setOpen(false) }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-white/5 transition-colors">
-              <Flag code={l.code} size={20} />
-              <span className="text-[12px] text-white/75 flex-1">{l.label}</span>
-              {l.code === cur && <Check size={13} className="text-[#c9a227]" />}
-            </button>
-          ))}
-        </div>
+      {open && pos && createPortal(
+        <>
+          {/* click-anywhere-else to close */}
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+          <div className="fixed z-[9999] py-1 rounded-lg bg-[#0c1424] border border-white/10 shadow-2xl min-w-[150px]"
+            style={{ top: pos.top, right: pos.right, transform: up ? 'translateY(-100%)' : undefined }}>
+            {LANGS.map(l => (
+              <button key={l.code}
+                onClick={() => { i18n.changeLanguage(l.code); setOpen(false) }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-white/5 transition-colors">
+                <Flag code={l.code} size={20} />
+                <span className="text-[12px] text-white/75 flex-1">{l.label}</span>
+                {l.code === cur && <Check size={13} className="text-[#c9a227]" />}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body,
       )}
     </div>
   )
