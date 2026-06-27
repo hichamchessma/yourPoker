@@ -831,17 +831,18 @@ export function buildPreflopStory(f: {
   )
   beats.push(tt('pstory.hand', { key }))
   const aggr = f.chart === 'raise' || f.chart === '3bet' || f.chart === '4bet'
-  let dec: string, goal: string, action: string
-  if (f.vsJam && f.chart === 'call') { dec = tt('pstory.decCallJam', { key, eq: Math.round(f.eq * 100) }); goal = tt('pstory.goalCallJam'); action = tt('crit.recCallJam') }
-  else if (f.reshove || (short && aggr && f.scenario !== 'rfi' && f.scenario !== 'iso')) { dec = tt('pstory.decJam', { key }); goal = tt('pstory.goalJam'); action = tt('crit.recReshove') }
-  else if (f.chart === '4bet') { dec = tt('pstory.dec4bet', { key }); goal = tt('pstory.goal3bet'); action = '4-BET' }
-  else if (f.chart === '3bet') { dec = f.eq < 0.5 ? tt('pstory.dec3betBluff', { key }) : tt('pstory.dec3betValue', { key }); goal = tt('pstory.goal3bet'); action = '3-BET' }
-  else if (f.chart === 'raise') { dec = f.scenario === 'iso' ? tt('pstory.decIso', { key }) : tt('pstory.decOpen', { key }); goal = tt('pstory.goalOpen'); action = tt('crit.recOpen') }
-  else if (f.chart === 'call') { dec = tt('pstory.decCall', { key, ip: f.inPosition ? tt('pstory.ipNote') : '' }); goal = tt('pstory.goalCall'); action = tt('crit.recCall') }
-  else { dec = tt('pstory.decFold', { key }); goal = tt('pstory.goalFold'); action = tt('crit.foldWord') }
+  // The recommended ACTION is shown highlighted at the top of the bubble by the UI, so the
+  // story only carries the EXPLANATION (and the anticipation) — no decision/conclusion line.
+  let dec: string
+  if (f.vsJam && f.chart === 'call') dec = tt('pstory.decCallJam', { key, eq: Math.round(f.eq * 100) })
+  else if (f.reshove || (short && aggr && f.scenario !== 'rfi' && f.scenario !== 'iso')) dec = tt('pstory.decJam', { key })
+  else if (f.chart === '4bet') dec = tt('pstory.dec4bet', { key })
+  else if (f.chart === '3bet') dec = f.eq < 0.5 ? tt('pstory.dec3betBluff', { key }) : tt('pstory.dec3betValue', { key })
+  else if (f.chart === 'raise') dec = f.scenario === 'iso' ? tt('pstory.decIso', { key }) : tt('pstory.decOpen', { key })
+  else if (f.chart === 'call') dec = tt('pstory.decCall', { key, ip: f.inPosition ? tt('pstory.ipNote') : '' })
+  else dec = tt('pstory.decFold', { key })
   beats.push(dec)
   if (f.chart === '3bet' && !short) beats.push(tt('pstory.antiVs4bet', { cont: f.eq >= 0.6 ? tt('pstory.contJam') : tt('pstory.contFold') }))
-  beats.push(tt('pstory.concl', { action, key, goal }))
   return beats
 }
 
@@ -879,17 +880,12 @@ function buildPostflopStory(f: {
   )
   if (f.villainLoose && f.isStrongValue && (f.action === 'BET' || f.action === 'RAISE')) beats.push(tt('story.exploitStation'))
   if (f.spr < 3.5 && (f.action === 'BET' || f.action === 'RAISE' || f.action === 'CALL')) beats.push(tt('story.pSpr', { spr: f.spr.toFixed(1) }))
-  beats.push(tt('story.pDecision', { action: f.action, sizing: f.sizingText }))
+  // The action is shown highlighted at the top of the bubble → the story keeps only the
+  // anticipation (the plan), no "so I play X" decision line and no conclusion.
   if (f.proPlan && (f.proPlan.branches.length || f.proPlan.turn)) {
     const br = f.proPlan.branches[0]
     beats.push(tt('story.pPlan', { cond: br ? `${br.cond} → ${br.act}` : f.proPlan.line, turn: f.proPlan.turn }))
   }
-  const goal = f.action === 'FOLD' ? tt('story.goalFold')
-    : f.action === 'CHECK' ? tt('story.goalCheck')
-    : f.action === 'CALL' ? tt('story.goalCall')
-    : semiBluff ? tt('story.goalSemiBluff')
-    : tt('story.goalValue')
-  beats.push(tt('story.pConclusion', { action: f.action, goal }))
   return beats
 }
 

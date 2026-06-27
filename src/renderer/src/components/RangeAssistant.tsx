@@ -243,6 +243,12 @@ export default function RangeAssistant({
     ['equity_calc', t('coach.qEquityCalc')], ['potodds_calc', t('coach.qPotoddsCalc')], ['bluff', t('coach.qBluff')],
   ]
 
+  const preLegend: RangeAction[] = vsJam ? ['call', 'fold']
+    : isReshove ? ['raise', 'fold']
+    : (scenario === 'rfi' || scenario === 'iso') ? ['raise', 'fold']
+    : (scenario === 'vsopen' || scenario === 'squeeze') ? ['3bet', 'call', 'fold']
+    : ['4bet', 'call', 'fold']
+
   const panel = (
       <motion.div initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         className={embedded
@@ -258,7 +264,12 @@ export default function RangeAssistant({
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/8 border border-white/10 text-white/50 font-bold uppercase tracking-wide">{formatLabel}</span>
           </div>
           {embedded
-            ? <span className="text-[9px] text-white/30 italic">{t('coach.hoverHint')}</span>
+            ? (detailsOpen
+                ? <button onClick={() => setDetailsOpen(false)} title={t('coach.backToCoach')}
+                    className="flex items-center gap-1.5 px-3 h-8 rounded-full bg-white/5 border border-white/10 text-white/60 hover:text-[#c9a227] hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest">
+                    <ChevronUp size={13} /> {t('coach.backToCoach')}
+                  </button>
+                : <span className="text-[9px] text-white/30 italic">{t('coach.hoverHint')}</span>)
             : <button onClick={onClose}
                 className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10">✕</button>}
         </div>
@@ -292,57 +303,20 @@ export default function RangeAssistant({
                   <p className="text-[10px] text-white/45 mt-0.5">{t('coach.confidence')} <span className="font-bold" style={{ color: advice.color }}>{t(`coach.conf${advice.confidence.charAt(0).toUpperCase() + advice.confidence.slice(1)}`)}</span></p>
                 </div>
               </div>
-              {/* ── PRO PLAN — the announced multi-street line (Pro tier) ── details only */}
-              {detailsOpen && !isPreflop && advice.proPlan && <ProPlanBand plan={advice.proPlan} isPro={isPro} />}
-              {/* Stage 1 — the coach "steps out" FIRST, above the range (story hidden in details) */}
-              {!detailsOpen && !!advice.story?.length && (
-                <div className="mb-4"><StoryPanel story={advice.story} sig={isPreflop ? (heroKey ?? 'pf') : boardSig} /></div>
+              {/* ── PRO PLAN — the announced multi-street line (Pro tier) ── */}
+              {!isPreflop && advice.proPlan && <ProPlanBand plan={advice.proPlan} isPro={isPro} />}
+              {/* Non-embedded (trainer) shows the story inline; in-game it lives in the intro view */}
+              {!embedded && !!advice.story?.length && (
+                <div className="mb-4"><StoryHero action={advice.actionText} color={advice.color} hand={heroKey} sizing={advice.sizingText} story={advice.story} sig={isPreflop ? (heroKey ?? 'pf') : boardSig} /></div>
               )}
             </>
           )}
 
-          {/* Preflop grid + "in a pro's head" story */}
+          {/* Preflop range grid */}
           {isPreflop && rangeMap && (
-            <>
-              <div className="mx-auto" style={{ width: 'min(100%, 520px)' }}>
-                <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: 2 }}>
-                  {GRID_RANKS.map((_, i) =>
-                    GRID_RANKS.map((__, j) => {
-                      const key = cellKey(i, j)
-                      const action = rangeMap.get(key) ?? 'fold'
-                      const c = ACTION_COLOR[action]
-                      const isHero = key === heroKey
-                      return (
-                        <div key={`${i}-${j}`} title={`${key} — ${ACTION_LABEL[action]}`}
-                          className="relative flex items-center justify-center rounded-[3px] select-none"
-                          style={{
-                            aspectRatio: '1', fontSize: 9, fontWeight: 700, background: c.bg, color: c.fg,
-                            outline: isHero ? '2px solid #00e5ff' : 'none', outlineOffset: isHero ? '-1px' : 0,
-                            boxShadow: isHero ? '0 0 10px rgba(0,229,255,0.8)' : 'none', zIndex: isHero ? 2 : 1,
-                          }}>
-                          {key.replace('s', '').replace('o', '')}
-                          {key.endsWith('s') && <span style={{ fontSize: 6, opacity: 0.7, marginLeft: 1 }}>s</span>}
-                          {key.endsWith('o') && <span style={{ fontSize: 6, opacity: 0.55, marginLeft: 1 }}>o</span>}
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center justify-center gap-4 my-3 flex-wrap">
-                {(vsJam ? (['call', 'fold'] as RangeAction[])
-                  : isReshove ? (['raise', 'fold'] as RangeAction[])
-                  : scenario === 'rfi' || scenario === 'iso' ? (['raise', 'fold'] as RangeAction[])
-                  : scenario === 'vsopen' || scenario === 'squeeze' ? (['3bet', 'call', 'fold'] as RangeAction[])
-                  : (['4bet', 'call', 'fold'] as RangeAction[])
-                ).map(a => (
-                  <div key={a} className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm" style={{ background: ACTION_COLOR[a].bg }} />
-                    <span className="text-[10px] text-white/55 font-bold uppercase tracking-wide">{isReshove && a === 'raise' ? t('coach.reshoveLabel') : ACTION_LABEL[a]}</span>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="mx-auto mb-2" style={{ width: 'min(100%, 520px)' }}>
+              <RangeGrid rangeMap={rangeMap} heroKey={heroKey} legend={preLegend} isReshove={isReshove} />
+            </div>
           )}
 
           {advice && (
@@ -358,21 +332,6 @@ export default function RangeAssistant({
                 </div>
               )}
 
-              {/* Stage 1 → the coach + range came first; DETAILS expands the full analysis */}
-              {!detailsOpen && (
-                <button onClick={() => setDetailsOpen(true)}
-                  className="w-full mt-1 py-2.5 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#f0c060] text-[11px] font-black uppercase tracking-[0.18em] hover:bg-[#c9a227]/20 transition-all flex items-center justify-center gap-2">
-                  {t('coach.detailsBtn')} <ChevronDown size={14} />
-                </button>
-              )}
-
-              {/* Stage 2 — the full analysis (story already shown up front, so omitted here) */}
-              {detailsOpen && (
-                <>
-                <button onClick={() => setDetailsOpen(false)}
-                  className="mb-3 text-[10px] text-white/45 hover:text-[#c9a227] uppercase tracking-widest flex items-center gap-1">
-                  <ChevronUp size={12} /> {t('coach.backToCoach')}
-                </button>
               {/* Equity / pot odds */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-[10px] mb-1">
@@ -477,14 +436,61 @@ export default function RangeAssistant({
               <p className="text-[9px] text-white/25 text-center mt-4 leading-relaxed">
                 {isPreflop ? t('coach.footerPreflop') : t('coach.footerPostflop')}
               </p>
-                </>
-              )}
             </>
           )}
         </div>
       </motion.div>
   )
-  if (embedded) return panel
+
+  // ── INTRO (in-game): the coach "steps out" on the left, the range card on the right ──
+  const introView = (
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+      className="flex gap-3 items-start w-[720px] max-w-[96vw]">
+      {/* LEFT — the coach, floating outside any panel */}
+      <motion.div className="flex-1 min-w-0"
+        initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.35 }}>
+        {advice?.story?.length
+          ? <StoryHero action={advice.actionText} color={advice.color} hand={heroKey} sizing={advice.sizingText}
+              story={advice.story} sig={isPreflop ? (heroKey ?? 'pf') : boardSig} />
+          : <p className="text-white/50 text-sm py-10 text-center rounded-2xl border border-white/10" style={{ background: '#070d1a' }}>{t('coach.waitFlop')}</p>}
+      </motion.div>
+      {/* RIGHT — the range card, smaller, appears just after */}
+      {advice && (isPreflop ? !!rangeMap : !!representedView) && (
+        <motion.div className="w-[270px] shrink-0 rounded-2xl border border-[#c9a227]/30 p-3 shadow-2xl"
+          style={{ background: '#070d1a' }}
+          initial={{ opacity: 0, x: 14, scale: 0.96 }} animate={{ opacity: 1, x: 0, scale: 1 }} transition={{ duration: 0.35, delay: 0.3 }}>
+          <p className="text-[9px] text-white/40 uppercase tracking-widest mb-2 text-center">
+            {isPreflop
+              ? <>{position} — {vsJam ? t('coach.vsJam', { n: numAllIn }) : t(SCENARIO_LABEL[scenario as Scenario])}</>
+              : t('coach.representedRange')}
+          </p>
+          {isPreflop && rangeMap
+            ? <RangeGrid rangeMap={rangeMap} heroKey={heroKey} legend={preLegend} isReshove={isReshove} compact />
+            : representedView && (
+              <div className="origin-top scale-[0.82] -mb-6">
+                <RangeHeatmap view={representedView} move={representedMeta?.move ?? '—'} effect={representedMeta?.effect ?? ''}
+                  name={t('coach.youRepresented')} heroKey={heroKey} />
+              </div>
+            )}
+          <button onClick={() => setDetailsOpen(true)}
+            className="w-full mt-3 py-2 rounded-xl border border-[#c9a227]/40 bg-[#c9a227]/10 text-[#f0c060] text-[10px] font-black uppercase tracking-[0.18em] hover:bg-[#c9a227]/20 transition-all flex items-center justify-center gap-1.5">
+            {t('coach.detailsBtn')} <ChevronDown size={13} />
+          </button>
+        </motion.div>
+      )}
+    </motion.div>
+  )
+
+  if (embedded) {
+    return detailsOpen ? (
+      <>
+        {/* dim the whole table so the focus is the analysis */}
+        <motion.div className="fixed inset-0 z-0 bg-black/80 backdrop-blur-sm" onClick={() => setDetailsOpen(false)}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
+        <div className="relative z-10">{panel}</div>
+      </>
+    ) : introView
+  }
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }}>
       {panel}
@@ -492,42 +498,90 @@ export default function RangeAssistant({
   )
 }
 
+// The 13×13 pre-flop range grid + its legend. Reused by the full panel and the compact
+// intro card (smaller cells when `compact`).
+function RangeGrid({ rangeMap, heroKey, legend, isReshove, compact }: {
+  rangeMap: Map<string, RangeAction>; heroKey?: string | null; legend: RangeAction[]; isReshove?: boolean; compact?: boolean
+}) {
+  const { t } = useTranslation()
+  const fs = compact ? 7 : 9
+  return (
+    <>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(13, 1fr)', gap: compact ? 1.5 : 2 }}>
+        {GRID_RANKS.map((_, i) => GRID_RANKS.map((__, j) => {
+          const key = cellKey(i, j)
+          const action = rangeMap.get(key) ?? 'fold'
+          const c = ACTION_COLOR[action]
+          const isHero = key === heroKey
+          return (
+            <div key={`${i}-${j}`} title={`${key} — ${ACTION_LABEL[action]}`}
+              className="relative flex items-center justify-center rounded-[3px] select-none"
+              style={{
+                aspectRatio: '1', fontSize: fs, fontWeight: 700, background: c.bg, color: c.fg,
+                outline: isHero ? '2px solid #00e5ff' : 'none', outlineOffset: isHero ? '-1px' : 0,
+                boxShadow: isHero ? '0 0 8px rgba(0,229,255,0.8)' : 'none', zIndex: isHero ? 2 : 1,
+              }}>
+              {key.replace('s', '').replace('o', '')}
+              {key.endsWith('s') && <span style={{ fontSize: fs - 3, opacity: 0.7, marginLeft: 1 }}>s</span>}
+              {key.endsWith('o') && <span style={{ fontSize: fs - 3, opacity: 0.55, marginLeft: 1 }}>o</span>}
+            </div>
+          )
+        }))}
+      </div>
+      <div className="flex items-center justify-center gap-3 mt-2 flex-wrap">
+        {legend.map(a => (
+          <div key={a} className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: ACTION_COLOR[a].bg }} />
+            <span className="text-[9px] text-white/55 font-bold uppercase tracking-wide">{isReshove && a === 'raise' ? t('coach.reshoveLabel') : ACTION_LABEL[a]}</span>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 // Pro-tier "PLAN PRO" band: the announced multi-street line + a one-line glossary, a
 // condensed decision tree and the next-street intent. Free users see it blurred (upsell).
-// "In a pro's head" — a comic-style panel: the coach avatar reasoning out loud into a
-// thought bubble whose beats reveal with a stagger so the story develops. Shown right
-// next to / under the range table (no longer a tab).
-function StoryPanel({ story, sig }: { story: string[]; sig: string }) {
+// "In a pro's head" — a comic-style bubble: the coach avatar reasoning out loud into a
+// thought cloud that LEADS with the recommended action (highlighted) and then explains it,
+// beats revealing with a stagger. This floats on its own, outside the analysis panel.
+function StoryHero({ action, color, hand, sizing, story, sig }: {
+  action: string; color: string; hand?: string | null; sizing?: string; story: string[]; sig: string
+}) {
   const { t } = useTranslation()
   const cloud = { borderColor: 'rgba(167,139,255,0.45)', background: 'rgb(49,38,90)' }
-  // small → big puffs climbing from beside the avatar up to the big thought cloud
   const puffs = [{ s: 6, l: -20, b: -2, d: 0.18 }, { s: 9, l: -13, b: 7, d: 0.30 }, { s: 13, l: -6, b: 18, d: 0.42 }]
   return (
-    <div key={`story-${sig}`} className="flex gap-3 items-end mt-1">
+    <div key={`story-${sig}`} className="flex gap-3 items-end">
       {/* Coach avatar — the pro, mid-thought */}
       <motion.div className="relative shrink-0 w-[56px] h-[56px] rounded-full overflow-hidden border-2"
         style={{ borderColor: '#a78bfa', boxShadow: '0 0 16px rgba(167,139,255,0.55)' }}
         initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
         <img src="/assets/player-avatar.webp" alt="coach" draggable={false} className="w-full h-full object-cover" />
       </motion.div>
-      <div className="relative flex-1">
-        {/* comic thought-trail: the little bubbles pop in, growing toward the cloud */}
+      <div className="relative flex-1 min-w-0">
         {puffs.map((p, i) => (
           <motion.span key={i} className="absolute rounded-full border"
             style={{ ...cloud, width: p.s, height: p.s, left: p.l, bottom: p.b }}
             initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: p.d, type: 'spring', stiffness: 520, damping: 16 }} />
         ))}
-        {/* the big thought cloud — beats reveal one by one, after the trail */}
         <motion.div initial="hidden" animate="show"
-          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.26, delayChildren: 0.55 } } }}
+          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.22, delayChildren: 0.5 } } }}
           className="relative rounded-[22px] border p-3.5 space-y-2"
-          style={{ borderColor: 'rgba(167,139,255,0.4)', background: 'linear-gradient(180deg, rgba(124,92,240,0.14), rgba(40,30,90,0.16))' }}>
+          style={{ borderColor: 'rgba(167,139,255,0.4)', background: 'linear-gradient(180deg, rgba(124,92,240,0.16), rgba(40,30,90,0.2))' }}>
           <p className="text-[9px] font-black uppercase tracking-[0.18em]" style={{ color: '#c4b5fd' }}>{t('story.title')}</p>
+          {/* LEAD with the action, highlighted */}
+          <motion.div variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
+            className="inline-flex items-baseline gap-2 px-3 py-1.5 rounded-lg"
+            style={{ background: color + '26', border: `1px solid ${color}77` }}>
+            <span className="text-[15px] font-black tracking-wide" style={{ color }}>{action}</span>
+            {(hand || sizing) && <span className="text-[11px] text-white/70 font-mono">{[hand, sizing].filter(Boolean).join(' · ')}</span>}
+          </motion.div>
+          {/* …then the explanation */}
           {story.map((beat, i) => (
             <motion.p key={i} variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
-              className={i === story.length - 1 ? 'text-[12.5px] font-bold leading-relaxed pt-1.5 border-t border-white/10' : 'text-[12px] text-white/85 leading-relaxed'}
-              style={i === story.length - 1 ? { color: '#e9e2ff' } : undefined}>
+              className="text-[12px] text-white/85 leading-relaxed">
               {beat}
             </motion.p>
           ))}
