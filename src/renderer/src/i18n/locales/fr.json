@@ -1358,7 +1358,7 @@
     "sitInTip": "Revenir à la prochaine main",
     "sitOutMsg": "Vous êtes absent — cliquez sur Sit In pour revenir",
     "sitInMsg": "Vous reviendrez à la prochaine main",
-    "toPay": "à payer ${{n}}",
+    "toPay": "à payer {{n}}",
     "noBet": "aucune mise à payer",
     "scenarioLog": "=== Scénario ({{street}}) ===",
     "simLog": "=== Simulation ({{phase}}) ===",

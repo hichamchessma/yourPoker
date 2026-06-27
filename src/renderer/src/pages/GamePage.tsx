@@ -16,7 +16,7 @@ import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
 import { bestHandScore, computeSidePots, resolveAction } from '../lib/pokerEngine'
-import { setCurrency, money, curSymbol } from '../lib/money'
+import { setCurrency, money, curSymbol, curIsSuffix } from '../lib/money'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal, playSiren } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
@@ -1164,9 +1164,9 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, initia
                         {pl.position && <span className="text-[8px] font-black px-1 rounded bg-[#c9a227]/15 text-[#c9a227]/90 border border-[#c9a227]/25 uppercase tracking-wider">{pl.position}</span>}
                       </div>
                       <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">
-                        {curSymbol()}{isEnd && isWinner
-                          ? <CountUp from={stepPl?.stack ?? pl.startStack} to={pl.endStack} />
-                          : stack.toLocaleString()}
+                        {isEnd && isWinner
+                          ? <>{!curIsSuffix() && curSymbol()}<CountUp from={stepPl?.stack ?? pl.startStack} to={pl.endStack} />{curIsSuffix() && ` ${curSymbol()}`}</>
+                          : money(stack)}
                       </div>
                       {isWinner && <motion.div initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: 0.5, type: 'spring', stiffness: 300, damping: 14 }} className="text-lg">🏆</motion.div>}
                     </div>
@@ -1221,7 +1221,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, initia
                   <div className="absolute left-1/2 top-[59%] -translate-x-1/2 -translate-y-1/2">
                     <div className="flex items-center gap-2 bg-black/65 border border-[#c9a227]/30 rounded-lg px-4 py-1.5">
                       <span className="text-[11px] text-white/45 uppercase tracking-wide">Pot</span>
-                      <span className="text-base font-bold text-[#c9a227] font-mono">${stepState.pot}</span>
+                      <span className="text-base font-bold text-[#c9a227] font-mono">{money(stepState.pot)}</span>
                     </div>
                   </div>
                 )}
@@ -1255,7 +1255,7 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, initia
                     </div>
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="text-[8px] text-white/40 uppercase tracking-wide">Pot</span>
-                      <span className="text-[11.5px] font-bold text-white/70">${record.finalPot}</span>
+                      <span className="text-[11.5px] font-bold text-white/70">{money(record.finalPot)}</span>
                     </div>
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="text-[8px] text-white/40 uppercase tracking-wide">{t('sess.yourResult')}</span>
@@ -1385,8 +1385,8 @@ export function HandHistoryModal({ records, onClose, onRevive, initialId, initia
                         :'text-emerald-400'}`}>
                         {a.actionType}
                       </span>
-                      {a.amount > 0 && <span className="text-white/50 font-mono">${a.amount}</span>}
-                      <span className="ml-auto text-white/25 font-mono text-[10px]">pot${a.potAfter}</span>
+                      {a.amount > 0 && <span className="text-white/50 font-mono">{money(a.amount)}</span>}
+                      <span className="ml-auto text-white/25 font-mono text-[10px]">pot {money(a.potAfter)}</span>
                     </div>
                   )
                 })}
@@ -4733,7 +4733,7 @@ export default function GamePage(): JSX.Element {
                     {seat.isHero ? 'Toi' : seat.name} <span className="text-[#c9a227]/70">{seat.position}</span> — action
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-white/45">{toCall > 0 ? t('xtra.toPay', { n: toCall }) : t('xtra.noBet')} · pot ${potNow}</span>
+                    <span className="text-[10px] text-white/45">{toCall > 0 ? t('xtra.toPay', { n: money(toCall) }) : t('xtra.noBet')} · pot {money(potNow)}</span>
                     <button onClick={() => { setManualPanel(null); setManualBet('') }} className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white text-xs">✕</button>
                   </div>
                 </div>

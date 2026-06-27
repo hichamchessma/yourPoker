@@ -11,6 +11,7 @@ export function setCurrency(sym: string | undefined | null): void {
 }
 
 export function curSymbol(): string { return SYMBOL }
+export function curIsSuffix(): boolean { return SUFFIX }
 
 // Format an amount with the active currency. Uses the runtime locale's grouping (matches
 // the rest of the UI, e.g. "8 100" in FR / "8,100" in EN).
