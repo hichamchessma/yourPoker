@@ -1963,7 +1963,8 @@ export default function GamePage(): JSX.Element {
       // UTG … so the labels rotate every hand as the button moves.
       position: positions[((i - dealerIdx) % n + n) % n] ?? `S${i+1}`,
       holeCards: [null, null],
-      bet: 0, totalBet: 0,
+      bet: 0, totalBet: 0, actedLevel: -1,   // fresh hand → nobody has acted yet (else a stale
+      // raise level from the previous hand blocks re-raising — "RAISE button missing" bug)
       isFolded: s.isSittingOut, isAllIn: false,
       isActive: false, lastAction: null,
       cardsFaceUp: s.isHero && !s.isSittingOut,
@@ -2821,7 +2822,7 @@ export default function GamePage(): JSX.Element {
     const newState: GState = {
       phase: 'dealing',
       deck, seats, community: [null,null,null,null,null],
-      pot, currentBet: bbA, minRaise: bbA,
+      pot, currentBet: bbA, minRaise: bbA, raiseLevel: 0,
       actQueue: [], dealerIdx, handNum,
       log: [`=== Main #${handNum} ===`, `Dealer: ${seats[dealerIdx]?.name}`, `SB: ${sbSeat.name} (${sbPost})`, `BB: ${bbSeat.name} (${bbPost})`],
       winners: [], paused: false, autoRunning: true,

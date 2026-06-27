@@ -7,7 +7,7 @@
 //   npx esbuild tools/engine-bench.ts --bundle --format=esm --outfile=_e.mjs \
 //     --log-level=error && node _e.mjs && rm _e.mjs
 //
-import { bestHandScore, evalFive, computeSidePots, resolveAction, type BetTable } from '../src/renderer/src/lib/pokerEngine'
+import { bestHandScore, evalFive, computeSidePots, resolveAction, isReopened, type BetTable } from '../src/renderer/src/lib/pokerEngine'
 
 const C = (r: string, s: string) => ({ rank: r, suit: s })
 const H = (str: string) => str.trim().split(/\s+/).map(x => C(x[0], x[1])) as any   // "Ah Kd Qc" → cards
@@ -110,6 +110,16 @@ function act(seats: S[], table: BetTable, idx: number, action: string, amount = 
   t(table.raiseLevel === 2, 'relance complète → raiseLevel 2')
   const heroReraise = act(seats, table, 0, 'RAISE', 45000)
   t(heroReraise.action === 'RAISE' && table.currentBet === 45000, '✅ re-relance du héros AUTORISÉE après relance complète')
+}
+// — Un siège FRAIS (actedLevel -1 : début de coup/rue, ex. SB qui n'a que posté la blinde)
+//   peut TOUJOURS (re)relancer face à une mise. Garde la régression "bouton RAISE bloqué"
+//   où un actedLevel périmé de la main précédente survivait au nouveau coup. —
+{
+  const table: BetTable = { currentBet: 2000, minRaise: 1500, raiseLevel: 1 }   // une relance complète a eu lieu
+  const sb = seat(40000, 250)                                                    // SB, n'a fait que poster (actedLevel -1)
+  const r = act([sb], table, 0, 'RAISE', 6000)
+  t(isReopened({ currentBet: 2000, minRaise: 1500, raiseLevel: 1 }, { bet: 250, stack: 40000, totalBet: 250, actedLevel: -1 }), 'siège frais : action ré-ouverte')
+  t(r.action === 'RAISE' && table.currentBet === 6000, '✅ siège frais peut 3-bet face à une relance (pas de blocage périmé)')
 }
 // — Check-raise autorisé (postflop) —
 {
