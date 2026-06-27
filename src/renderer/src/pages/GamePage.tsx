@@ -15,6 +15,7 @@ import RotateGate from '../components/RotateGate'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
+import { bestHandScore, computeSidePots, resolveAction } from '../lib/pokerEngine'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal, playSiren } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
@@ -224,46 +225,10 @@ function shuffle(d: Card[]): Card[] {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]] }
   return a
 }
-function combos5(arr: Card[]): Card[][] {
-  if (arr.length < 5) return []
-  const r: Card[][] = []
-  function go(start: number, cur: Card[]) {
-    if (cur.length === 5) { r.push([...cur]); return }
-    for (let i = start; i <= arr.length - (5 - cur.length); i++) go(i+1, [...cur, arr[i]])
-  }
-  go(0, []); return r
-}
-function evalFive(cards: Card[]): number {
-  const rv = cards.map(c => RV[c.rank] ?? 2)
-  const sv = cards.map(c => c.suit)
-  const isF = sv.every(s=>s===sv[0])
-  const u = [...new Set(rv)].sort((a,b)=>b-a)
-  const wheel = u.length===5 && u[0]===14 && u[1]===5 && u[2]===4 && u[3]===3 && u[4]===2
-  const isS = (u.length===5 && u[0]-u[4]===4) || wheel
-  const cnt: Record<number,number> = {}; rv.forEach(r=>cnt[r]=(cnt[r]??0)+1)
-  const cv = Object.values(cnt).sort((a,b)=>b-a)
-  let rank=0
-  if(isF&&isS) rank=8; else if(cv[0]===4) rank=7; else if(cv[0]===3&&cv[1]===2) rank=6
-  else if(isF) rank=5; else if(isS) rank=4; else if(cv[0]===3) rank=3
-  else if(cv[0]===2&&cv[1]===2) rank=2; else if(cv[0]===2) rank=1
-  // Straights compare on their high card (wheel A-2-3-4-5 is 5-high).
-  if (isS) return rank*15**5 + (wheel ? 5 : u[0])
-  // Tiebreak ordered by GROUP SIZE first (pairs/trips), then rank — so a pair
-  // always outranks a higher kicker (fixes "QQJJ7 vs QQ55A" type comparisons).
-  const tb: number[] = []
-  Object.keys(cnt).map(Number).sort((a,b)=> cnt[b]-cnt[a] || b-a).forEach(r => { for(let i=0;i<cnt[r];i++) tb.push(r) })
-  return rank*15**5 + (tb[0]??0)*15**4 + (tb[1]??0)*15**3 + (tb[2]??0)*15**2 + (tb[3]??0)*15 + (tb[4]??0)
-}
-function bestHand(cards: Card[]): { score:number; name:string } {
-  const valid = cards.filter(Boolean) as Card[]
-  if (valid.length < 2) return { score:0, name:'—' }
-  if (valid.length < 5) {
-    const pad = [...valid, ...Array(5-valid.length).fill({rank:'2',suit:'♠'})]
-    const s = evalFive(pad); return { score:s, name:handCatLabel(Math.floor(s/15**5)) }
-  }
-  let best=0
-  for (const c of combos5(valid)) { const s=evalFive(c); if(s>best) best=s }
-  return { score:best, name:handCatLabel(Math.floor(best/15**5)) }
+// Thin localized wrapper over the pure engine evaluator (score → translated label).
+function bestHand(cards: Card[]): { score: number; name: string } {
+  const { score, cat } = bestHandScore(cards)
+  return { score, name: score === 0 ? '—' : handCatLabel(cat) }
 }
 // Realistic 0..1 made-hand strength (category-based, with pair refinement) so
 // bots actually value-bet strong hands instead of checking down monsters.
@@ -295,20 +260,6 @@ function hasStrongDraw(hole: Card[], board: Card[]): boolean {
   }
   return false
 }
-function computeSidePots(seats: Seat[]): {amount:number; eligible:number[]}[] {
-  const pots: {amount:number; eligible:number[]}[] = []
-  const pool = seats.filter(s=>s.totalBet>0).map(s=>({idx:s.idx,amount:s.totalBet,folded:s.isFolded}))
-  while (pool.length > 0) {
-    const min = Math.min(...pool.map(p=>p.amount))
-    const potAmt = min * pool.length
-    const eligible = pool.filter(p=>!p.folded).map(p=>p.idx)
-    pots.push({amount:potAmt,eligible})
-    for (let i = pool.length-1; i >= 0; i--) { pool[i].amount-=min; if(pool[i].amount===0) pool.splice(i,1) }
-  }
-  return pots.filter(p=>p.amount>0&&p.eligible.length>0)
-}
-
-
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
 function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42, compact=false }: {
   seat:Seat; style:React.CSSProperties; isWinner:boolean; isShowdown:boolean; onRebuy?:()=>void; turnSeconds?:number; turnNonce?:string; turnPaused?:boolean; hideTimer?:boolean; onHover?:(entering:boolean, e?:React.MouseEvent)=>void; onHoverCards?:(entering:boolean, e?:React.MouseEvent)=>void; onTapCards?:(e:React.MouseEvent)=>void; avatarSize?:number; compact?:boolean
@@ -2222,94 +2173,25 @@ export default function GamePage(): JSX.Element {
     const seat = seats[seatIdx]
     if (!seat) return currentGs
 
-    // ── INCOMPLETE-RAISE RULE ──────────────────────────────────────────────
-    // A player FACING a bet whose action has NOT been re-opened (the last "raise"
-    // was an all-in for less than a full raise) may only CALL or FOLD. Any attempt
-    // to bet/raise — or to put in MORE than the call via all-in — is illegal and is
-    // demoted to a plain CALL. (You can always still call all-in for ≤ the call.)
-    const facingBet = currentGs.currentBet > seat.bet
-    const reopened = (currentGs.raiseLevel ?? 0) > (seat.actedLevel ?? -1)
-    if (facingBet && !reopened) {
-      if (action === 'BET' || action === 'RAISE') action = 'CALL'
-      else if (action === 'ALL-IN' && seat.bet + seat.stack > currentGs.currentBet) action = 'CALL'
-    }
-
-    let newPot = currentGs.pot
-    let newBet = currentGs.currentBet
-    let newMinRaise = currentGs.minRaise
-    let lastAction = action
-    let actualAmount = rawAmount
-
-    if (action === 'FOLD') {
-      seat.isFolded = true
-      seat.lastAction = 'FOLD'
-      seat.isActive = false
-    } else if (action === 'CHECK') {
-      seat.lastAction = 'CHECK'
-      seat.isActive = false
-    } else if (action === 'CALL') {
-      const toCall = Math.min(currentGs.currentBet - seat.bet, seat.stack)
-      seat.stack -= toCall
-      seat.bet += toCall
-      seat.totalBet += toCall
-      newPot += toCall
-      // Record the cumulative street bet (matches BET/RAISE/ALL-IN) so the
-      // history replay reconstructs stacks correctly.
-      actualAmount = seat.bet
-      if (seat.stack === 0) { seat.isAllIn = true; lastAction = 'ALL-IN' }
-      seat.lastAction = lastAction
-      seat.isActive = false
-    } else if (action === 'BET' || action === 'RAISE') {
-      // rawAmount is the TARGET total bet to reach ("raise to"). Clamp it to a
-      // legal minimum (currentBet + min raise increment) and to the all-in cap.
-      const minTo = currentGs.currentBet + currentGs.minRaise
-      const maxTo = seat.bet + seat.stack
-      let target = Math.round(rawAmount)
-      if (target < minTo) target = minTo
-      if (target > maxTo) target = maxTo
-      const add = target - seat.bet
-      seat.stack -= add
-      seat.bet = target
-      seat.totalBet += add
-      newPot += add
-      actualAmount = target
-      newBet = Math.max(currentGs.currentBet, target)
-      const increment = newBet - currentGs.currentBet
-      if (increment > newMinRaise) newMinRaise = increment
-      if (seat.stack === 0) { seat.isAllIn = true; lastAction = 'ALL-IN' }
-      else lastAction = (action === 'BET' ? 'BET $' : 'RAISE $') + target
-      seat.lastAction = lastAction
-      seat.isActive = false
-    } else if (action === 'ALL-IN') {
-      const add = seat.stack
-      seat.stack = 0
-      seat.bet += add
-      seat.totalBet += add
-      newPot += add
-      actualAmount = seat.bet
-      if (seat.bet > newBet) {
-        const increment = seat.bet - currentGs.currentBet
-        if (increment > newMinRaise) newMinRaise = increment
-        newBet = seat.bet
-      }
-      seat.isAllIn = true
-      seat.lastAction = 'ALL-IN'
-      seat.isActive = false
-    }
-
-    // Safety net: any committing action that empties the stack is all-in.
-    if (!seat.isFolded && seat.stack <= 0) seat.isAllIn = true
-
-    // ── Re-open tracking ──────────────────────────────────────────────────
-    // A FULL bet/raise (increment ≥ the prior min-raise) bumps the raise level and
-    // re-opens re-raising for everyone; an incomplete all-in (or a demoted call) does
-    // not. Record the level at which this seat just acted.
-    let newRaiseLevel = currentGs.raiseLevel ?? 0
-    if (action !== 'FOLD') {
-      const raisedBy = newBet - currentGs.currentBet
-      if (raisedBy > 0 && raisedBy >= currentGs.minRaise) newRaiseLevel += 1
-      seat.actedLevel = newRaiseLevel
-    }
+    // Resolve the bet math + the incomplete-raise rule in the pure engine (the same
+    // code tools/engine-bench.ts tests). It enforces re-opening (an illegal bet/raise
+    // or an over-the-call all-in is demoted to a call) and the raise-level tracking.
+    const r = resolveAction(
+      { bet: seat.bet, stack: seat.stack, totalBet: seat.totalBet, actedLevel: seat.actedLevel, isFolded: seat.isFolded },
+      action, rawAmount,
+      { currentBet: currentGs.currentBet, minRaise: currentGs.minRaise, raiseLevel: currentGs.raiseLevel },
+    )
+    seat.bet = r.bet; seat.stack = r.stack; seat.totalBet = r.totalBet; seat.actedLevel = r.actedLevel
+    seat.isFolded = r.isFolded; seat.isAllIn = r.isAllIn
+    seat.lastAction = r.lastAction
+    seat.isActive = false
+    action = r.action                       // effective base action (after any demotion) — drives sound + range tracking
+    const lastAction = r.lastAction
+    const actualAmount = r.amount
+    const newPot = currentGs.pot + r.committed
+    const newBet = r.currentBet
+    const newMinRaise = r.minRaise
+    const newRaiseLevel = r.raiseLevel
 
     // 🔊 Sound for the action (all-in trumps the base action).
     {

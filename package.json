@@ -13,7 +13,12 @@
     "build:win": "electron-vite build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "i18n:lint": "node scripts/i18n-lint.js"
+    "i18n:lint": "node scripts/i18n-lint.js",
+    "bench:coach": "npx esbuild tools/coach-bench.ts --bundle --format=esm --outfile=node_modules/.cache/bench-c.mjs --log-level=error && node node_modules/.cache/bench-c.mjs",
+    "bench:engine": "npx esbuild tools/engine-bench.ts --bundle --format=esm --outfile=node_modules/.cache/bench-e.mjs --log-level=error && node node_modules/.cache/bench-e.mjs",
+    "bench": "npm run bench:coach && npm run bench:engine",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json",
+    "check": "npm run typecheck && npm run bench"
   },
   "keywords": [
     "poker",
