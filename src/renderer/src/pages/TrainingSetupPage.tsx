@@ -38,6 +38,12 @@ const PRESETS = [
   { id: 'school', icon: '🎓', nameKey: 'train.presetSchoolName', players: 6, stack: 100, sb: 1,  bb: 2,  bots: [1,1,2,2,3] },
   { id: 'wild',   icon: '🤠', nameKey: 'train.presetWildName',   players: 9, stack: 30,  sb: 1,  bb: 2,  bots: [1,1,2,2,3,3,1,2] },
 ]
+// Currency-specific quick blind levels (€ shares the $ levels). First entry = the default.
+const BLIND_LEVELS: Record<string, { sb: number; bb: number }[]> = {
+  DH: [{ sb: 25, bb: 50 }, { sb: 50, bb: 100 }],
+  $: [{ sb: 1, bb: 3 }, { sb: 2, bb: 4 }, { sb: 5, bb: 5 }, { sb: 5, bb: 10 }],
+}
+const blindLevelsFor = (cur: string) => BLIND_LEVELS[cur] ?? BLIND_LEVELS.$
 
 // ── SVG geometry helpers ───────────────────────────────────────────
 const SVG_W = 300, SVG_H = 226, CX = 150, CY = 106, RX = 128, RY = 90
@@ -181,13 +187,15 @@ export default function TrainingSetupPage(): JSX.Element {
   // ── Config state ──
   const [numPlayers, setNumPlayers] = useState(6)
   const [selectedSeat, setSelectedSeat] = useState(0)
-  const [stackBB, setStackBB] = useState(100)
+  const [stackBB, setStackBB] = useState(50)   // default 50 BB (adjustable after)
   const [sb, setSb] = useState(1)
-  const [bb, setBb] = useState(2)
+  const [bb, setBb] = useState(3)              // default $ level 1/3
   const [ante, setAnte] = useState(0)
   const [currency, setCurrency] = useState('$')
   // BB is the editable money value of one big blind; SB tracks at half (min 1).
   const setBigBlind = (v: number) => { const b = Math.max(1, Math.round(v)); setBb(b); setSb(Math.max(1, Math.round(b / 2))) }
+  // Switch currency → snap blinds to that currency's default level (first preset).
+  const pickCurrency = (sym: string) => { setCurrency(sym); const lv = blindLevelsFor(sym)[0]; setSb(lv.sb); setBb(lv.bb) }
   const fmt = (n: number) => currency === 'DH' ? `${Math.round(n).toLocaleString()} DH` : `${currency}${Math.round(n).toLocaleString()}`
   const [decisionTimer, setDecisionTimer] = useState(30)
   const [gameVariant, setGameVariant] = useState<'NLH'|'PLO'|'PLO5'>('NLH')
@@ -598,11 +606,25 @@ export default function TrainingSetupPage(): JSX.Element {
               <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest mb-1.5">{t('train.currency')}</p>
               <div className="grid grid-cols-3 gap-1 mb-3">
                 {[{ sym: '$', name: 'USD' }, { sym: '€', name: 'EUR' }, { sym: 'DH', name: 'MAD' }].map(c => (
-                  <motion.button key={c.sym} whileTap={{ scale: 0.92 }} onClick={() => setCurrency(c.sym)}
+                  <motion.button key={c.sym} whileTap={{ scale: 0.92 }} onClick={() => pickCurrency(c.sym)}
                     className={`py-1.5 rounded-lg border text-center text-[10px] font-black transition-all ${
                       currency === c.sym ? 'bg-poker-gold/25 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/8 text-white/40 hover:border-white/22'
                     }`}>{c.sym} <span className="text-[7px] font-bold opacity-60">{c.name}</span></motion.button>
                 ))}
+              </div>
+
+              {/* Blind level — currency-specific quick presets (still adjustable below) */}
+              <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest mb-1.5">{t('train.blindLevel')}</p>
+              <div className="flex gap-1 mb-3">
+                {blindLevelsFor(currency).map(lv => {
+                  const active = sb === lv.sb && bb === lv.bb
+                  return (
+                    <motion.button key={`${lv.sb}/${lv.bb}`} whileTap={{ scale: 0.92 }} onClick={() => { setSb(lv.sb); setBb(lv.bb) }}
+                      className={`flex-1 py-1.5 rounded-lg border text-center text-[10px] font-black transition-all ${
+                        active ? 'bg-poker-gold/25 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/8 text-white/40 hover:border-white/22'
+                      }`}>{lv.sb}/{lv.bb}</motion.button>
+                  )
+                })}
               </div>
 
               {/* Big-blind value — makes "1 BB" explicit */}

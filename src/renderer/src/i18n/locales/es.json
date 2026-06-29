@@ -534,6 +534,7 @@
     "stackInit": "Stack inicial (en BB)",
     "currency": "Moneda",
     "bbValue": "Valor de la BB",
+    "blindLevel": "Nivel de ciegas",
     "oneBbIs": "1 BB = {{v}}",
     "chipsBB": "fichas ({{bb}} BB)",
     "smallBlind": "Small Blind",

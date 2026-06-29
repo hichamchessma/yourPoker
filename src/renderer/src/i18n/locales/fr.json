@@ -534,6 +534,7 @@
     "stackInit": "Stack initial (en BB)",
     "currency": "Devise",
     "bbValue": "Valeur du BB",
+    "blindLevel": "Niveau de blindes",
     "oneBbIs": "1 BB = {{v}}",
     "chipsBB": "chips ({{bb}} BB)",
     "smallBlind": "Small Blind",

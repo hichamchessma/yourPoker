@@ -534,6 +534,7 @@
     "stackInit": "Starting stack (in BB)",
     "currency": "Currency",
     "bbValue": "Big blind value",
+    "blindLevel": "Blind level",
     "oneBbIs": "1 BB = {{v}}",
     "chipsBB": "chips ({{bb}} BB)",
     "smallBlind": "Small Blind",
