@@ -14,7 +14,7 @@ import RangeHeatmap from '../components/RangeHeatmap'
 import RotateGate from '../components/RotateGate'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
-import { getPostflopAdvice, buildEquityReasoning, handCatLabel, type EquityReasoning } from '../lib/postflopAdvisor'
+import { getPostflopAdvice, buildEquityReasoning, handCatLabel, diagnoseSpot, type EquityReasoning } from '../lib/postflopAdvisor'
 import { bestHandScore, computeSidePots, resolveAction } from '../lib/pokerEngine'
 import { setCurrency, money, curSymbol, curIsSuffix } from '../lib/money'
 import { isElectron } from '../lib/platform'
@@ -235,17 +235,18 @@ function bestHand(cards: Card[]): { score: number; name: string } {
 // bots actually value-bet strong hands instead of checking down monsters.
 const CAT_STRENGTH = [0.08, 0.42, 0.68, 0.80, 0.86, 0.91, 0.96, 0.99, 1.0]
 function madeStrength(hole: Card[], board: Card[]): number {
-  const score = bestHand([...hole, ...board]).score
-  const cat = Math.floor(score / 15 ** 5)
-  if (cat !== 1) return CAT_STRENGTH[cat] ?? 0.08
+  // Use the coach's DEMOTED made-hand read (diagnoseSpot): a hand that lives entirely on the
+  // BOARD — trips on a 9-9-9 flop, two pair on the board, a board straight/flush — is a
+  // shared hand (everyone chops), not real strength. Without the demotion every bot "has the
+  // board", clears the value-raise bar, and they jam a chopped hand into each other.
+  // PLAYING THE BOARD (a river straight/flush/etc. the hole cards don't improve) → it's a
+  // chop, no edge: never value-bet/raise it. diagnoseSpot demotes board pairs/trips/fulls but
+  // not board straights/flushes, so guard those here.
+  if (board.length === 5 && bestHand([...hole, ...board]).score <= bestHand(board).score) return 0.20
+  const d = diagnoseSpot(hole, board)
+  if (d.effCat !== 1) return CAT_STRENGTH[d.effCat] ?? 0.08
   // One pair → refine by overpair / top / second / weak.
-  const bRanks = board.map(c => RV[c.rank]).sort((a, b) => b - a)
-  const hRanks = hole.map(c => RV[c.rank])
-  const pocket = hole.length >= 2 && hole[0].rank === hole[1].rank
-  if (pocket && hRanks[0] > (bRanks[0] ?? 0)) return 0.62 // overpair
-  if (hRanks.includes(bRanks[0] ?? -1)) return 0.55       // top pair
-  if (bRanks[1] !== undefined && hRanks.includes(bRanks[1])) return 0.42 // second pair
-  return 0.32                                              // weak / board pair
+  return d.effPair === 'overpair' ? 0.62 : d.effPair === 'top' ? 0.55 : d.effPair === 'second' ? 0.42 : 0.32
 }
 // Flush draw or open-ended straight draw → fuel for semi-bluffs.
 function hasStrongDraw(hole: Card[], board: Card[]): boolean {
