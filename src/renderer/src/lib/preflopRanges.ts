@@ -195,9 +195,24 @@ export function buildRangeMap(scenario: Scenario, position: string, playersBehin
     // the dead money in a multiway pot gives a huge price). Never tighter than chart.
     if (opts.closingAction && opts.potOdds !== undefined && opts.potOdds > 0) {
       const po = opts.potOdds
-      let pw = po <= 0.10 ? 68 : po <= 0.14 ? 56 : po <= 0.18 ? 46 : po <= 0.25 ? 36 : po <= 0.33 ? 27 : 18
-      if (opts.multiway) pw *= 0.82 // reverse implied odds in a multiway pot → a touch tighter
+      // Defend the BB BY POT ODDS — the cheaper the call, the WIDER (you close the action so
+      // you can't be raised, and the dead money in a multiway pot is a huge price). Solvers
+      // defend the BB extremely wide vs a small open; at ~8:1 that's most hands.
+      let pw = po <= 0.10 ? 82 : po <= 0.14 ? 72 : po <= 0.18 ? 58 : po <= 0.25 ? 44 : po <= 0.33 ? 32 : 22
+      if (opts.multiway) pw *= 0.9  // dead money keeps it wide; only a small realization discount
       call = new Set([...call, ...topByPct(pw)])
+      // Raw strength under-rates the PLAYABLE speculatives (implied odds / straights): at a
+      // cheap close also defend EVERY suited hand, EVERY pair, and offsuit connectors/1-gappers
+      // (65o, 76o, 97o…) — they flop straights & two pair and you're getting a great price.
+      if (po <= 0.15) {
+        for (const h of RANKED) {
+          if (call.has(h.key)) continue
+          const pair = h.key.length === 2
+          const suited = h.key.endsWith('s')
+          const conn = h.key.endsWith('o') && (RVAL[h.key[0]] - RVAL[h.key[1]]) <= 2
+          if (pair || suited || conn) call.add(h.key)
+        }
+      }
     }
     for (const h of RANKED) {
       const a: RangeAction = chart.value.has(h.key) || bluffs.has(h.key) ? '3bet'
