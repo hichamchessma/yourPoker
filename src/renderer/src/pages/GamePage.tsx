@@ -2082,6 +2082,9 @@ export default function GamePage(): JSX.Element {
       if (rand < acc) return toCall > 0 ? { action: 'CALL', amount: toCall } : { action: 'CHECK', amount: 0 }
       acc += pp.check
       if (rand < acc) return { action: 'CHECK', amount: 0 }
+      // Nothing to call (BB's option after a limp, or an all-in behind us for ≤ our bet):
+      // seeing the flop is FREE — never fold the option, always check.
+      if (toCall <= 0) return { action: 'CHECK', amount: 0 }
       return pricedIn ? { action: 'CALL', amount: effCall } : { action: 'FOLD', amount: 0 }
     }
 
