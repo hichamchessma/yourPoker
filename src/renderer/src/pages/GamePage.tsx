@@ -750,7 +750,12 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
       decision: adv.action === 'FOLD' ? 'fold' : adv.action === 'CALL' ? 'call' : 'aggro' })
     const phaseLbl = tc(phase === 'flop' ? 'crit.phaseFlop' : phase === 'turn' ? 'crit.phaseTurn' : phase === 'river' ? 'crit.phaseRiver' : 'crit.phasePreflop')
     lines.push(tc('crit.pSituation', { phase: phaseLbl, board: board.map(c => c.rank + c.suit).join(' '), aggr: lastAggressorName && toCall > 0 ? tc('crit.pBetSuffix', { name: lastAggressorName }) : '' }))
-    lines.push(tc('crit.pEquityHand', { eq: pct(adv.equity), odds: toCall > 0 ? tc('crit.pOddsReq', { odds: pct(adv.potOdds) }) : '', made: adv.madeHand, draws: adv.draws.length ? tc('crit.pDraws', { draws: adv.draws.join(' + ') }) : '' }))
+    // Facing a bet, the "COMMENT JE RAISONNE" block already spells out equity vs the price in
+    // full → don't restate it here, just name the hand. No bet to call → keep the equity note.
+    const drawsTxt = adv.draws.length ? tc('crit.pDraws', { draws: adv.draws.join(' + ') }) : ''
+    lines.push(toCall > 0
+      ? tc('crit.pHandOnly', { made: adv.madeHand, draws: drawsTxt })
+      : tc('crit.pEquityHand', { eq: pct(adv.equity), odds: '', made: adv.madeHand, draws: drawsTxt }))
     lines.push(tc('crit.pOptimal', { action: adv.action, sizing: adv.sizingText }))
     adv.reasons.slice(1, 3).forEach(r => lines.push(r))
     if (heroCat === recCat) {
@@ -771,7 +776,7 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
         }
       }
     }
-    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hContinueTooMuch'); lines.push(tc('crit.lContinueTooMuch', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
+    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hContinueTooMuch'); if (toCall <= 0) lines.push(tc('crit.lContinueTooMuch', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
     else if (recCat === 'aggr' && heroCat === 'passive') {
       // CHECKING a LOCKED monster (full house+) multiway is a valid slow-play/trap, not
       // a leak: the hand needs no protection (board paired) and betting folds out the

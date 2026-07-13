@@ -120,6 +120,15 @@ export default function EquityReasoningBlock({ r }: { r: EquityReasoning }) {
           <Trans i18nKey={realEquityKey} components={TAGS} values={{ eq: eqTxt }} />
         </p>
 
+        {/* Why real equity < the outs estimate: the ×4 rule assumes every out is CLEAN and
+            always wins. Here many outs are weak/dominated (they complete but lose), so the
+            real number is well below — bridge that gap instead of leaving two clashing %s. */}
+        {hasOuts && r.outsApprox - r.equity > 0.06 && (
+          <p className="text-[12px] leading-relaxed rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(245,158,11,0.09)', color: 'rgba(255,255,255,0.8)' }}>
+            <Trans i18nKey="equity.whyLower" components={TAGS} values={{ approx: pct(r.outsApprox), eq: eqTxt }} />
+          </p>
+        )}
+
         {/* Why real equity > raw outs: the outs only count the times I IMPROVE; I also
             win plenty of the time WITHOUT improving (my high card / pair already beats
             his missed draws & air at showdown). Make that jump explicit. */}

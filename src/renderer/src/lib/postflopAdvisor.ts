@@ -21,7 +21,8 @@ export function handCatLabel(cat: number): string { return tt(`hand.cat${Math.ma
 function drawLabel(c: DrawCode): string { return tt(c === 'flush' ? 'hand.drawFlush' : c === 'oesd' ? 'hand.drawOesd' : 'hand.drawGut') }
 function drawDisplay(cs: DrawCode[]): string[] { return cs.map(drawLabel) }
 function pairLabel(p: PairKind): string { return tt(p === 'overpair' ? 'hand.pairOverpair' : p === 'top' ? 'hand.pairTop' : p === 'second' ? 'hand.pairSecond' : 'hand.pairWeak') }
-const RANK_KEY: Record<number, string> = { 14: 'hand.rankA', 13: 'hand.rankK', 12: 'hand.rankQ', 11: 'hand.rankJ', 10: 'hand.rankT', 9: 'hand.r9', 8: 'hand.r8', 7: 'hand.r7', 6: 'hand.r6', 5: 'hand.r5', 4: 'hand.r4', 3: 'hand.r3', 2: 'hand.r2' }
+// Broadway ranks read as words (As/Roi/…); number ranks fall through to their digit (rankLabel).
+const RANK_KEY: Record<number, string> = { 14: 'hand.rankA', 13: 'hand.rankK', 12: 'hand.rankQ', 11: 'hand.rankJ', 10: 'hand.rankT' }
 function rankLabel(v: number): string { const k = RANK_KEY[v]; return k ? tt(k) : String(v) }
 
 export interface FacePlanRow {
