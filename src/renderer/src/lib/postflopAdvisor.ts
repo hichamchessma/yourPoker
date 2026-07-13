@@ -510,7 +510,9 @@ export function getPostflopAdvice(input: {
   if (toCall <= 0) reasons.push(tt('cadv.equityReal', { eq: pct(eq), suffix: eqSuffix }))
   if (cappedActive && toCall > 0) reasons.push(tt('cadv.capped'))
   if (input.donkLead && !input.facingRaise && toCall > 0) reasons.push(tt('cadv.donkLead'))
-  if (input.facingRaise && toCall > 0) reasons.push(tt('cadv.facingRaise'))
+  // Gate with !tinyBet so this "a raise means you're behind → fold" reason never shows
+  // when the equity model DIDN'T crush (a min-raise at a great price → we still call).
+  if (input.facingRaise && !tinyBet && toCall > 0) reasons.push(tt('cadv.facingRaise'))
   // "Playing the board" is strictly a RIVER concept (5 community cards) where your
   // hole cards add nothing. Pre-river you always hold at least high-card / a draw,
   // so we never mislabel it (and we avoid padding the board with fake cards).
