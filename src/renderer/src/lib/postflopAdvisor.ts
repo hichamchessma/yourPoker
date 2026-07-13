@@ -504,8 +504,10 @@ export function getPostflopAdvice(input: {
   const eqSuffix = villainGaveUp ? tt('cadv.eqVsCapped')
     : aggression > 0 ? tt('cadv.eqVsRange', { q: barrels >= 2 ? tt('cadv.eqRangeStrong') : tt('cadv.eqRangeTight') })
     : tt('cadv.eqVsOpp', { count: opponents })
-  reasons.push(tt('cadv.equityReal', { eq: pct(eq), suffix: eqSuffix }))
-  if (toCall > 0) reasons.push(tt('cadv.potOdds', { odds: pct(potOdds), toCall: money(toCall) }))
+  // Facing a bet, the "how I reason" equity block already lays out equity vs the price in
+  // full → don't restate equity/pot-odds here (that was the triple-repetition). No bet to
+  // call (checked to us, no block) → keep the equity note.
+  if (toCall <= 0) reasons.push(tt('cadv.equityReal', { eq: pct(eq), suffix: eqSuffix }))
   if (cappedActive && toCall > 0) reasons.push(tt('cadv.capped'))
   if (input.donkLead && !input.facingRaise && toCall > 0) reasons.push(tt('cadv.donkLead'))
   if (input.facingRaise && toCall > 0) reasons.push(tt('cadv.facingRaise'))
