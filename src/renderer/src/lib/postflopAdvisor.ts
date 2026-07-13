@@ -683,7 +683,14 @@ export function getPostflopAdvice(input: {
     // (≈70%+ equity) should bet SMALL for value — worse pairs call, and checking back
     // just leaves money on the table. This is the classic "second pair good kicker bets
     // the river after it checks through" spot.
-    const thinValueVsCapped = !!input.cappedRange && isOnePair && !isStrongValue && effPair !== 'top' && eq >= 0.70
+    // Thin value vs a CAPPED (checked-back) range. Street- & position-aware so the coach
+    // doesn't flip-flop on a dominated pair (e.g. KK on an ace-high board): on the RIVER it's
+    // low-risk (no draw to fear, no future street, can't be raised into a tough spot) → value
+    // thin at 60%+. On the FLOP/TURN a dominated pair OOP should POT-CONTROL (check), not bet —
+    // betting folds out worse, gets called by better, and risks a check-raise → only bet thin
+    // early when in position (or the hand is genuinely strong).
+    const thinValueVsCapped = !!input.cappedRange && isOnePair && !isStrongValue && effPair !== 'top'
+      && (board.length >= 5 ? eq >= 0.60 : (eq >= 0.70 && (inPosition || eq >= 0.82)))
     // PROTECTION / equity-denial bet: a VULNERABLE made pair (2nd/weak) that is still
     // the LIKELY BEST hand vs a capped range — above its fair share of the pot (1/(n+1))
     // — but can be outdrawn (under-pairs → sets, overcards → pairs). With cards still to
