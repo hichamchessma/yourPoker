@@ -772,6 +772,7 @@
     "drawCallTight": "Proyecto: {{eq}} ≥ {{req}} requerido → paga, pero justo.",
     "vulnDraw": "⚠️ Proyecto vulnerable (color bajo o board emparejado): reverse implied odds — puedes ligar y aun así perder, juega con cuidado.",
     "bluffcatch": "Bluff-catcher: tu equity ({{eq}}) supera las odds ({{odds}}) → pagas para ganar a sus faroles, pero no subas.",
+    "sandwich": "⚠︎ Estás en sándwich: un jugador aún puede actuar DETRÁS de ti. Pueden subirte, y debes ganar a DOS rangos (el apostador + el que paga), no uno. Tu pareja marginal vale mucho menos aquí — un call prudente como mucho, nunca alegre.",
     "callProfit": "Tu equity ({{eq}}) supera las pot odds ({{odds}}) → pago rentable, incluso sin una gran mano.",
     "foldVulnDraw": "Proyecto vulnerable demasiado caro: {{eq}} de equity, pero reverse implied odds (color bajo / board emparejado, ante agresión) → a veces ligas solo para perder. Necesitarías {{req}}. Fold.",
     "foldDraw": "Proyecto demasiado caro: {{eq}} de equity contra {{odds}} requerido{{turn}}. Fold.",

@@ -448,6 +448,7 @@ export function getPostflopAdvice(input: {
   hole: Card[]; board: Card[]; pot: number; toCall: number
   heroStack: number; effStack?: number; opponents: number; inPosition: boolean
   aggression?: number; barrels?: number; bb?: number; villainTier?: VillainTier; aggressors?: number; cappedRange?: boolean; callPressure?: number; iters?: number; donkLead?: boolean; facingRaise?: boolean
+  notClosing?: boolean   // a LIVE player still acts behind hero (sandwich): can be raised behind + must beat TWO ranges → tighten marginal one-pair calls
   villainLoose?: boolean   // EXPLOIT: the relevant opponent is a loose-passive / calling-station type (tier-1 fish) → value bigger, bluff less
 }): Advice {
   const { hole, board, pot, opponents, inPosition } = input
@@ -563,9 +564,16 @@ export function getPostflopAdvice(input: {
   // raised behind when you don't close the action). Heads-up vs a small bet the cushion
   // stays tiny, so a genuine bluffcatch that beats the price still calls.
   const dominatedPair = effCat === 1 && (effPair === 'second' || effPair === 'weak' || (effPair === 'top' && (wet > 0.4 || !!input.facingRaise)))
-  const onePairMargin = dominatedPair
+  // SANDWICH: a live player still to act BEHIND hero (hero doesn't close the action) turns
+  // a marginal one-pair into a worse spot — you can be raised/squeezed behind AND you must
+  // beat the caller's range too, not just the bettor's. Add a small reverse-implied cushion
+  // (only vs real aggression, multiway, and never on a tiny priced-in bet). It nudges the
+  // truly borderline bluff-catches toward a fold without breaking a clearly +EV call.
+  const notClosingRisk = !!input.notClosing && !tinyBet && effCat === 1 && effPair !== 'overpair'
+    && Math.max(1, opponents) >= 2 && aggression >= 0.35
+  const onePairMargin = (dominatedPair
     ? 0.03 + (Math.max(1, opponents) >= 2 ? 0.03 : 0) + (aggression >= 0.4 ? 0.02 : 0) + (input.facingRaise ? 0.08 : 0)
-    : 0.01
+    : 0.01) + (notClosingRisk ? 0.04 : 0)
   // AIR (no pair, no real draw — overcards / backdoors only) REALIZES poorly: it must
   // improve to win and can't barrel profitably, especially OOP / multiway. So it needs
   // a real cushion over the raw price, not the tiny one-pair margin — otherwise the
@@ -668,7 +676,7 @@ export function getPostflopAdvice(input: {
         if (vulnerableDraw) reasons.push(tt('cadv.vulnDraw'))
         confidence = 'basse'
       }
-      else if (isOnePair) { sizingText = tt('cadv.szBluffcatch', { toCall: money(toCall) }); reasons.push(tt('cadv.bluffcatch', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.12 ? 'moyenne' : 'basse' }
+      else if (isOnePair) { sizingText = tt('cadv.szBluffcatch', { toCall: money(toCall) }); reasons.push(tt('cadv.bluffcatch', { eq: pct(eq), odds: pct(potOdds) })); if (notClosingRisk) reasons.push(tt('cadv.sandwich')); confidence = (notClosingRisk || eq < potOdds + 0.12) ? 'basse' : 'moyenne' }
       else { sizingText = tt('cadv.szCall', { toCall: money(toCall) }); reasons.push(tt('cadv.callProfit', { eq: pct(eq), odds: pct(potOdds) })); confidence = eq >= potOdds + 0.15 ? 'moyenne' : 'basse' }
     } else {
       action = 'FOLD'; sizingText = tt('cadv.szFold')

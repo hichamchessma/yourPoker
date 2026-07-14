@@ -772,6 +772,7 @@
     "drawCallTight": "Draw: {{eq}} ≥ {{req}} required → call, but thin.",
     "vulnDraw": "⚠️ Vulnerable draw (low flush or paired board): reverse implied odds — you can hit and still lose, play carefully.",
     "bluffcatch": "Bluff-catcher: your equity ({{eq}}) beats the odds ({{odds}}) → you call to beat their bluffs, but don't raise.",
+    "sandwich": "⚠︎ You're sandwiched: a player can still act BEHIND you. You can get raised, and you must beat TWO ranges (the bettor + the caller), not one. Your marginal pair is worth far less here — a cautious call at best, never a happy one.",
     "callProfit": "Your equity ({{eq}}) beats the pot odds ({{odds}}) → profitable call, even without a big hand.",
     "foldVulnDraw": "Vulnerable draw too expensive: {{eq}} equity, but reverse implied odds (low flush / paired board, facing aggression) → you sometimes hit only to lose. You'd need {{req}}. Fold.",
     "foldDraw": "Draw too expensive: {{eq}} equity vs {{odds}} required{{turn}}. Fold.",

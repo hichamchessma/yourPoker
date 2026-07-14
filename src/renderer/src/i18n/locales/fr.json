@@ -772,6 +772,7 @@
     "drawCallTight": "Tirage : {{eq}} ≥ {{req}} requis → call, mais serré.",
     "vulnDraw": "⚠️ Tirage vulnérable (couleur basse ou board pairé) : reverse implied odds — tu peux toucher et perdre quand même, joue prudemment.",
     "bluffcatch": "Bluffcatcher : ton équité ({{eq}}) dépasse la cote ({{odds}}) → tu paies pour battre ses bluffs, mais ne relance pas.",
+    "sandwich": "⚠︎ Tu es en sandwich : un joueur peut encore agir DERRIÈRE toi. Tu peux te faire relancer, et tu dois battre DEUX ranges (le mise-eur + le suiveur), pas une. Ta paire marginale vaut bien moins ici — call prudent, jamais un call de gaieté de cœur.",
     "callProfit": "Ton équité ({{eq}}) dépasse la cote du pot ({{odds}}) → call rentable, même sans grosse main.",
     "foldVulnDraw": "Tirage vulnérable trop cher : {{eq}} d'équité, mais reverse implied odds (couleur basse / board pairé, face à l'agression) → tu touches parfois pour perdre. Il te faudrait {{req}}. Fold.",
     "foldDraw": "Tirage trop cher : {{eq}} d'équité contre {{odds}} requis{{turn}}. Fold.",

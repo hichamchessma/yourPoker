@@ -742,7 +742,16 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
     // FACING A RAISE (mirrors live): ≥2 aggressive actions on this street → a bet got raised.
     const curStreetAggro = record.actions.slice(0, actionIdx).filter(a => a.phase === phase && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
     const facingRaise = toCall > 0 && curStreetAggro >= 2  // postflop branch only
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise, iters })
+    // SANDWICH: facing a bet with a LIVE player still to act behind hero this street (their
+    // committed bet is below the current bet, so they haven't responded) → hero doesn't close
+    // the action. Postflop order: BTN acts last (highest index).
+    const dealerIdxP = record.players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
+    const nP = record.players.length
+    const postOrderP = (s: number) => ((((s - dealerIdxP) % nP + nP) % nP) - 1 + nP) % nP
+    const heroPostO = postOrderP(hero.idx)
+    const notClosing = toCall > 0 && live.length >= 3 && record.players.some(p =>
+      p.idx !== hero.idx && !folded.has(p.idx) && postOrderP(p.idx) > heroPostO && (bet[p.idx] ?? 0) < currentBet)
+    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise, notClosing, iters })
     const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
     const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
     recCatOut = recCat
@@ -3678,6 +3687,12 @@ export default function GamePage(): JSX.Element {
   const heroInPosition = hero
     ? !gs.seats.some(s => s.idx !== hero.idx && inHand(s) && !s.isFolded && postActIndexOf(s.idx) > postActIndexOf(hero.idx))
     : true
+  // SANDWICH: facing a bet, a LIVE player still to act behind hero (later postflop order,
+  // hasn't matched the current bet, still has chips) who isn't the bettor → hero can be
+  // raised behind and must beat two ranges. Multiway only (heads-up, hero always closes).
+  const heroNotClosing = !!hero && (gs.currentBet - hero.bet) > 0 && heroActiveCount >= 3
+    && gs.seats.some(s => s.idx !== hero.idx && inHand(s) && !s.isFolded && s.stack > 0
+      && postActIndexOf(s.idx) > postActIndexOf(hero.idx) && s.bet < gs.currentBet)
   // vs-3bet: is the 3-bettor in position (acts after us post-flop) → flat tighter.
   const heroThreeBettorIP = heroScenario === 'vs3bet' && lastPreRaiserSeat >= 0 && hero
     ? postActIndexOf(lastPreRaiserSeat) > postActIndexOf(hero.idx)
@@ -3774,7 +3789,7 @@ export default function GamePage(): JSX.Element {
     const board = cur.community.filter(Boolean) as Card[]
     const adv = getPostflopAdvice({ hole: [c1, c2], board, pot: cur.pot, toCall,
       heroStack: h.stack, effStack: heroEffStack, opponents: Math.max(1, heroActiveCount - 1),
-      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead, facingRaise: heroFacingRaise })
+      inPosition: heroInPosition, aggression: heroAggression, barrels: heroBarrels, bb: bbAmt, villainTier: heroVillainTier, aggressors: heroAggressors, cappedRange: heroCappedRange, callPressure: heroCallPressure, donkLead: heroDonkLead, facingRaise: heroFacingRaise, notClosing: heroNotClosing })
     if (adv.action === 'FOLD') return { action: canCheck ? 'CHECK' : 'FOLD', amount: 0 }
     if (adv.action === 'CHECK') return { action: 'CHECK', amount: 0 }
     if (adv.action === 'CALL') return { action: 'CALL', amount: toCall }
@@ -4977,6 +4992,7 @@ export default function GamePage(): JSX.Element {
                 cappedRange={heroCappedRange}
                 donkLead={heroDonkLead}
                 facingRaise={heroFacingRaise}
+                notClosing={heroNotClosing}
                 callPressure={heroCallPressure}
                 bb={bbAmt}
                 raiseToBB={heroRaiseToBB}
