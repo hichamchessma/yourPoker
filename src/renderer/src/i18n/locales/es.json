@@ -609,6 +609,7 @@
     "waiting": "Esperando a los demás jugadores...",
     "paused": "En pausa",
     "handDonePrev": "Mano terminada — siguiente mano…",
+    "tableCleared": "Mesa despejada — recarga un bot (botón rebuy / +) para seguir jugando",
     "handDone": "Mano terminada",
     "quit": "Salir",
     "quitSim": "Salir de la simulación",

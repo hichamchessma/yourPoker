@@ -15,7 +15,7 @@ import RotateGate from '../components/RotateGate'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, diagnoseSpot, type EquityReasoning } from '../lib/postflopAdvisor'
-import { bestHandScore, computeSidePots, resolveAction } from '../lib/pokerEngine'
+import { bestHandScore, computeSidePots, distributePayouts, resolveAction } from '../lib/pokerEngine'
 import { setCurrency, money, curSymbol, curIsSuffix } from '../lib/money'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal, playSiren } from '../lib/sound'
@@ -30,7 +30,7 @@ import {
   type Speed as TourSpeed, blindStructure,
   placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
 } from '../lib/tournament'
-import { saveSession, type SessionKind } from '../lib/historyStore'
+import { saveSession, deleteSession, type SessionKind } from '../lib/historyStore'
 import { loadPerfs, savePerf } from '../lib/perfStore'
 import PerfReportModal from '../components/PerfReportModal'
 import { useLiveSession, type ResumableSession, type LiveFormat } from '../store/liveSessionStore'
@@ -1501,6 +1501,10 @@ export default function GamePage(): JSX.Element {
   const [tourResult, setTourResult] = useState<{ place: number; prize: number } | null>(null)
   const handHistoryRef = useRef<HandHistoryRecord[]>([]) // complete list (state lags via setState)
   const savedSessionRef = useRef(false)                  // guard against double-persisting
+  const tourBuyInsRef = useRef(1)                         // bullets fired (re-entries) → net = prize − buyIn×bullets
+  const prevTourSessionIdRef = useRef<number | null>(null) // superseded record to remove when a re-entry ends
+  const [cashCleared, setCashCleared] = useState(false)  // cash: table emptied (all bots busted) → auto-deal halted
+  const cashClearedRef = useRef(false)
   // Fast-forward: bots act near-instantly; the flow only "stops" on the hero's turn.
   const [fastFwd, setFastFwd] = useState(false)   // bots act instantly (fast OR turbo)
   const fastFwdRef = useRef(false)
@@ -1889,11 +1893,15 @@ export default function GamePage(): JSX.Element {
     savedSessionRef.current = true
     clearResumable('tournament')   // the tournament is over — nothing left to resume
     setActiveFormat(null)
-    saveSession('tournament',
+    // A re-entry made an earlier bust record obsolete → remove it so history keeps ONE
+    // record reflecting the FINAL bullet, with the net accounting for every buy-in paid.
+    if (prevTourSessionIdRef.current != null) { deleteSession('tournament', prevTourSessionIdRef.current); prevTourSessionIdRef.current = null }
+    const saved = saveSession('tournament',
       { title: t('sess.tourTitle', { buyIn: tournament.buyIn, n: tournament.field }),
         subtitle: `${place === 1 ? t('sess.tourWinner') : t('sess.tourElim', { place })} · ${prize > 0 ? `+$${prize.toLocaleString()}` : t('sess.tourNoPrize')}`,
-        resultBB: prize - tournament.buyIn },
+        resultBB: prize - tournament.buyIn * tourBuyInsRef.current },
       handHistoryRef.current)
+    prevTourSessionIdRef.current = saved?.id ?? null
   }
   function persistCash() {
     if (tournament || savedSessionRef.current || handHistoryRef.current.length === 0) return
@@ -2475,32 +2483,15 @@ export default function GamePage(): JSX.Element {
       return { ...s, isActive: false, handScore: score, handStrength: name }
     })
 
-    // Compute side pots and determine winners
+    // Compute side pots + award chips via the pure engine (tested by tools/engine-bench.ts):
+    // dead money (a tournament BB ante) joins the main pot, ties split, and an odd chip goes
+    // left of the button. DEAD money = pot chips not tied to any contested wager (normally 0).
     const sidePots = computeSidePots(evaluated)
-    const winnerSet = new Set<number>()
-    const payouts: Record<number, number> = {}
-
-    if (sidePots.length === 0) {
-      // No side pots — give pot to best hand among contenders
-      const best = contenders.reduce((a, b) => {
-        const sa = evaluated.find(e => e.idx === a.idx)?.handScore ?? 0
-        const sb2 = evaluated.find(e => e.idx === b.idx)?.handScore ?? 0
-        return sa >= sb2 ? a : b
-      })
-      payouts[best.idx] = (payouts[best.idx] ?? 0) + state.pot
-      winnerSet.add(best.idx)
-    } else {
-      for (const sp of sidePots) {
-        if (sp.eligible.length === 0) continue
-        const bestScore = Math.max(...sp.eligible.map(idx => evaluated.find(e => e.idx === idx)?.handScore ?? 0))
-        const potWinners = sp.eligible.filter(idx => (evaluated.find(e => e.idx === idx)?.handScore ?? 0) === bestScore)
-        const share = Math.floor(sp.amount / potWinners.length)
-        potWinners.forEach(idx => {
-          payouts[idx] = (payouts[idx] ?? 0) + share
-          winnerSet.add(idx)
-        })
-      }
-    }
+    const scoreByIdx = (idx: number) => evaluated.find(e => e.idx === idx)?.handScore ?? 0
+    const totalContested = evaluated.reduce((a, s) => a + (s.totalBet || 0), 0)
+    const deadMoney = Math.max(0, state.pot - totalContested)
+    const payouts = distributePayouts(sidePots, deadMoney, contenders.map(c => c.idx), scoreByIdx, state.dealerIdx, state.seats.length)
+    const winnerSet = new Set<number>(Object.keys(payouts).map(Number).filter(idx => payouts[idx] > 0))
 
     // ── International showdown order + muck rules ──
     // The last aggressor (last bet/raise/all-in) shows first; if there was no bet
@@ -2765,6 +2756,18 @@ export default function GamePage(): JSX.Element {
     return !!h && h.stack <= 0
   }
 
+  // Players who can still be dealt in (not busted). Hero always counts (can rebuy).
+  function liveCount(state: GState): number {
+    return state.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+  }
+  // Cash: after a rebuy / top-up brings a busted bot back, resume the halted table.
+  function maybeResumeCash() {
+    if (cashClearedRef.current && liveCount(gsRef.current) >= 2) {
+      cashClearedRef.current = false; setCashCleared(false)
+      scheduleNextHand()
+    }
+  }
+
   function scheduleNextHand() {
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     // A manually-authored scenario is a one-off spot — never auto-deal a new hand.
@@ -2772,6 +2775,10 @@ export default function GamePage(): JSX.Element {
     // Don't deal a new hand while the hero is busted (waiting on a rebuy) or the
     // tournament is already decided (won/out). Sitting out does NOT halt the table.
     if (heroIsBusted(gsRef.current) || tourRef.current.busted) return
+    // Cash: the hero busted every bot (all eliminated) → don't deal solo hands forever.
+    // Halt and surface a "table cleared" state; the seat rebuy / "+" buttons bring a bot
+    // back, and maybeResumeCash() restarts the flow once ≥2 players are live again.
+    if (!tournament && liveCount(gsRef.current) < 2) { cashClearedRef.current = true; setCashCleared(true); return }
     nextHandTimeoutRef.current = setTimeout(() => {
       nextHandTimeoutRef.current = null   // mark "fired" so the flow watchdog can detect a stall
       if (heroIsBusted(gsRef.current) || tourRef.current.busted) return
@@ -2843,7 +2850,12 @@ export default function GamePage(): JSX.Element {
     let pot = 0
     if (anteA > 0) {
       if (tournament) {
-        const a = Math.min(anteA, bbSeat.stack); bbSeat.stack -= a; bbSeat.totalBet += a; pot += a
+        // BB ante is DEAD money (not the BB's contested wager): it must NOT go into the BB's
+        // `totalBet`, or computeSidePots (which layers by totalBet) carves a phantom side pot
+        // that only the BB is eligible for → the ante is handed back to the BB every hand it
+        // loses (and destroyed if the BB folds). Kept out of totalBet, it's reconciled into
+        // the MAIN pot at showdown as dead money (see `deadMoney` there).
+        const a = Math.min(anteA, bbSeat.stack); bbSeat.stack -= a; pot += a
       } else {
         seats.forEach(s => { const ante = Math.min(anteA, s.stack); s.stack -= ante; s.totalBet += ante; pot += ante })
       }
@@ -3255,12 +3267,15 @@ export default function GamePage(): JSX.Element {
   }
 
   function rebuyPlayer(seatIdx: number) {
-    setGs(prev => ({
-      ...prev,
-      seats: prev.seats.map((s, i) => i === seatIdx
+    const apply = (st: GState): GState => ({
+      ...st,
+      seats: st.seats.map((s, i) => i === seatIdx
         ? { ...s, stack: stackBB * bbAmt, isEliminated: false, isSittingOut: false }
         : s),
-    }))
+    })
+    gsRef.current = apply(gsRef.current)
+    setGs(apply)
+    maybeResumeCash()
   }
 
   // Sandbox top-up: drop +50 BB onto ANY seat (incl. the hero) so you can build a deep
@@ -3270,6 +3285,7 @@ export default function GamePage(): JSX.Element {
     const apply = (st: GState): GState => ({ ...st, seats: st.seats.map((s, i) => i === seatIdx ? { ...s, stack: s.stack + inc, isEliminated: false } : s) })
     gsRef.current = apply(gsRef.current)
     setGs(apply)
+    maybeResumeCash()
   }
 
   // Hero rebuy with a chosen amount: refund the stack and resume the flow.
@@ -3292,6 +3308,8 @@ export default function GamePage(): JSX.Element {
     if (!tournament) return
     tourRef.current.busted = false
     tourRef.current.playersLeft += 1
+    savedSessionRef.current = false   // allow the FINAL bullet's result to be recorded (was one-shot)
+    tourBuyInsRef.current += 1         // another buy-in paid → net accounts for it at the end
     setTourResult(null)
     rebuyHero(tournament.startBB * tourLevels[0].bb)
   }
@@ -3305,6 +3323,7 @@ export default function GamePage(): JSX.Element {
     if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
     dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
     tourRef.current = { levelIdx: 0, secondsLeft: tournament.levelMinutes * 60, playersLeft: tournament.field, finalTable: false, busted: false, place: 0 }
+    savedSessionRef.current = false; tourBuyInsRef.current = 1; prevTourSessionIdRef.current = null   // fresh event → new bullet chain
     setTourLevelIdx(0)
     setTourHud({ playersLeft: tournament.field, secondsLeft: tournament.levelMinutes * 60 })
     setTourResult(null)
@@ -4745,8 +4764,8 @@ export default function GamePage(): JSX.Element {
                 ) : gs.phase === 'showdown' ? (
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-[#c9a227] animate-pulse"/>
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest">
-                      {gs.paused ? t('game.paused') : t('game.handDonePrev')}
+                    <p className="text-[10px] uppercase tracking-widest" style={{ color: cashCleared ? 'rgba(232,197,71,0.9)' : 'rgba(255,255,255,0.4)' }}>
+                      {cashCleared ? t('game.tableCleared') : gs.paused ? t('game.paused') : t('game.handDonePrev')}
                     </p>
                   </div>
                 ) : gs.phase === 'dealing' ? (

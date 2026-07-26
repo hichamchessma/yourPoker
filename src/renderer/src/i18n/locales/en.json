@@ -609,6 +609,7 @@
     "waiting": "Waiting for the other players...",
     "paused": "Paused",
     "handDonePrev": "Hand over — next hand…",
+    "tableCleared": "Table cleared — top up a bot (rebuy / + button) to keep playing",
     "handDone": "Hand over",
     "quit": "Quit",
     "quitSim": "Quit simulation",

@@ -78,6 +78,41 @@ export function computeSidePots(seats: PotSeat[]): { amount: number; eligible: n
   return pots.filter(p => p.amount > 0 && p.eligible.length > 0)
 }
 
+// Award chips to winners. Pure so the bench can assert chip conservation directly.
+//  • `deadMoney` (a tournament BB ante — chips in the pot not tied to any player's
+//    contested wager) joins the MAIN pot, contested by all, never refunded via a phantom
+//    single-eligible side pot.
+//  • Ties split; an indivisible remainder goes to the first winner LEFT OF THE BUTTON
+//    (standard odd-chip rule) — chips are never floored away / destroyed.
+//  • `score(idx)` returns a seat's hand score (higher = better).
+// INVARIANT: Σ payouts === Σ sidePots.amount + deadMoney (no chips created or lost).
+export function distributePayouts(
+  sidePots: { amount: number; eligible: number[] }[],
+  deadMoney: number,
+  contenders: number[],
+  score: (idx: number) => number,
+  dealerIdx: number,
+  nSeats: number,
+): Record<number, number> {
+  const payouts: Record<number, number> = {}
+  const leftOfButton = (idx: number) => nSeats > 0 ? (((idx - dealerIdx - 1) % nSeats) + nSeats) % nSeats : idx
+  // No contested side pots (e.g. all chips are dead money) → one main pot over the
+  // contenders so a tie still splits instead of one player scooping.
+  const pots = sidePots.length > 0
+    ? sidePots.map(p => ({ ...p }))
+    : (contenders.length > 0 ? [{ amount: 0, eligible: [...contenders] }] : [])
+  if (pots.length > 0) pots[0] = { ...pots[0], amount: pots[0].amount + Math.max(0, deadMoney) }
+  for (const sp of pots) {
+    if (sp.eligible.length === 0 || sp.amount <= 0) continue
+    const best = Math.max(...sp.eligible.map(score))
+    const winners = sp.eligible.filter(idx => score(idx) === best).sort((a, b) => leftOfButton(a) - leftOfButton(b))
+    const share = Math.floor(sp.amount / winners.length)
+    const remainder = sp.amount - share * winners.length   // 0..winners-1 odd chips
+    winners.forEach((idx, i) => { payouts[idx] = (payouts[idx] ?? 0) + share + (i < remainder ? 1 : 0) })
+  }
+  return payouts
+}
+
 // ── Bet / raise resolution + the incomplete-raise rule ──────────────────────
 export type ActionType = 'FOLD' | 'CHECK' | 'CALL' | 'BET' | 'RAISE' | 'ALL-IN'
 export interface BetSeat { bet: number; stack: number; totalBet: number; actedLevel?: number; isFolded?: boolean }

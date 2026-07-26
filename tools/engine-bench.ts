@@ -7,7 +7,7 @@
 //   npx esbuild tools/engine-bench.ts --bundle --format=esm --outfile=_e.mjs \
 //     --log-level=error && node _e.mjs && rm _e.mjs
 //
-import { bestHandScore, evalFive, computeSidePots, resolveAction, isReopened, type BetTable } from '../src/renderer/src/lib/pokerEngine'
+import { bestHandScore, evalFive, computeSidePots, distributePayouts, resolveAction, isReopened, type BetTable } from '../src/renderer/src/lib/pokerEngine'
 
 const C = (r: string, s: string) => ({ rank: r, suit: s })
 const H = (str: string) => str.trim().split(/\s+/).map(x => C(x[0], x[1])) as any   // "Ah Kd Qc" → cards
@@ -151,6 +151,38 @@ function act(seats: S[], table: BetTable, idx: number, action: string, amount = 
   seats[0].actedLevel = 1                                 // a déjà agi (non rouvert)
   const callAllin = act(seats, table, 0, 'ALL-IN')
   t(callAllin.action === 'ALL-IN' && callAllin.bet === 4000 && table.currentBet === 9777, 'call all-in ≤ call : reste all-in, ne relève pas currentBet')
+}
+
+// ════ E. DISTRIBUTION DES GAINS AU SHOWDOWN (conservation, ante BB, odd-chip) ════
+console.log('E. Distribution des gains:')
+const dp = (pots: { amount: number; eligible: number[] }[], dead: number, contenders: number[], scores: Record<number, number>, dealer: number, nS: number) =>
+  distributePayouts(pots, dead, contenders, (i) => scores[i] ?? 0, dealer, nS)
+const sum = (o: Record<number, number>) => Object.values(o).reduce((a, b) => a + b, 0)
+{
+  // Conservation : Σ gains = Σ pots (main + side) ; le meilleur score rafle les deux
+  const pay = dp([{ amount: 150, eligible: [0, 1, 2] }, { amount: 300, eligible: [1, 2] }], 0, [0, 1, 2], { 0: 10, 1: 30, 2: 20 }, 0, 3)
+  t(sum(pay) === 450, 'conservation : Σ gains = Σ pots (450)')
+  t(pay[1] === 450 && !pay[0] && !pay[2], 'meilleur score rafle main + side')
+}
+{
+  // Ante BB (dead money) : la BB (siège 2) PERD → l’ante va au gagnant, PAS remboursée (le bug fixé)
+  const pay = dp([{ amount: 600, eligible: [0, 1, 2] }], 50, [0, 1, 2], { 0: 100, 1: 20, 2: 20 }, 0, 3)
+  t(sum(pay) === 650, 'ante BB : dead money distribué (650), pas détruit')
+  t(pay[0] === 650, 'ante mort → au gagnant, PAS remboursée à la BB')
+  t(!pay[2], 'la BB qui perd ne récupère rien de son ante')
+}
+{
+  // Odd-chip : pot 200 partagé à 3 → 200 entièrement distribué (0 jeton détruit)
+  const pay = dp([{ amount: 200, eligible: [0, 1, 2] }], 0, [0, 1, 2], { 0: 50, 1: 50, 2: 50 }, 2, 3)
+  t(sum(pay) === 200, 'chop 3-way indivisible : 0 jeton détruit')
+  t(pay[0] === 67 && pay[1] === 67 && pay[2] === 66, 'reste (2) aux premiers gagnants à gauche du bouton')
+}
+{
+  // Égalité 2-way → 50/50 exact ; fallback sans side pots (tout dead money) → partagé, pas de scoop
+  const even = dp([{ amount: 100, eligible: [0, 1] }], 0, [0, 1], { 0: 80, 1: 80 }, 0, 2)
+  t(even[0] === 50 && even[1] === 50, 'égalité 2-way → 50/50')
+  const deadOnly = dp([], 100, [0, 1], { 0: 40, 1: 40 }, 0, 2)
+  t(sum(deadOnly) === 100 && deadOnly[0] === 50 && deadOnly[1] === 50, 'dead-money seul → partagé entre égalités (pas de scoop)')
 }
 
 console.log('\n' + '═'.repeat(52))
