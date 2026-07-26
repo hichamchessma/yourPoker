@@ -2359,6 +2359,20 @@ export default function GamePage(): JSX.Element {
       (!s.isFolded && !s.isEliminated && (s.holeCards[0] || s.holeCards[1])) ? { ...s, cardsFaceUp: true } : s) }
   }
 
+  // A between-street transition timer (collect→reveal→showdown, or deal the next board)
+  // that SURVIVES a pause: while paused it re-polls instead of firing, so it never commits
+  // its pre-pause snapshot and silently un-pauses the table (the old bare setTimeouts did).
+  // flowGen still supersedes it on undo / restart / a new hand. Resumes exactly where it
+  // left off the instant the game unpauses.
+  function scheduleFlow(gen: number, ms: number, fn: () => void) {
+    const tick = () => {
+      if (flowGenRef.current !== gen) return                        // superseded → drop
+      if (gsRef.current.paused) { setTimeout(tick, 150); return }   // paused → keep waiting
+      fn()
+    }
+    setTimeout(tick, ms)
+  }
+
   function endStreet(state: GState): void {
     // Slide every committed bet into the central pot, then reset the bets.
     const collectMs = collectBetsToPot(state.seats)
@@ -2369,8 +2383,7 @@ export default function GamePage(): JSX.Element {
       // Clear the front bets now so they merge into the pot, then reveal — but only
       // AFTER the collected stacks have landed, so the payout never overlaps them.
       setGs(newState); gsRef.current = newState
-      const gen = flowGenRef.current
-      setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(gsRef.current) }, fastFwdRef.current ? 60 : Math.max(650, collectMs + 140))
+      scheduleFlow(flowGenRef.current, fastFwdRef.current ? 60 : Math.max(650, collectMs + 140), () => showdown(gsRef.current))
     } else {
       const nextPhase: Phase =
         newState.phase === 'preflop' ? 'flop' :
@@ -2381,8 +2394,7 @@ export default function GamePage(): JSX.Element {
       const revealed = revealAllInCards(newState)
       if (revealed !== newState) {
         setGs(revealed); gsRef.current = revealed
-        const gen = flowGenRef.current
-        setTimeout(() => { if (flowGenRef.current !== gen) return; dealCommunity(gsRef.current, nextPhase) }, fastFwdRef.current ? 80 : 900)
+        scheduleFlow(flowGenRef.current, fastFwdRef.current ? 80 : 900, () => dealCommunity(gsRef.current, nextPhase))
       } else {
         dealCommunity(newState, nextPhase)
       }
@@ -2414,12 +2426,10 @@ export default function GamePage(): JSX.Element {
     setGs(newState)
     gsRef.current = newState
     // Let the board land, then open a fresh betting round on this street.
-    const gen = flowGenRef.current
-    setTimeout(() => {
-      if (flowGenRef.current !== gen) return
+    scheduleFlow(flowGenRef.current, fastFwdRef.current ? 70 : 750, () => {
       const first = firstActivePostflop(newState.seats, newState.dealerIdx)
       startStreet(newState, first)
-    }, fastFwdRef.current ? 70 : 750)
+    })
   }
 
   function startStreet(state: GState, firstToAct: number) {
@@ -3348,12 +3358,19 @@ export default function GamePage(): JSX.Element {
     if (paused) {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       if (nextHandTimeoutRef.current) clearTimeout(nextHandTimeoutRef.current)
-      dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = []
+      // Don't kill the deal animation mid-flight: it's brief and non-interactive, and
+      // openPreflop preserves `paused` + routes the first action through scheduleAutoNext
+      // (which honours pause). Clearing it here + the resume branch skipping 'dealing' used
+      // to soft-lock the hand forever. Between-street transitions now poll via scheduleFlow.
+      if (cur.phase !== 'dealing') { dealTimeoutsRef.current.forEach(t => clearTimeout(t)); dealTimeoutsRef.current = [] }
     } else {
-      // Resume: at showdown restart the next-hand countdown, otherwise the action loop.
+      // Resume: at showdown restart the next-hand countdown, otherwise the action loop —
+      // but ONLY when an action is actually pending. Mid-transition (empty queue) the
+      // scheduleFlow timer resumes the board/showdown itself; kicking scheduleAutoNext here
+      // would hit processNextAction with an empty queue → a second endStreet (skipped street).
       if (ns.phase === 'showdown') {
         if (!heroIsBusted(ns)) scheduleNextHand()
-      } else if (ns.phase !== 'idle' && ns.phase !== 'dealing') {
+      } else if (ns.phase !== 'idle' && ns.phase !== 'dealing' && ns.actQueue.length > 0) {
         scheduleAutoNext(ns, 300)
       }
     }
@@ -4123,7 +4140,9 @@ export default function GamePage(): JSX.Element {
               else { nf = false; nt = false }
               fastFwdRef.current = nf; setFastFwd(nf); turboRef.current = nt; setTurbo(nt)
               const cur = gsRef.current
-              if (nf && !cur.paused && !manualModeRef.current && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20)
+              // Only kick the loop when an action is actually queued. Firing mid-transition
+              // (empty queue, board dealing) would re-enter endStreet → skip a betting round.
+              if (nf && !cur.paused && !manualModeRef.current && cur.actQueue.length > 0 && cur.phase !== 'idle' && cur.phase !== 'showdown') scheduleAutoNext(cur, 20)
             }}
             title={turbo ? t('sess.turboTip') : fastFwd ? t('sess.fastTip') : t('sess.accelTip')}
             className="app-drag-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase tracking-widest"
