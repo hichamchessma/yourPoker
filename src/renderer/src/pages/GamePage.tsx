@@ -773,7 +773,11 @@ function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: 
       // overbet/jam folds out the worse hands you beat (lost value), while a tiny bet
       // under-charges draws. Only when you opened the betting (toCall === 0).
       if (toCall === 0 && adv.action === 'BET' && pot > 0 && (act.actionType === 'BET' || act.actionType === 'ALL-IN' || act.actionType === 'RAISE')) {
-        const betFrac = act.amount / pot
+        // Size the bet by what can ACTUALLY be called: a jam for more than the biggest
+        // live opponent can match is only effectively `effStack` — the excess is returned,
+        // never wagered. Judging the raw shove ($47k) as a 172% overbet when only $22k
+        // (0.8× pot) is callable is a false "SURBET". Cap at effStack → the real % of pot.
+        const betFrac = Math.min(act.amount, effStack) / pot
         const sprNow = effStack / pot
         const isValue = adv.equity >= 0.6
         if (isValue && betFrac > 1.15) {
