@@ -2724,6 +2724,18 @@ export default function GamePage(): JSX.Element {
           usedNames.add(r.name)
           return r
         })
+        // Off-table budget exhausted → the hero holds (essentially) ALL the tournament's
+        // chips, so no arrival can be seated and the table can't be repopulated. That IS a
+        // win, even though the time-based field model hasn't ticked down to the final table
+        // yet. Without this the hero is dealt solo hands ("Tous foldé", $0 pot) forever.
+        const liveAfter = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
+        if (liveAfter.length === 1 && liveAfter[0].isHero && !t.busted) {
+          t.busted = true; t.place = 1
+          const prize = prizeForPlace(1, tourPayouts())
+          setTourResult({ place: 1, prize })
+          persistTournament(1, prize)
+          return
+        }
       } else {
         // Final table: no refill. If the hero is the last one standing → victory.
         const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
