@@ -292,8 +292,13 @@ export default function TrainingSetupPage(): JSX.Element {
   const chipScale = box.w ? Math.max(0.62, Math.min(1, box.w / 672)) : 1
 
   const handleConfirm = () => {
+    // Safety net: never hand the engine an invalid blind structure. SB must be a positive
+    // integer ≤ BB (the SB posts less than the BB), BB a positive integer, ante ≥ 0.
+    const safeBb = Math.max(1, Math.round(bb))
+    const safeSb = Math.min(safeBb, Math.max(1, Math.round(sb)))
+    const safeAnte = Math.max(0, Math.round(ante))
     navigate('/game', {
-      state: { numPlayers, selectedSeat: safeSelectedSeat, stackBB, sb, bb, ante, decisionTimer, gameVariant, gameSpeed, anonymousMode, slots, displayName, currency }
+      state: { numPlayers, selectedSeat: safeSelectedSeat, stackBB, sb: safeSb, bb: safeBb, ante: safeAnte, decisionTimer, gameVariant, gameSpeed, anonymousMode, slots, displayName, currency }
     })
   }
 
@@ -537,8 +542,8 @@ export default function TrainingSetupPage(): JSX.Element {
                   return (
                     <div className="absolute pointer-events-auto" style={{ left: `${xPct}%`, top: `${yPct}%`, transform: `translate(-50%, -50%) scale(${chipScale})`, zIndex: 15 }}>
                       <BlindChip label="SB" value={sb} color="#55bbff"
-                        onInc={() => setSb(v => +(v + 0.5).toFixed(1))}
-                        onDec={() => setSb(v => Math.max(0.5, +(v - 0.5).toFixed(1)))}/>
+                        onInc={() => setSb(v => Math.min(bb, Math.round(v) + 1))}
+                        onDec={() => setSb(v => Math.max(1, Math.round(v) - 1))}/>
                     </div>
                   )
                 })()}
@@ -549,8 +554,8 @@ export default function TrainingSetupPage(): JSX.Element {
                   return (
                     <div className="absolute pointer-events-auto" style={{ left: `${xPct}%`, top: `${yPct}%`, transform: `translate(-50%, -50%) scale(${chipScale})`, zIndex: 15 }}>
                       <BlindChip label="BB" value={bb} color="#c9a227"
-                        onInc={() => setBb(v => v + 1)}
-                        onDec={() => setBb(v => Math.max(1, v - 1))}/>
+                        onInc={() => setBb(v => Math.round(v) + 1)}
+                        onDec={() => { const nb = Math.max(1, Math.round(bb) - 1); setBb(nb); setSb(s => Math.min(s, nb)) }}/>
                     </div>
                   )
                 })()}
@@ -672,9 +677,9 @@ export default function TrainingSetupPage(): JSX.Element {
               <div className="flex items-center justify-between">
                 <p className="text-[8px] font-bold text-white/45 uppercase tracking-widest">{t('train.ante')}</p>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setAnte(v => Math.max(0, +(v - 0.5).toFixed(1)))} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Minus size={9} className="text-white/55"/></button>
+                  <button onClick={() => setAnte(v => Math.max(0, Math.round(v) - 1))} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Minus size={9} className="text-white/55"/></button>
                   <span className="text-sm font-bold text-poker-gold w-8 text-center">{ante}</span>
-                  <button onClick={() => setAnte(v => +(v + 0.5).toFixed(1))} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Plus size={9} className="text-white/55"/></button>
+                  <button onClick={() => setAnte(v => Math.round(v) + 1)} className="w-6 h-6 rounded bg-white/8 flex items-center justify-center hover:bg-white/15 transition-colors"><Plus size={9} className="text-white/55"/></button>
                 </div>
               </div>
             </div>
