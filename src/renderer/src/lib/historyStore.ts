@@ -15,6 +15,7 @@ export interface SavedSession {
   title: string           // e.g. "MTT $20 · 180 joueurs" / "Cash 6-max 1/2"
   subtitle: string        // e.g. "Éliminé 47e · +$320" / "+63 BB en 41 mains"
   resultBB: number        // net hero result in BB (for color)
+  currency?: string       // cash: the table's currency symbol ($/€/DH) so replays format right
   hands: HandHistoryRecord[]
 }
 

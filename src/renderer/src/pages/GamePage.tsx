@@ -16,7 +16,7 @@ import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
 import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
 import { getPostflopAdvice, buildEquityReasoning, handCatLabel, diagnoseSpot, type EquityReasoning } from '../lib/postflopAdvisor'
 import { bestHandScore, computeSidePots, distributePayouts, resolveAction } from '../lib/pokerEngine'
-import { setCurrency, money, curSymbol, curIsSuffix } from '../lib/money'
+import { setCurrency, setMoneyLocale, money, curSymbol, curIsSuffix } from '../lib/money'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal, playSiren } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
@@ -1463,6 +1463,7 @@ export default function GamePage(): JSX.Element {
   // Denominate every on-table amount in the currency picked at table creation ($/€/DH).
   // (A resumed session spreads its saved cfg, so cfg.currency is already present.)
   setCurrency(cfg.currency)
+  setMoneyLocale(i18n.language)   // group numbers by the in-app language (fr "8 100" / en "8,100")
 
   const numPlayers = cfg.numPlayers ?? 6
   const selectedSeat = cfg.selectedSeat ?? 0
@@ -1910,7 +1911,7 @@ export default function GamePage(): JSX.Element {
     saveSession('cash',
       { title: isScenario ? t('sess.cashScenario') : t('sess.cashTitle', { n: numPlayers, sb: cfg.sb, bb: cfg.bb }),
         subtitle: t('sess.cashSubtitle', { sign: netBB > 0 ? '+' : '', bb: netBB, count: handHistoryRef.current.length }),
-        resultBB: netBB },
+        resultBB: netBB, currency: cfg.currency },   // so the replay formats €/DH, not a stale "$"
       handHistoryRef.current)
   }
 
@@ -4631,7 +4632,7 @@ export default function GamePage(): JSX.Element {
                   <p className="text-[9px] text-white/40">{t('game.rechargeTapis')}</p>
                 </div>
                 <div className="flex items-center rounded-lg border border-[#c9a227]/40 bg-black/45 overflow-hidden">
-                  <span className="pl-2.5 text-[12px] text-white/40 font-mono">$</span>
+                  <span className="pl-2.5 text-[12px] text-white/40 font-mono">{curSymbol()}</span>
                   <input
                     type="number"
                     value={rebuyAmt}
@@ -4728,7 +4729,7 @@ export default function GamePage(): JSX.Element {
                     </button>
                     {showBetInput && (
                       <div className="flex items-center rounded-lg border border-[#c9a227]/30 bg-black/45 overflow-hidden shrink-0">
-                        <span className="pl-1.5 text-[11px] text-white/35 font-mono">$</span>
+                        <span className="pl-1.5 text-[11px] text-white/35 font-mono">{curSymbol()}</span>
                         <input
                           type="number"
                           value={heroBetAmt}

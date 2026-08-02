@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { History, Medal, Coins, Trash2, Play, Calendar } from 'lucide-react'
 import { loadSessions, deleteSession, type SessionKind, type SavedSession } from '../lib/historyStore'
+import { setCurrency, setMoneyLocale } from '../lib/money'
 import { HandHistoryModal } from './GamePage'
 
 export default function HistoryPage() {
@@ -54,7 +55,7 @@ export default function HistoryPage() {
                 <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/5">
                   <span className="flex items-center gap-1.5 text-[10px] text-white/35"><Calendar size={11} /> {new Date(s.date).toLocaleString(i18n.language, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {t('hist.moves', { count: s.hands.length })}</span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setOpen(s)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/25"><Play size={11} /> {t('hist.replay')}</button>
+                    <button onClick={() => { setCurrency(s.currency ?? '$'); setMoneyLocale(i18n.language); setOpen(s) }} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#c9a227]/15 border border-[#c9a227]/40 text-[#c9a227] hover:bg-[#c9a227]/25"><Play size={11} /> {t('hist.replay')}</button>
                     <button onClick={() => remove(s.id)} className="text-white/25 hover:text-red-400 transition-colors p-1"><Trash2 size={13} /></button>
                   </div>
                 </div>
