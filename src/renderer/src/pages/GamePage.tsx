@@ -1669,7 +1669,7 @@ export default function GamePage(): JSX.Element {
         if (fm <= tournament.tableSize) t.finalTable = true
         else t.playersLeft = Math.max(tournament.tableSize, fm)
       }
-      if (t.finalTable) t.playersLeft = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+      if (t.finalTable) t.playersLeft = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero || s.isAllIn)).length
       setTourHud({ playersLeft: t.playersLeft, secondsLeft: t.secondsLeft })
     }, 1000)
     return () => clearInterval(id)
@@ -1699,7 +1699,7 @@ export default function GamePage(): JSX.Element {
       if (fm <= tournament.tableSize) t.finalTable = true
       else t.playersLeft = Math.max(tournament.tableSize, fm)
     }
-    if (t.finalTable) t.playersLeft = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+    if (t.finalTable) t.playersLeft = gsRef.current.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero || s.isAllIn)).length
     setTourHud({ playersLeft: t.playersLeft, secondsLeft: t.secondsLeft })
   }
 
@@ -2735,7 +2735,7 @@ export default function GamePage(): JSX.Element {
         // chips, so no arrival can be seated and the table can't be repopulated. That IS a
         // win, even though the time-based field model hasn't ticked down to the final table
         // yet. Without this the hero is dealt solo hands ("Tous foldé", $0 pot) forever.
-        const liveAfter = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
+        const liveAfter = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero || s.isAllIn))
         if (liveAfter.length === 1 && liveAfter[0].isHero && !t.busted) {
           t.busted = true; t.place = 1
           const prize = prizeForPlace(1, tourPayouts())
@@ -2745,7 +2745,7 @@ export default function GamePage(): JSX.Element {
         }
       } else {
         // Final table: no refill. If the hero is the last one standing → victory.
-        const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero))
+        const alive = seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero || s.isAllIn))
         if (alive.length === 1 && alive[0].isHero && !t.busted) {
           t.busted = true; t.place = 1
           const prize = prizeForPlace(1, tourPayouts())
@@ -2774,7 +2774,7 @@ export default function GamePage(): JSX.Element {
 
   // Players who can still be dealt in (not busted). Hero always counts (can rebuy).
   function liveCount(state: GState): number {
-    return state.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero)).length
+    return state.seats.filter(s => !s.isEliminated && (s.stack > 0 || s.isHero || s.isAllIn)).length
   }
   // Cash: after a rebuy / top-up brings a busted bot back, resume the halted table.
   function maybeResumeCash() {
@@ -4293,7 +4293,10 @@ export default function GamePage(): JSX.Element {
           const heroStack = hero?.stack ?? 0
           const rank = estimateRank(heroStack, avgStack, playersLeft)
           const places = placesPaid(tournament.field, tournament.paidPct)
-          const itm = rank <= places
+          // ITM is LOCKED only when the remaining field ≤ paid spots (everyone left cashes),
+          // not merely when the hero PROJECTS to cash — otherwise a slightly-above-average
+          // stack shows a green "ITM +$X" from hand 1 with 800 players still to bust.
+          const itm = playersLeft <= places
           const toBubble = playersLeft - places
           const Cell = ({ label, value, accent }: { label: string; value: string; accent?: boolean }) => (
             <div className="flex flex-col items-center px-3">
