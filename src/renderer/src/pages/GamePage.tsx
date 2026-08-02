@@ -2046,7 +2046,6 @@ export default function GamePage(): JSX.Element {
     const tier = Math.max(1, Math.min(3, seat.level))
     const posBonus = POS_BONUS[seat.position] ?? 0.75
     const toCall = state.currentBet - seat.bet
-    const potOdds = state.pot > 0 ? toCall / (state.pot + toCall) : 0
     // Priced in / pot-committed: a tiny call into a big pot (≈9:1+) — or a small bump
     // over what we've ALREADY put in this street — is mandatory, whatever the hand. No
     // one folds $12000 for $710. Overrides ONLY the fold (pre- & post-flop), never the
@@ -2089,8 +2088,15 @@ export default function GamePage(): JSX.Element {
     // on how many raises have been made before us → open / 3-bet / 4-bet logic.
     if (!onBoard) {
       const psv = preflopStrength(c1, c2)            // 1..10 hand chart value
-      const preRaises = currentHandActionsRef.current
-        .filter(a => a.phase === 'preflop' && (a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
+      // Count GENUINE raises (the bet level actually INCREASED), not action labels: a short
+      // all-in CALL is labelled 'ALL-IN' (must NOT count — else everyone behind is wrongly
+      // pushed into the vs-3bet tier) and a BB iso-raise is labelled 'BET' (must count).
+      // Blinds excluded; maxTo starts at the BB, so only a bet-to above it is a raise.
+      let maxTo = bbAmt, preRaises = 0
+      for (const a of currentHandActionsRef.current) {
+        if (a.phase !== 'preflop' || a.seatIdx < 0 || a.actionType === 'SB' || a.actionType === 'BB') continue
+        if (a.amount > maxTo + 1e-6) { preRaises++; maxTo = a.amount }
+      }
       const pp = preflopProbs(psv, posBonus, preRaises, tier, toCall, bbAmt > 0 ? toCall / bbAmt : 0)
       let acc = pp.aggr
       if (rand < acc) {
@@ -2123,8 +2129,8 @@ export default function GamePage(): JSX.Element {
     // Facing a bet/raise.
     if (strength >= p.raiseValue) return { action: 'RAISE', amount: raiseTo(valueRaiseFrac()) }       // value raise
     if (draw && rand < p.semiBluff * 0.7) return { action: 'RAISE', amount: raiseTo(0.8) }            // semi-bluff raise
-    if (strength >= potOdds + p.callEdge) return { action: 'CALL', amount: toCall }                   // call with showdown value
-    if (draw && strength + 0.18 >= potOdds) return { action: 'CALL', amount: toCall }                 // call the draw on odds
+    if (strength >= effOdds + p.callEdge) return { action: 'CALL', amount: effCall }                  // call with showdown value (effective price)
+    if (draw && strength + 0.18 >= effOdds) return { action: 'CALL', amount: effCall }                // call the draw on the effective odds
     if (rand < p.spew) return { action: 'CALL', amount: toCall }                                      // tilt: loose call
     if (tier >= 2 && rand < p.bluff * 0.6) return { action: 'RAISE', amount: raiseTo(0.8) }           // occasional bluff raise
     return pricedIn ? { action: 'CALL', amount: effCall } : { action: 'FOLD', amount: 0 }              // never fold when pot-committed
