@@ -705,12 +705,22 @@ export default function TrainingSetupPage(): JSX.Element {
               <div className="mb-3">
                 <p className="text-[8px] text-white/38 mb-1.5">{t('train.gameVariant')}</p>
                 <div className="flex gap-1">
-                  {(['NLH','PLO','PLO5'] as const).map(v => (
-                    <button key={v} onClick={() => setGameVariant(v)}
-                      className={`flex-1 py-1.5 rounded-lg border text-[8px] font-bold transition-all ${
-                        gameVariant === v ? 'bg-poker-gold/22 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/8 text-white/38 hover:border-white/22'
-                      }`}>{v}</button>
-                  ))}
+                  {(['NLH','PLO','PLO5'] as const).map(v => {
+                    // The engine is Hold'em-only — a PLO pick used to be accepted and then
+                    // silently deal NLH. Show it as coming, never as playable.
+                    const soon = v !== 'NLH'
+                    return (
+                      <button key={v} disabled={soon} title={soon ? t('train.soon') : undefined}
+                        onClick={() => { if (!soon) setGameVariant(v) }}
+                        className={`flex-1 py-1 rounded-lg border text-[8px] font-bold transition-all ${
+                          soon ? 'bg-white/[0.02] border-white/5 text-white/20 cursor-not-allowed'
+                          : gameVariant === v ? 'bg-poker-gold/22 border-poker-gold text-poker-gold' : 'bg-white/4 border-white/8 text-white/38 hover:border-white/22'
+                        }`}>
+                        {v}
+                        {soon && <span className="block text-[6px] font-bold uppercase tracking-[0.1em] opacity-70">{t('train.soon')}</span>}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import { X, Play, TrendingUp, TrendingDown, Minus, Target, AlertTriangle, CheckCircle2 } from 'lucide-react'
-import type { SessionEval, Street, LeakKind } from '../pages/GamePage'
+import type { SessionEval, Street, LeakKind } from '../lib/handTypes'
 
 const GRADE_COLOR: Record<SessionEval['grade'], string> = {
   S: '#f0c060', A: '#34d399', B: '#2dd4bf', C: '#f59e0b', D: '#f87171',

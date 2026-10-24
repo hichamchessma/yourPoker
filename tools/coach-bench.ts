@@ -9,7 +9,7 @@
 // flake them. A failing line prints "❌ <reason>". Green = no behavioural regression.
 import { getPostflopAdvice, buildEquityReasoning } from '../src/renderer/src/lib/postflopAdvisor'
 import { buildRangeMap } from '../src/renderer/src/lib/preflopRanges'
-import { applyAction, initRange } from '../src/renderer/src/lib/rangeEstimator'
+import { applyAction, initRange, madeStrength, hasStrongDraw } from '../src/renderer/src/lib/rangeEstimator'
 
 const C = (r: string, s: string) => ({ rank: r, suit: s })
 const H = (s: string) => { const x = s.replace(/\s/g, ''); return [C(x[0], x[1]), C(x[2], x[3])] as any }
@@ -148,6 +148,45 @@ console.log('I. Équité vs cote:')
   // "vFoldRealize" (jamais "je n'ai PAS la cote" en se contredisant).
   const r3 = buildEquityReasoning({ hole: H('KhQd'), board: BD('Ts 9c 2d'), pot: 1000, toCall: 250, equity: 0.35, decision: 'fold' })!
   t(r3.hasOdds && r3.verdict === 'fold', 'fold AVEC la cote → hasOdds reste vrai (texte realize, pas de contradiction)')
+}
+
+// ════ J. COHÉRENCE bots ⇄ estimateur (une seule lecture de main) ════
+// Ces 3 familles étaient divergentes : le coach avait été corrigé, les bots et la Range
+// Vision non. Elles partagent maintenant madeStrength / hasStrongDraw / priceBB.
+console.log("J. Coherence bots <-> estimateur:")
+{
+  // (1) TIRAGE COULEUR FANTÔME : 4 cartes d une couleur ENTIÈREMENT au board n est pas
+  // le tirage de la main — sinon tout le monde "a un tirage" et semi-bluffe à vide.
+  t(hasStrongDraw(H('JsJc'), BD('Qh 7h 2h 5h')) === false, "board 4 coeurs + main noire -> PAS de tirage couleur (fantome)")
+  t(hasStrongDraw(H('Jh9d'), BD('Qh 7h 2h 5c')) === true, "vrai tirage couleur (3 au board + 1 en main) -> detecte")
+
+  // (2) MAIN 100% BOARD : un brelan que la main ne compose pas est partagé (un kicker),
+  // pas de la force → les bots ne doivent plus s envoyer un pot chopé.
+  const boardTrips = madeStrength(H('QsTd'), BD('Ah 2c Kd Kh Ks'))
+  const realFull = madeStrength(H('AcTd'), BD('Ah 2c Kd Kh Ks'))
+  console.log(`   brelan 100% board ${boardTrips.toFixed(2)} vs vrai full ${realFull.toFixed(2)}`)
+  t(boardTrips <= 0.2, "brelan entierement au board -> demote (pas de la value)")
+  t(realFull >= 0.9, "vrai full (As apparie) -> value maximale (non-regression)")
+
+  // (3) priceBB : un tapis de 100bb est un CALL-OFF, pas un flat-call. La range AFFICHÉE
+  // doit se resserrer comme celle du bot (elle restait large avant le câblage).
+  const pfCtx = (priceBB: number, toCall: number) => ({
+    preflop: true, board: [] as any, toCall, potOdds: toCall / (toCall + 3),
+    posBonus: 0.85, tier: 2, human: false, mood: 0, priorRaises: 1, priceBB,
+  })
+  const callRange = (priceBB: number, toCall: number) => applyAction(initRange(), 'call', pfCtx(priceBB, toCall) as any) as any
+  const width = (r: any) => Object.values(r).reduce((a: any, b: any) => a + b, 0) as number
+  const openR = callRange(2.5, 2.5), bigR = callRange(18, 18)
+  console.log(`   largeur CALL: open 2.5bb ${width(openR).toFixed(0)} combos -> re-raise 18bb ${width(bigR).toFixed(0)}`)
+  t((openR['KJo'] ?? 0) > 0, "KJo flat-call un open de 2.5bb")
+  t((bigR['KJo'] ?? 0) === 0, "KJo coupe du continue face a un re-raise de 18bb (priceBB cable)")
+  t((bigR['AQo'] ?? 0) > 0, "AQo continue encore a 18bb (le coeur de value survit)")
+  t(width(bigR) < width(openR) * 0.4, "la range de CALL se resserre fortement quand le prix monte")
+  t(((applyAction(initRange(), 'aggr', pfCtx(100, 100) as any) as any)['AA'] ?? 0) > 0, "AA paie toujours le tapis (non-regression)")
+  // Garde-fou : une observation que le modele ne sait pas expliquer (ici un CALL que
+  // personne n est cense faire face a un tapis de 100bb) ne doit PAS vider la range,
+  // sinon la heatmap devient blanche et tout ce qui avait ete appris est perdu.
+  t(width(callRange(100, 100)) > 0, "observation inexplicable -> range preservee (heatmap jamais blanche)")
 }
 
 console.log('\n' + '═'.repeat(52))

@@ -1,8 +1,6 @@
 ﻿import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
-// Module-level helper for the (non-component) hand-history critique builder.
-const tc = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Play, Pause, Square, Keyboard, RefreshCw, Eye, FastForward, RotateCw, Target } from 'lucide-react'
@@ -10,20 +8,20 @@ import { useDevice } from '../lib/useDevice'
 import PlayerAvatar, { avatarForSeat } from '../components/PlayerAvatar'
 import { PlayingCard, FaceDown, EmptySlot, ChipStack, FlyingStack, DealerButtonToken, TableSVG, Room, type RoomVariant } from '../components/tableVisuals'
 import RangeAssistant from '../components/RangeAssistant'
-import RangeHeatmap from '../components/RangeHeatmap'
-import RotateGate from '../components/RotateGate'
 import RangeEvolution, { type RangeStep } from '../components/RangeEvolution'
-import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap, handOpenRank, openPctFor } from '../lib/preflopRanges'
-import { getPostflopAdvice, buildEquityReasoning, handCatLabel, diagnoseSpot, type EquityReasoning } from '../lib/postflopAdvisor'
+import { type Scenario, handKeyFromCards, buildRangeMap, buildJamCallMap } from '../lib/preflopRanges'
+import { getPostflopAdvice, handCatLabel } from '../lib/postflopAdvisor'
 import { bestHandScore, computeSidePots, distributePayouts, resolveAction } from '../lib/pokerEngine'
-import { setCurrency, setMoneyLocale, money, curSymbol, curIsSuffix } from '../lib/money'
+import { setCurrency, setMoneyLocale, money, curSymbol } from '../lib/money'
 import { isElectron } from '../lib/platform'
 import { playSound, playDeal, playSiren } from '../lib/sound'
 import SoundToggle from '../components/SoundToggle'
 import LanguageSwitcher from '../components/LanguageSwitcher'
-import EquityReasoningBlock from '../components/EquityReasoning'
 import {
-  initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS,
+  initRange, applyAction, rangeView, actionSummary, preflopProbs, HAND_KEYS, POS_BONUS,
+  // madeStrength / hasStrongDraw live in the estimator so the BOTS and the shown RANGES
+  // read a hand exactly the same way (they used to be duplicated here and drifted apart).
+  madeStrength, hasStrongDraw,
   type RangeWeights, type ActCat,
 } from '../lib/rangeEstimator'
 import {
@@ -31,16 +29,20 @@ import {
   placesPaid, payoutTable, prizeForPlace, fieldRemaining, estimateRank,
 } from '../lib/tournament'
 import { saveSession, deleteSession, type SessionKind } from '../lib/historyStore'
+// The hand-history vocabulary, the replay reconstruction, the coach verdict and the
+// replay UI now live outside this file (lib/handTypes, lib/handCritique,
+// components/HandHistoryModal). GamePage orchestrates the LIVE table, nothing else.
+import type { Suit, Phase, Card, HistoryAction, HandHistoryRecord, SessionEval } from '../lib/handTypes'
+import { computeStepState, reconstructRanges, evaluateSession, realPreflopRaises, isAggroAction } from '../lib/handCritique'
+import { POT_POS, betOffset } from '../lib/tableGeometry'
+import HandHistoryModal from '../components/HandHistoryModal'
 import { loadPerfs, savePerf } from '../lib/perfStore'
 import PerfReportModal from '../components/PerfReportModal'
 import { useLiveSession, type ResumableSession, type LiveFormat } from '../store/liveSessionStore'
 import { LeaveTableModal } from '../components/SessionDialogs'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-type Suit = '♠' | '♥' | '♦' | '♣'
-type Phase = 'idle' | 'dealing' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown'
 
-interface Card { rank: string; suit: Suit }
 interface Seat {
   idx: number; name: string; isHero: boolean; stack: number
   holeCards: [Card | null, Card | null]; cardsFaceUp: boolean
@@ -67,6 +69,10 @@ interface GState {
 interface GameConfig {
   numPlayers: number; selectedSeat: number; stackBB: number; sb: number
   bb: number; ante: number; decisionTimer: number; displayName: string; currency?: string
+  /** Table pacing picked in the setup — scales how long the bots take to act. */
+  gameSpeed?: 'slow' | 'normal' | 'fast'
+  /** Anonymous table: the hero is seated under a neutral name (nothing personal on screen). */
+  anonymousMode?: boolean
   slots: Array<{ type: string; level: number }>
   scenario?: ScenarioCfg
   playLive?: boolean
@@ -94,22 +100,6 @@ interface ChipFlight {
   id: number; fromX: number; fromY: number; toX: number; toY: number
   amount: number; kind: 'collect' | 'payout'
 }
-export interface HistoryAction {
-  phase: Phase; seatIdx: number; name: string; isHero: boolean
-  actionType: string; amount: number; potAfter: number
-}
-export interface HandHistoryRecord {
-  id: number; handNum: number; date: Date
-  players: Array<{
-    idx: number; name: string; isHero: boolean; position: string
-    startStack: number; endStack: number
-    holeCards: [Card|null, Card|null]; isFolded: boolean; isWinner: boolean
-    level: number; seatType: 'bot' | 'human'
-  }>
-  board: (Card|null)[]; actions: HistoryAction[]
-  finalPot: number; sb: number; bb: number
-  heroProfit: number; winnerNames: string[]
-}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SUITS: Suit[] = ['♠', '♥', '♦', '♣']
@@ -136,23 +126,6 @@ const HUMAN_GRAD: [string,string] = ['#1a0830','#9933dd']
 const PHASE_LABEL: Record<Phase, string> = {
   idle:'Prêt', dealing:'Distribution', preflop:'Pré-flop',
   flop:'Flop', turn:'Turn', river:'River', showdown:'Showdown',
-}
-const POT_POS = { x: 50, y: 50 }
-// Offset (in % of table box) of a player's committed-bet chip stack, placed
-// on the line from the seat toward the table center.
-function betOffset(leftPct: number, topPct: number): { x: number; y: number } {
-  // The hole CARDS sit ABOVE the seat-panel centre, so the line "cards → pot" is NOT the
-  // same as "seat → pot". Anchor the chips on the CARDS→pot line so seat-cards-chips-pot
-  // read as one straight line pointing at the pot, for EVERY seat (top, sides, bottom).
-  const isHero = topPct > 62 && Math.abs(leftPct - 50) < 16
-  const co = isHero ? 13 : 6                 // how far the cards sit above the seat centre (%)
-  const ay = topPct - co                     // the cards' y — the line's anchor
-  const dx = 50 - leftPct, dy = 50 - ay
-  const len = Math.hypot(dx, dy) || 1
-  // Push the chips PAST the cards toward the pot. Bottom seats only clear their cards;
-  // top/side seats must clear the whole panel that sits between their cards and the pot.
-  const d = isHero ? 8 : topPct > 60 ? 8 : 16
-  return { x: (dx / len) * d, y: -co + (dy / len) * d }
 }
 
 // ─── Range → concrete cards sampling (used by "Revive situation") ─────────────
@@ -209,15 +182,6 @@ function preflopStrength(c1: Card, c2: Card): number {
   if (hi - lo <= 2 && hi < 12) s += 1                        // straight bonus (both below Q)
   return s                                                   // unrounded → finer thresholds
 }
-// Position bonus drives the OPEN width (preflopProbs.openTh) for bots & the range
-// estimator. When folded to, the SB is a STEAL seat (only the BB behind + dead
-// money), so it opens nearly as wide as the button — not like an early seat.
-// (Only affects the unopened/open branch; SB's defend-vs-raise ranges are
-// threshold-based and unchanged.)
-const POS_BONUS: Record<string, number> = {
-  'BTN':1.00,'BTN/SB':1.00,'CO':0.88,'HJ':0.78,
-  'MP':0.72,'MP+1':0.72,'UTG':0.62,'UTG+1':0.65,'SB':0.95,'BB':0.82,
-}
 
 // ─── Deck & evaluation ───────────────────────────────────────────────────────
 function mkDeck(): Card[] { return SUITS.flatMap(s => RANKS.map(r => ({ rank: r, suit: s }))) }
@@ -230,37 +194,6 @@ function shuffle(d: Card[]): Card[] {
 function bestHand(cards: Card[]): { score: number; name: string } {
   const { score, cat } = bestHandScore(cards)
   return { score, name: score === 0 ? '—' : handCatLabel(cat) }
-}
-// Realistic 0..1 made-hand strength (category-based, with pair refinement) so
-// bots actually value-bet strong hands instead of checking down monsters.
-const CAT_STRENGTH = [0.08, 0.42, 0.68, 0.80, 0.86, 0.91, 0.96, 0.99, 1.0]
-function madeStrength(hole: Card[], board: Card[]): number {
-  // Use the coach's DEMOTED made-hand read (diagnoseSpot): a hand that lives entirely on the
-  // BOARD — trips on a 9-9-9 flop, two pair on the board, a board straight/flush — is a
-  // shared hand (everyone chops), not real strength. Without the demotion every bot "has the
-  // board", clears the value-raise bar, and they jam a chopped hand into each other.
-  // PLAYING THE BOARD (a river straight/flush/etc. the hole cards don't improve) → it's a
-  // chop, no edge: never value-bet/raise it. diagnoseSpot demotes board pairs/trips/fulls but
-  // not board straights/flushes, so guard those here.
-  if (board.length === 5 && bestHand([...hole, ...board]).score <= bestHand(board).score) return 0.20
-  const d = diagnoseSpot(hole, board)
-  if (d.effCat !== 1) return CAT_STRENGTH[d.effCat] ?? 0.08
-  // One pair → refine by overpair / top / second / weak.
-  return d.effPair === 'overpair' ? 0.62 : d.effPair === 'top' ? 0.55 : d.effPair === 'second' ? 0.42 : 0.32
-}
-// Flush draw or open-ended straight draw → fuel for semi-bluffs.
-function hasStrongDraw(hole: Card[], board: Card[]): boolean {
-  if (board.length >= 5 || board.length < 3) return false
-  const all = [...hole, ...board]
-  const bySuit: Record<string, number> = {}
-  all.forEach(c => (bySuit[c.suit] = (bySuit[c.suit] ?? 0) + 1))
-  if (Object.values(bySuit).some(n => n === 4)) return true
-  const vals = new Set(all.map(c => RV[c.rank])); if (vals.has(14)) vals.add(1)
-  for (let lo = 1; lo <= 10; lo++) {
-    let cnt = 0; for (let k = lo; k < lo + 5; k++) if (vals.has(k)) cnt++
-    if (cnt === 4 && (!vals.has(lo) || !vals.has(lo + 4))) return true
-  }
-  return false
 }
 // ─── Seat Panel ───────────────────────────────────────────────────────────────
 function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, onAddChips, turnSeconds=25, turnNonce, turnPaused, hideTimer, onHover, onHoverCards, onTapCards, avatarSize=42, compact=false }: {
@@ -415,1037 +348,8 @@ function SeatPanel({ seat, style, isWinner, isShowdown, onRebuy, onAddChips, tur
 }
 
 
-// ─── Hand History Modal ───────────────────────────────────────────────────────
-// Smoothly animates a number from → to (ease-out cubic). Used to "count up" the
-// winner's stack as the pot chips land on their seat, like a real poker client.
-function CountUp({ from, to, dur = 800, delay = 450 }: { from: number; to: number; dur?: number; delay?: number }): JSX.Element {
-  const [v, setV] = useState(from)
-  useEffect(() => {
-    if (from === to) { setV(to); return }
-    setV(from)
-    let raf = 0; const t0 = performance.now() + delay
-    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
-    const tick = (now: number) => {
-      const t = Math.min(1, Math.max(0, (now - t0) / dur))
-      setV(Math.round(from + (to - from) * ease(t)))
-      if (t < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [from, to, dur, delay])
-  return <>{v.toLocaleString()}</>
-}
 
-function computeStepState(record: HandHistoryRecord, stepIdx: number): {
-  players: Array<HandHistoryRecord['players'][number] & { stack: number }>
-  board: (Card|null)[]
-  pot: number
-  currentPhase: Phase
-  streetBets: Record<number, number>   // live bet sitting in front of each player
-  lastActorIdx: number                 // who just acted at this step
-} {
-  // Rebuild state at a given action step
-  const players = record.players.map(p => ({
-    ...p,
-    isFolded: false,
-    stack: p.startStack,
-  }))
-  let pot = 0
-  let board: (Card|null)[] = [null,null,null,null,null]
-  let currentPhase: Phase = 'preflop'
-  let lastActorIdx = -1
 
-  const streetBets: Record<number, number> = {}
-  players.forEach(p => { streetBets[p.idx] = 0 })
-
-  for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
-    const a = record.actions[i]
-    if (a.seatIdx === -1) {
-      // Phase event — new street: bets are collected into the pot.
-      currentPhase = a.phase
-      if (a.phase !== 'preflop') players.forEach(p => { streetBets[p.idx] = 0 })
-      if (a.phase === 'flop') board = [record.board[0], record.board[1], record.board[2], null, null]
-      else if (a.phase === 'turn') board = [record.board[0], record.board[1], record.board[2], record.board[3], null]
-      else if (a.phase === 'river' || a.phase === 'showdown') board = [...record.board]
-    } else {
-      currentPhase = a.phase
-      lastActorIdx = a.seatIdx
-      const p = players.find(x => x.idx === a.seatIdx)
-      if (p) {
-        if (a.actionType === 'FOLD') {
-          p.isFolded = true
-        } else if (a.actionType === 'CHECK') {
-          // no chips
-        } else {
-          const added = a.amount - (streetBets[p.idx] ?? 0)
-          p.stack -= Math.max(0, added)
-          streetBets[p.idx] = a.amount
-          pot = a.potAfter
-        }
-      }
-    }
-  }
-
-  return { players, board, pot, currentPhase, streetBets, lastActorIdx }
-}
-
-// ─── "Coach juge" — constructive critique of a hero action in the replay ──────
-// Stable, language-agnostic leak buckets (for the session perf report aggregation).
-export type LeakKind = 'pf-loose' | 'overcall' | 'passive' | 'overfold' | 'overaggro' | 'sizing-big' | 'sizing-small'
-interface MoveCritique { verdict: 'good' | 'ok' | 'mistake'; headline: string; lines: string[]; reasoning?: EquityReasoning | null; phase?: Phase; leak?: LeakKind | null }
-function boardForPhase(board: (Card | null)[], phase: Phase): Card[] {
-  const b = board.filter(Boolean) as Card[]
-  if (phase === 'flop') return b.slice(0, 3)
-  if (phase === 'turn') return b.slice(0, 4)
-  if (phase === 'river' || phase === 'showdown') return b
-  return []
-}
-// Pre-flop action order for a seat (0 = first to act = UTG / left of the BB),
-// derived from the button position stored on the record. Used to count how many
-// live players still act behind the hero (→ RFI steal width).
-function preflopActIndex(seatIdx: number, players: HandHistoryRecord['players']): number {
-  const n = players.length
-  const dealerIdx = players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
-  const bbOffset = n === 2 ? 1 : 2
-  const firstOffset = (bbOffset + 1) % n
-  return ((((seatIdx - dealerIdx) % n + n) % n) - firstOffset + n) % n
-}
-
-// A preflop ALL-IN only escalates the pot type (counts as a raise / 3-bet level)
-// if it actually EXCEEDS the prevailing bet. A short stack that jams for LESS than
-// the current bet is dead money / effectively a call — NOT a 3-bet — and must not
-// be treated as a raise (→ wrong "3-bet pot" premium range) nor as villain
-// aggression (→ wrongly deflated equity). Without this, a min-jam under a raise
-// made the coach read a single-raised pot as a 3-bet pot and fold top pair to a
-// river bluff. Shared by the live coach AND the replay critique so they stay equal.
-interface PfAction { seatIdx: number; phase: Phase; actionType: string; amount: number }
-function realPreflopRaises(actions: PfAction[], bb: number): { count: number; lastRaiserSeat: number; amts: number[]; deadAllIn: Set<number> } {
-  let currentBet = bb, lastInc = bb, count = 0, lastRaiserSeat = -1
-  const amts: number[] = []
-  const deadAllIn = new Set<number>()
-  for (const a of actions) {
-    if (a.phase !== 'preflop' || a.seatIdx < 0) continue
-    const inc = a.amount - currentBet
-    // A genuine raise reopens the action: a RAISE (engine-enforced full raise), or an
-    // ALL-IN that raises by at least the previous increment (a legal full re-raise).
-    // A short all-in that only bumps the price a little — a jam UNDER the bet OR an
-    // INCOMPLETE raise (~≤2× the bet) — is a short-stack shove, NOT a deep 3-bet: it
-    // must not flip the pot to a premium "3-bet" range nor count as aggression.
-    if (a.actionType === 'RAISE' || (a.actionType === 'ALL-IN' && inc >= lastInc)) {
-      count++; lastRaiserSeat = a.seatIdx; amts.push(a.amount)
-      lastInc = inc; currentBet = a.amount
-    } else if (a.actionType === 'ALL-IN') {
-      deadAllIn.add(a.seatIdx)                 // sub-bet or incomplete jam → dead money, not a 3-bet
-      if (a.amount > currentBet) currentBet = a.amount   // it still raises the price to call
-    } else if (a.amount > currentBet) {
-      currentBet = a.amount
-    }
-  }
-  return { count, lastRaiserSeat, amts, deadAllIn }
-}
-// A villain action that should count toward "aggression" — excludes a dead short
-// all-in (a sub-bet preflop jam isn't a barrel).
-function isAggroAction(a: PfAction & { isHero?: boolean }, deadAllIn: Set<number>): boolean {
-  if (a.seatIdx < 0 || a.isHero) return false
-  if (a.actionType !== 'BET' && a.actionType !== 'RAISE' && a.actionType !== 'ALL-IN') return false
-  return !(a.phase === 'preflop' && a.actionType === 'ALL-IN' && deadAllIn.has(a.seatIdx))
-}
-function critiqueHeroMove(record: HandHistoryRecord, actionIdx: number, iters?: number): MoveCritique | null {
-  const act = record.actions[actionIdx]
-  if (!act || act.seatIdx < 0 || !act.isHero) return null
-  if (act.actionType === 'SB' || act.actionType === 'BB') return null // blinds aren't a decision
-  const hero = record.players.find(p => p.isHero)
-  if (!hero || !hero.holeCards[0] || !hero.holeCards[1]) return null
-
-  // Replay everything BEFORE the hero's action to rebuild the spot they faced.
-  let pot = 0, currentBet = 0, phase: Phase = 'preflop'
-  const bet: Record<number, number> = {}, committed: Record<number, number> = {}
-  const folded = new Set<number>()
-  record.players.forEach(p => { bet[p.idx] = 0; committed[p.idx] = 0 })
-  let preflopCallers = 0
-  let lastAggressorName = ''
-  const allInSeats = new Set<number>()
-  for (let i = 0; i < actionIdx; i++) {
-    const a = record.actions[i]
-    if (a.seatIdx === -1) {
-      phase = a.phase
-      if (a.phase !== 'preflop') { record.players.forEach(p => (bet[p.idx] = 0)); currentBet = 0 }
-      pot = a.potAfter
-      continue
-    }
-    if (a.actionType === 'FOLD') { folded.add(a.seatIdx); pot = a.potAfter; continue }
-    if (a.actionType === 'CHECK') { pot = a.potAfter; continue }
-    if (a.phase === 'preflop' && a.actionType === 'CALL') preflopCallers++
-    const delta = a.amount - (bet[a.seatIdx] ?? 0)
-    committed[a.seatIdx] = (committed[a.seatIdx] ?? 0) + Math.max(0, delta)
-    bet[a.seatIdx] = a.amount
-    if (a.amount > currentBet) {
-      currentBet = a.amount
-      if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') lastAggressorName = a.name
-    }
-    if (a.phase === 'preflop' && a.actionType === 'ALL-IN') allInSeats.add(a.seatIdx)
-    pot = a.potAfter
-  }
-  // Genuine preflop raises only (a short jam UNDER the current bet is dead money,
-  // not a 3-bet) — shared with the live coach so the verdicts stay identical.
-  const pfInfo = realPreflopRaises(record.actions.slice(0, actionIdx), record.bb)
-  const preflopRaises = pfInfo.count
-  const lastPreflopRaiserIdx = pfInfo.lastRaiserSeat
-  const preflopRaiseAmts = pfInfo.amts
-
-  phase = act.phase
-  const board = boardForPhase(record.board, phase)
-  const toCall = Math.max(0, currentBet - (bet[hero.idx] ?? 0))
-  // Only players actually dealt into THIS hand (had hole cards) and not yet folded
-  // count as live opponents — eliminated / sat-out seats ($0, no cards) must NOT
-  // inflate the opponent count (that wrongly lowers equity vs the live coach).
-  const live = record.players.filter(p => !folded.has(p.idx) && (p.holeCards[0] !== null || p.holeCards[1] !== null))
-  const opponents = Math.max(1, live.length - 1)
-  const heroRemaining = hero.startStack - (committed[hero.idx] ?? 0)
-  const oppRemaining = live.filter(p => !p.isHero).map(p => p.startStack - (committed[p.idx] ?? 0))
-  const effStack = Math.min(heroRemaining, oppRemaining.length ? Math.max(...oppRemaining) : heroRemaining)
-  const latePos = ['BTN', 'BTN/SB', 'CO'].includes(hero.position)
-  const heroCat: 'fold' | 'passive' | 'aggr' =
-    act.actionType === 'FOLD' ? 'fold' : (act.actionType === 'CALL' || act.actionType === 'CHECK') ? 'passive' : 'aggr'
-  const pct = (x: number) => `${Math.round(x * 100)}%`
-  const lines: string[] = []
-  let verdict: MoveCritique['verdict'] = 'ok'
-  let headline = ''
-  let reasoning: EquityReasoning | null = null
-  // Hoisted out of the per-branch blocks so the leak bucket can be derived once at the end.
-  let recCatOut: 'fold' | 'passive' | 'aggr' = 'fold'
-  let sizing: 'big' | 'small' | null = null
-
-  if (phase === 'preflop') {
-    const scenario: Scenario = preflopRaises >= 3 ? 'vs4bet'
-      : preflopRaises === 2 ? 'vs3bet'
-      : preflopRaises === 1 ? (preflopCallers > 0 ? 'squeeze' : 'vsopen')
-      : preflopCallers > 0 ? 'iso' : 'rfi'
-    // Players still to act behind the hero (live, not yet folded) — a fold-around
-    // to the SB becomes a true 1-behind blind battle → the RFI width widens to a
-    // steal range instead of an early-position open.
-    const heroOrder = preflopActIndex(hero.idx, record.players)
-    const playersBehind = record.players.filter(p =>
-      p.idx !== hero.idx && !folded.has(p.idx) && (p.holeCards[0] !== null || p.holeCards[1] !== null) &&
-      preflopActIndex(p.idx, record.players) > heroOrder).length
-    // Only a TOP-of-action all-in (bet ≥ currentBet) is a real jam to call off; a
-    // short all-in that's been raised over is just dead money (decide vs the raiser).
-    const allInTop = [...allInSeats].filter(idx => idx !== hero.idx && !folded.has(idx) && (bet[idx] ?? 0) >= currentBet)
-    // …and a SMALL all-in flat-called by a still-deep player isn't a call-off either —
-    // it's a SQUEEZE/iso spot (raise to isolate). Mirror the live coach exactly so the
-    // verdict matches: don't flag a premium RAISE as "over-aggressive" there.
-    const jamShove = allInTop.reduce((m, idx) => Math.max(m, bet[idx] ?? 0), 0)
-    const jamIsoable = allInTop.length >= 1 && jamShove < heroRemaining * 0.5
-      && record.players.some(p => p.idx !== hero.idx && !folded.has(p.idx) && !allInSeats.has(p.idx)
-        && (bet[p.idx] ?? 0) >= currentBet && (p.startStack - (committed[p.idx] ?? 0)) >= record.bb * 10)
-    const numAllIn = jamIsoable ? 0 : allInTop.length
-    const vsJam = numAllIn >= 1
-    const vsOpenerPos = scenario === 'vsopen' ? record.players.find(p => p.idx === lastPreflopRaiserIdx)?.position : undefined
-    const reRaiseRatio = scenario === 'vs3bet' && preflopRaiseAmts.length >= 2 && preflopRaiseAmts[0] > 0 ? preflopRaiseAmts[1] / preflopRaiseAmts[0] : undefined
-    // 3-bettor in position (acts after us post-flop)? n = seats, dealer = BTN seat.
-    const dealerIdxC = record.players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
-    const nC = record.players.length
-    const postIdx = (s: number) => (((s - dealerIdxC) % nC + nC) % nC - 1 + nC) % nC
-    const threeBettorIP = scenario === 'vs3bet' && lastPreflopRaiserIdx >= 0 ? postIdx(lastPreflopRaiserIdx) > postIdx(hero.idx) : undefined
-    // A live raiser/squeezer still to act behind the jam (raised above the BB, hasn't
-    // matched the jam, not folded/all-in) → tighten the call-off (can't close, can be re-jammed).
-    const raiserBehindJam = vsJam && record.players.some(p => p.idx !== hero.idx && !folded.has(p.idx) && !allInSeats.has(p.idx) && (bet[p.idx] ?? 0) > record.bb && (bet[p.idx] ?? 0) < currentBet)
-    const map = vsJam
-      ? buildJamCallMap(record.bb > 0 ? effStack / record.bb : 100, numAllIn, 1, raiserBehindJam)
-      : buildRangeMap(scenario, hero.position, (scenario === 'rfi' || scenario === 'iso') ? playersBehind : undefined,
-          { raiseToBB: record.bb > 0 ? currentBet / record.bb : undefined, multiway: live.length > 2, numCallers: preflopCallers, vsOpenerPos, reRaiseRatio, threeBettorIP,
-            effBB: record.bb > 0 ? effStack / record.bb : undefined,
-            closingAction: playersBehind === 0, potOdds: toCall > 0 ? toCall / (pot + toCall) : 0 })
-    const key = handKeyFromCards(hero.holeCards[0], hero.holeCards[1])
-    const rec = map.get(key) ?? 'fold'
-    const recCat: 'fold' | 'passive' | 'aggr' = rec === 'fold' ? 'fold' : rec === 'call' ? 'passive' : 'aggr'
-    recCatOut = recCat
-    // NOTE: no equity-vs-pot-odds reasoning block pre-flop — there the decision is a
-    // RANGE call (domination / realizability), not a pot-odds one, so the "I have/don't
-    // have the price" framing would contradict a correct range fold (e.g. ATo folds a
-    // 3-bet despite ~45% raw equity vs the field). The reasoning block is postflop-only.
-    // A 'raise' cell in a vs-open/squeeze map is a RE-SHOVE (3-bet jam) — the 14-25bb
-    // jam-or-fold zone marks jam hands 'raise' (the normal path would use '3bet').
-    const isReshoveCrit = rec === 'raise' && (scenario === 'vsopen' || scenario === 'squeeze')
-    // MICRO-STACK forced jam: at ≤~7bb the open range widens toward ANY TWO — you're
-    // committed (the blinds dwarf your stack), so a trash hand "opens" only because of
-    // that widening. That's a desperation jam, NOT a strength open → narrate it honestly
-    // (otherwise it reads as the absurd "72s is strong enough to open, folding is a leak").
-    const heroEffBB = record.bb > 0 ? effStack / record.bb : 100
-    const microJamOpen = (scenario === 'rfi' || scenario === 'iso') && rec === 'raise'
-      && heroEffBB <= 7 && handOpenRank(key) > openPctFor(hero.position, playersBehind)
-    const recLabel = rec === 'fold' ? 'FOLD'
-      : rec === 'call' ? (vsJam ? tc('crit.recCallJam') : tc('crit.recCall'))
-      : rec === '3bet' ? (scenario === 'squeeze' ? tc('crit.recSqueeze') : tc('crit.rec3bet'))
-      : rec === '4bet' ? (scenario === 'vs4bet' ? tc('crit.rec5betJam') : tc('crit.rec4bet'))
-      : isReshoveCrit ? tc('crit.recReshove')
-      : microJamOpen ? tc('crit.recMicroJam')
-      : scenario === 'iso' ? tc('crit.recIso') : tc('crit.recOpen')
-    const from = lastAggressorName ? tc('crit.ctxFrom', { name: lastAggressorName }) : ''
-    const ctx = vsJam ? tc('crit.ctxJam', { pos: hero.position, n: numAllIn })
-      : scenario === 'rfi' ? tc('crit.ctxRfi', { pos: hero.position })
-      : scenario === 'iso' ? tc('crit.ctxIso', { pos: hero.position })
-      : scenario === 'vsopen' ? tc('crit.ctxVsopen', { pos: hero.position, from })
-      : scenario === 'squeeze' ? tc('crit.ctxSqueeze', { pos: hero.position })
-      : scenario === 'vs4bet' ? tc('crit.ctxVs4bet', { pos: hero.position })
-      : tc('crit.ctxVs3bet', { pos: hero.position, from })
-    lines.push(tc('crit.pfSituation', { ctx, key }))
-    lines.push(tc('crit.pfRefRange', { key, rec: recLabel }))
-    // For an "open too wide" call, separate a genuine punt from a borderline open
-    // that's only a hair outside the range — the latter is a mix, not a leak.
-    const openMargin = scenario === 'rfi' ? handOpenRank(key) - openPctFor(hero.position, playersBehind) : 99
-    if (heroCat === recCat) { verdict = 'good'; headline = tc('crit.hGood', { rec: recLabel }); lines.push(tc('crit.lGoodPre')) }
-    else if (recCat === 'fold' && heroCat === 'aggr' && openMargin <= 12) { verdict = 'ok'; headline = tc('crit.hOpenBorderline'); lines.push(tc('crit.lOpenBorderline', { key, rec: rec === 'fold' ? tc('crit.foldWord') : recLabel })) }
-    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hTooWide'); lines.push(tc('crit.lTooWide', { key })) }
-    else if (recCat === 'aggr' && heroCat === 'passive') { verdict = 'ok'; headline = tc('crit.hTooPassive'); lines.push(tc('crit.lTooPassivePre', { key, rec: recLabel })) }
-    else if (recCat === 'aggr' && heroCat === 'fold' && microJamOpen) { verdict = 'ok'; headline = tc('crit.hMicroJamFold'); lines.push(tc('crit.lMicroJamFold', { key, bb: Math.round(heroEffBB) })) }
-    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hFoldTooTight'); lines.push(tc('crit.lFoldTooTight', { key, rec: recLabel })) }
-    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = tc('crit.hOverAggro'); lines.push(tc('crit.lOverAggroPre', { key })) }
-    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'ok'; headline = tc('crit.hFoldSlightlyTight'); lines.push(tc('crit.lFoldSlightlyTight', { key })) }
-  } else {
-    const villainBets = record.actions.slice(0, actionIdx).filter(a => isAggroAction(a, pfInfo.deadAllIn))
-    const postBets = villainBets.filter(a => a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')
-    const barrels = new Set(postBets.map(a => a.phase)).size
-    // Distinct opponents who actually bet/raised postflop — only THEY have a polarized
-    // value range; cold-callers stay capped, so a multiway pot doesn't crush a strong
-    // hand (mirrors the live coach).
-    const aggressors = new Set(postBets.map(a => a.seatIdx)).size
-    // CAPPED / "delayed" bet: an earlier postflop street was checked through, now hero
-    // faces a bet → range capped (strong hands fire earlier) → soften value (mirrors live).
-    const postOrder: Phase[] = ['flop', 'turn', 'river']
-    const curIdx = postOrder.indexOf(phase)
-    const cappedRange = curIdx > 0 && postOrder.slice(0, curIdx).some(st => {
-      const acts = record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && a.phase === st)
-      return acts.length > 0 && !acts.some(a => a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')
-    })
-    // Size-aware aggression: a BIG bet polarizes the range to value far more than a
-    // small one — counting bets alone under-rates a single large turn/river barrel.
-    // pot already includes the bet hero faces, so pot-before-bet = pot - toCall.
-    const sizeFrac = toCall > 0 && (pot - toCall) > 0 ? toCall / (pot - toCall) : 0
-    const sizeBoost = sizeFrac >= 1 ? 0.55 : sizeFrac >= 0.66 ? 0.45 : sizeFrac >= 0.45 ? 0.36 : sizeFrac >= 0.25 ? 0.22 : 0.08
-    // Pre-flop pot type already narrows villain to a strong range BEFORE any flop bet:
-    // a 3-bet/4-bet pot means premiums (QQ+/AK heavy), so marginal made hands are far
-    // weaker than vs a single-raised/limped pot. This is a floor on the equity model's
-    // aggression so it doesn't treat the opponent as a random range in a 4-bet pot.
-    const preAggr = preflopRaises >= 3 ? 0.6 : preflopRaises === 2 ? 0.4 : 0
-    const aggression = Math.min(0.85, Math.max(preAggr, villainBets.length * 0.28, sizeBoost + (barrels - 1) * 0.18))
-    const villainTier = preflopRaises >= 3 ? '4bet' as const : preflopRaises === 2 ? '3bet' as const : undefined
-    // Call pressure: opponents who called multiple postflop streets (esp. multiway)
-    // have a strong range → de-value a lone overpair/one pair (mirrors the live coach).
-    const calledStreets = new Set(record.actions.slice(0, actionIdx).filter(a => a.seatIdx >= 0 && !a.isHero && a.actionType === 'CALL' && (a.phase === 'flop' || a.phase === 'turn' || a.phase === 'river')).map(a => a.phase)).size
-    const callPressure = Math.min(0.85, calledStreets * 0.25 + (live.length > 2 ? 0.15 : 0))
-    // DONK-LEAD (mirrors live): the bettor hero faces is NOT the pre-flop aggressor —
-    // a lead/barrel by a passive caller → value-defined range, fold marginal pairs earlier.
-    const postAggOpp = postBets.filter(a => a.seatIdx !== hero.idx)
-    const lastPostAggressorIdx = postAggOpp.length ? postAggOpp[postAggOpp.length - 1].seatIdx : -1
-    const donkLead = toCall > 0 && lastPreflopRaiserIdx >= 0 && lastPostAggressorIdx >= 0 && lastPostAggressorIdx !== lastPreflopRaiserIdx
-    // FACING A RAISE (mirrors live): ≥2 aggressive actions on this street → a bet got raised.
-    const curStreetAggro = record.actions.slice(0, actionIdx).filter(a => a.phase === phase && (a.actionType === 'BET' || a.actionType === 'RAISE' || a.actionType === 'ALL-IN')).length
-    const facingRaise = toCall > 0 && curStreetAggro >= 2  // postflop branch only
-    // SANDWICH: facing a bet with a LIVE player still to act behind hero this street (their
-    // committed bet is below the current bet, so they haven't responded) → hero doesn't close
-    // the action. Postflop order: BTN acts last (highest index).
-    const dealerIdxP = record.players.find(p => p.position === 'BTN' || p.position === 'BTN/SB')?.idx ?? 0
-    const nP = record.players.length
-    const postOrderP = (s: number) => ((((s - dealerIdxP) % nP + nP) % nP) - 1 + nP) % nP
-    const heroPostO = postOrderP(hero.idx)
-    const notClosing = toCall > 0 && live.length >= 3 && record.players.some(p =>
-      p.idx !== hero.idx && !folded.has(p.idx) && postOrderP(p.idx) > heroPostO && (bet[p.idx] ?? 0) < currentBet)
-    const adv = getPostflopAdvice({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, heroStack: heroRemaining, effStack, opponents, inPosition: latePos, aggression, barrels, bb: record.bb, villainTier, aggressors, cappedRange, callPressure, donkLead, facingRaise, notClosing, iters })
-    const recAggr = adv.action === 'BET' || adv.action === 'RAISE'
-    const recCat: 'fold' | 'passive' | 'aggr' = adv.action === 'FOLD' ? 'fold' : recAggr ? 'aggr' : 'passive'
-    recCatOut = recCat
-    if (toCall > 0) reasoning = buildEquityReasoning({ hole: [hero.holeCards[0], hero.holeCards[1]], board, pot, toCall, equity: adv.equity,
-      decision: adv.action === 'FOLD' ? 'fold' : adv.action === 'CALL' ? 'call' : 'aggro' })
-    const phaseLbl = tc(phase === 'flop' ? 'crit.phaseFlop' : phase === 'turn' ? 'crit.phaseTurn' : phase === 'river' ? 'crit.phaseRiver' : 'crit.phasePreflop')
-    lines.push(tc('crit.pSituation', { phase: phaseLbl, board: board.map(c => c.rank + c.suit).join(' '), aggr: lastAggressorName && toCall > 0 ? tc('crit.pBetSuffix', { name: lastAggressorName }) : '' }))
-    // Facing a bet, the "COMMENT JE RAISONNE" block already spells out equity vs the price in
-    // full → don't restate it here, just name the hand. No bet to call → keep the equity note.
-    const drawsTxt = adv.draws.length ? tc('crit.pDraws', { draws: adv.draws.join(' + ') }) : ''
-    lines.push(toCall > 0
-      ? tc('crit.pHandOnly', { made: adv.madeHand, draws: drawsTxt })
-      : tc('crit.pEquityHand', { eq: pct(adv.equity), odds: '', made: adv.madeHand, draws: drawsTxt }))
-    lines.push(tc('crit.pOptimal', { action: adv.action, sizing: adv.sizingText }))
-    adv.reasons.slice(1, 3).forEach(r => lines.push(r))
-    if (heroCat === recCat) {
-      verdict = 'good'; headline = tc('crit.hGoodPost', { action: adv.action }); lines.push(tc('crit.lGoodPost'))
-      // SIZING check on a value BET: the right action category isn't enough — a giant
-      // overbet/jam folds out the worse hands you beat (lost value), while a tiny bet
-      // under-charges draws. Only when you opened the betting (toCall === 0).
-      if (toCall === 0 && adv.action === 'BET' && pot > 0 && (act.actionType === 'BET' || act.actionType === 'ALL-IN' || act.actionType === 'RAISE')) {
-        // Size the bet by what can ACTUALLY be called: a jam for more than the biggest
-        // live opponent can match is only effectively `effStack` — the excess is returned,
-        // never wagered. Judging the raw shove ($47k) as a 172% overbet when only $22k
-        // (0.8× pot) is callable is a false "SURBET". Cap at effStack → the real % of pot.
-        const betFrac = Math.min(act.amount, effStack) / pot
-        const sprNow = effStack / pot
-        const isValue = adv.equity >= 0.6
-        if (isValue && betFrac > 1.15) {
-          verdict = 'ok'; sizing = 'big'; headline = tc('crit.hSizeOverbet')
-          lines.push(tc('crit.lSizeOverbet', { pct: Math.round(betFrac * 100), allin: act.actionType === 'ALL-IN' ? tc('crit.pAllinSuffix') : '', tail: sprNow <= 1.8 ? tc('crit.lSizeOverbetLowSpr', { spr: sprNow.toFixed(1) }) : tc('crit.lSizeOverbetHighSpr') }))
-        } else if (isValue && betFrac < 0.4) {
-          verdict = 'ok'; sizing = 'small'; headline = tc('crit.hSizeTooSmall')
-          lines.push(tc('crit.lSizeTooSmall', { pct: Math.round(betFrac * 100) }))
-        }
-      }
-    }
-    else if (recCat === 'fold' && heroCat !== 'fold') { verdict = 'mistake'; headline = tc('crit.hContinueTooMuch'); if (toCall <= 0) lines.push(tc('crit.lContinueTooMuch', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
-    else if (recCat === 'aggr' && heroCat === 'passive') {
-      // CHECKING a LOCKED monster (full house+) multiway is a valid slow-play/trap, not
-      // a leak: the hand needs no protection (board paired) and betting folds out the
-      // air that would otherwise bluff/jam into you. Don't condemn it.
-      const monster = adv.madeCat >= 6 // full house, quads or straight flush — locked, language-agnostic
-      if (act.actionType === 'CHECK' && monster && opponents >= 2) {
-        verdict = 'good'; headline = tc('crit.hSlowplayOK')
-        lines.push(tc('crit.lSlowplayOK', { made: adv.madeHand }))
-      } else {
-        verdict = 'ok'; headline = tc('crit.hTooPassive'); lines.push(tc('crit.lTooPassivePost'))
-      }
-    }
-    else if (recCat === 'aggr' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hFoldTooMany'); lines.push(tc('crit.lFoldTooMany')) }
-    else if (recCat === 'passive' && heroCat === 'aggr') { verdict = 'ok'; headline = tc('crit.hOverAggro'); lines.push(tc('crit.lOverAggroPost')) }
-    else if (recCat === 'passive' && heroCat === 'fold') { verdict = 'mistake'; headline = tc('crit.hMissedFold'); lines.push(tc('crit.lMissedFold', { eq: pct(adv.equity), odds: pct(adv.potOdds) })) }
-  }
-  // Map the verdict to a stable leak bucket for the session perf report. A 'good' move
-  // (incl. the slow-play exception) leaks nothing; otherwise the recommended-vs-actual
-  // mismatch (or the sizing flag) tells us WHICH leak it is.
-  let leak: LeakKind | null = null
-  if (verdict !== 'good') {
-    if (sizing) leak = sizing === 'big' ? 'sizing-big' : 'sizing-small'
-    else if (recCatOut === 'fold' && heroCat !== 'fold') leak = phase === 'preflop' ? 'pf-loose' : 'overcall'
-    else if (recCatOut === 'aggr' && heroCat === 'passive') leak = 'passive'
-    else if (recCatOut === 'aggr' && heroCat === 'fold') leak = 'overfold'
-    else if (recCatOut === 'passive' && heroCat === 'aggr') leak = 'overaggro'
-    else if (recCatOut === 'passive' && heroCat === 'fold') leak = 'overfold'
-  }
-  return { verdict, headline, lines, reasoning, phase, leak }
-}
-
-// ─── Session performance report ──────────────────────────────────────────────
-// Run the coach critique over EVERY hero decision of the session and aggregate it
-// into a graded report: an alignment score, per-street accuracy, the dominant leaks
-// and the worst spots to review. Pure data — the modal just renders it.
-export type Street = 'preflop' | 'flop' | 'turn' | 'river'
-export interface StreetStat { n: number; good: number; ok: number; mistake: number; acc: number }
-export interface SessionMistake { handId: number; handNum: number; actionIdx: number; phase: Street; headline: string; leak: LeakKind | null; verdict: 'ok' | 'mistake' }
-export interface SessionEval {
-  score: number; grade: 'S' | 'A' | 'B' | 'C' | 'D'
-  decisions: number; good: number; ok: number; mistake: number
-  streets: Record<Street, StreetStat>
-  leaks: Array<{ kind: LeakKind; count: number }>
-  worstStreet: Street | null; bestStreet: Street | null
-  topMistakes: SessionMistake[]
-}
-const STREETS: Street[] = ['preflop', 'flop', 'turn', 'river']
-export function evaluateSession(records: HandHistoryRecord[]): SessionEval {
-  const streets: Record<Street, StreetStat> = {
-    preflop: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 }, flop: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 },
-    turn: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 }, river: { n: 0, good: 0, ok: 0, mistake: 0, acc: 0 },
-  }
-  const leakCounts = new Map<LeakKind, number>()
-  const flagged: SessionMistake[] = []
-  let good = 0, ok = 0, mistake = 0, decisions = 0
-  for (const rec of records) {
-    for (let i = 0; i < rec.actions.length; i++) {
-      const a = rec.actions[i]
-      if (a.seatIdx < 0 || !a.isHero) continue
-      // Lighter Monte-Carlo for the batch — dozens of spots, accuracy is plenty at ~900.
-      const c = critiqueHeroMove(rec, i, 900)
-      if (!c) continue
-      const ph = (c.phase ?? a.phase) as Phase
-      if (ph !== 'preflop' && ph !== 'flop' && ph !== 'turn' && ph !== 'river') continue
-      decisions++
-      const s = streets[ph]; s.n++
-      if (c.verdict === 'good') { good++; s.good++ }
-      else if (c.verdict === 'ok') { ok++; s.ok++ }
-      else { mistake++; s.mistake++ }
-      if (c.leak) leakCounts.set(c.leak, (leakCounts.get(c.leak) ?? 0) + 1)
-      if (c.verdict !== 'good') flagged.push({ handId: rec.id, handNum: rec.handNum, actionIdx: i, phase: ph, headline: c.headline, leak: c.leak ?? null, verdict: c.verdict })
-    }
-  }
-  // Alignment with the coach: a 'good' move scores full, an 'ok' (right idea, wrong
-  // sizing / a touch off) scores half, a 'mistake' scores zero.
-  const score = decisions ? Math.round(((good + ok * 0.5) / decisions) * 100) : 100
-  const grade: SessionEval['grade'] = score >= 90 ? 'S' : score >= 80 ? 'A' : score >= 68 ? 'B' : score >= 55 ? 'C' : 'D'
-  STREETS.forEach(k => { const s = streets[k]; s.acc = s.n ? (s.good + s.ok * 0.5) / s.n : 0 })
-  const leaks = [...leakCounts.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count)
-  // Best / worst street need a meaningful sample (≥3 decisions) to call out.
-  const rated = STREETS.filter(k => streets[k].n >= 3)
-  const worstStreet = rated.length ? rated.reduce((w, k) => streets[k].acc < streets[w].acc ? k : w) : null
-  const bestStreet = rated.length ? rated.reduce((b, k) => streets[k].acc > streets[b].acc ? k : b) : null
-  // Mistakes first, then sizing/borderline 'ok's. Show ALL flagged spots (the modal
-  // scrolls) so nothing is hidden — a capped list silently dropped real mistakes.
-  const topMistakes = flagged.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === 'mistake' ? -1 : 1))
-  return { score, grade, decisions, good, ok, mistake, streets, leaks, worstStreet, bestStreet: worstStreet === bestStreet ? null : bestStreet, topMistakes }
-}
-
-// Replay the hand up to `stepIdx` through the range estimator → each player's
-// estimated range at that moment (for the history hover, same engine as in-game).
-function reconstructRanges(record: HandHistoryRecord, stepIdx: number): Record<number, RangeWeights> {
-  const ranges: Record<number, RangeWeights> = {}
-  record.players.forEach(p => { ranges[p.idx] = initRange() })
-  let currentBet = 0, pot = 0, preRaises = 0
-  const bet: Record<number, number> = {}
-  record.players.forEach(p => { bet[p.idx] = 0 })
-  for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
-    const a = record.actions[i]
-    if (a.seatIdx === -1) {
-      if (a.phase !== 'preflop') { record.players.forEach(p => (bet[p.idx] = 0)); currentBet = 0; preRaises = 0 }
-      pot = a.potAfter
-      continue
-    }
-    const p = record.players.find(x => x.idx === a.seatIdx)
-    if (!p) continue
-    if (a.actionType !== 'SB' && a.actionType !== 'BB') {
-      const preflop = a.phase === 'preflop'
-      const board = boardForPhase(record.board, a.phase)
-      const toCall = Math.max(0, currentBet - (bet[a.seatIdx] ?? 0))
-      const cat: ActCat = a.actionType === 'FOLD' ? 'fold' : a.actionType === 'CHECK' ? 'check' : a.actionType === 'CALL' ? 'call' : 'aggr'
-      ranges[a.seatIdx] = applyAction(ranges[a.seatIdx] ?? initRange(board), cat, {
-        preflop, board, toCall, potOdds: toCall > 0 ? toCall / (pot + toCall) : 0,
-        posBonus: POS_BONUS[p.position] ?? 0.75,
-        tier: Math.max(1, Math.min(3, p.level)),
-        human: p.seatType === 'human', mood: 0,
-        priorRaises: preRaises,
-        // size of a BET or RAISE as a fraction of the pot → a big size polarizes the
-        // read, a small one merges it.
-        betFrac: !preflop && cat === 'aggr' && pot > 0 ? a.amount / pot : undefined,
-      })
-    }
-    if (a.actionType === 'FOLD') { /* stays */ }
-    else if (a.actionType !== 'CHECK') { bet[a.seatIdx] = a.amount; if (a.amount > currentBet) currentBet = a.amount; pot = a.potAfter }
-    if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') preRaises++
-  }
-  return ranges
-}
-
-// Short "move + effect" summary of a player's latest action up to a step.
-function playerLastMeta(record: HandHistoryRecord, idx: number, stepIdx: number): { move: string; effect: string } {
-  let last: HistoryAction | null = null, numCallers = 0, raises = 0
-  for (let i = 0; i <= stepIdx && i < record.actions.length; i++) {
-    const a = record.actions[i]
-    if (a.seatIdx === -1) { if (a.phase !== 'preflop') { numCallers = 0; raises = 0 } continue }
-    if (a.actionType === 'CALL') numCallers++
-    if (a.actionType === 'RAISE' || a.actionType === 'BET' || a.actionType === 'ALL-IN') raises++
-    if (a.seatIdx === idx && a.actionType !== 'SB' && a.actionType !== 'BB') last = a
-  }
-  if (!last) return { move: '—', effect: i18n.t('xtra.notSpokenYet') as string }
-  const cat: ActCat = last.actionType === 'FOLD' ? 'fold' : last.actionType === 'CHECK' ? 'check' : last.actionType === 'CALL' ? 'call' : 'aggr'
-  return actionSummary(cat, { preflop: last.phase === 'preflop', numCallers, was3betPlus: cat === 'aggr' && raises >= 2 })
-}
-
-export function HandHistoryModal({ records, onClose, onRevive, initialId, initialStep, titleKey }: {
-  records: HandHistoryRecord[]
-  onClose: () => void
-  onRevive?: (record: HandHistoryRecord, stepIdx: number) => void
-  initialId?: number          // open directly on this hand (defaults to the most recent)
-  initialStep?: number        // jump straight to this action step (e.g. a flagged move from the perf report)
-  titleKey?: string           // override the panel title (e.g. the sim report)
-}) {
-  const { t } = useTranslation()
-  const { isPhone } = useDevice()
-  const [selectedId, setSelectedId] = useState<number|null>(initialId ?? (records.length > 0 ? records[records.length-1].id : null))
-  const [stepIdx, setStepIdx] = useState<number>(initialStep ?? 0)
-  const [critique, setCritique] = useState<MoveCritique | null>(null)
-  // Pin a specific opening step (a flagged spot to review): honoured once, then normal.
-  const initStepRef = useRef<number | undefined>(initialStep)
-  // Auto-replay: on open, the last hand plays from the start (0.5s/step); at the end
-  // it waits 5s then loops. ANY manual navigation flips this off (see stopAuto).
-  const [autoPlay, setAutoPlay] = useState(initialStep == null)
-  const autoPlayRef = useRef(autoPlay)
-  useEffect(() => { autoPlayRef.current = autoPlay }, [autoPlay])
-  const stopAuto = () => setAutoPlay(false)
-  const logRef = useRef<HTMLDivElement>(null)
-  const selectedRowRef = useRef<HTMLButtonElement>(null)
-  // Keep the selected hand visible in the left list when navigating with ↑/↓.
-  useEffect(() => { selectedRowRef.current?.scrollIntoView({ block: 'nearest' }) }, [selectedId])
-
-  const record = records.find(r => r.id === selectedId) ?? null
-
-  // On (re)selecting a hand: auto-replay starts at the very first step; otherwise jump
-  // straight to the final result (the previous behaviour).
-  useEffect(() => {
-    if (initStepRef.current != null) { setStepIdx(initStepRef.current); initStepRef.current = undefined; return }
-    if (record) setStepIdx(autoPlayRef.current ? 0 : record.actions.length - 1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId])
-
-  // Auto-replay driver: advance one step every 0.5s; once at the end, pause 5s then
-  // loop back to the start. Cancelled the instant autoPlay turns off.
-  useEffect(() => {
-    if (!autoPlay || !record) return
-    const last = record.actions.length - 1
-    const t = setTimeout(() => setStepIdx(i => (i >= last ? 0 : i + 1)), stepIdx >= last ? 5000 : 500)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPlay, stepIdx, selectedId])
-  // Clear the critique whenever we move to another step / hand.
-  useEffect(() => { setCritique(null) }, [stepIdx, selectedId])
-
-  // Keyboard: ← step back, → step forward, Space = judge the current move,
-  // Esc = close the replay. (stepIdx is in deps so the handler isn't stale.)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!record) return
-      const el = document.activeElement
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
-      if (e.key === 'ArrowLeft') { e.preventDefault(); stopAuto(); setStepIdx(i => Math.max(0, i - 1)) }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); stopAuto(); setStepIdx(i => Math.min(record.actions.length - 1, i + 1)) }
-      // ↑ / ↓ jump between HANDS in the left list (it's shown most-recent-first), with
-      // wrap-around: ↓ past the bottom → first, ↑ past the top → last.
-      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault(); stopAuto()
-        const order = [...records].reverse() // visual top→bottom order
-        const cur = order.findIndex(r => r.id === record.id)
-        if (cur >= 0 && order.length > 1) {
-          const n = e.key === 'ArrowUp'
-            ? (cur <= 0 ? order.length - 1 : cur - 1)
-            : (cur >= order.length - 1 ? 0 : cur + 1)
-          setSelectedId(order[n].id)
-        }
-      }
-      else if (e.key === 'Escape') { e.preventDefault(); onClose() }
-      else if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault() // never scroll the page
-        stopAuto()
-        const a = record.actions[stepIdx]
-        if (a && a.seatIdx >= 0 && a.isHero && a.actionType !== 'SB' && a.actionType !== 'BB')
-          setCritique(c => (c ? null : critiqueHeroMove(record, stepIdx)))
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [record, stepIdx, onClose])
-
-  // Range Vision in the replay — hover a player to see their estimated range.
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
-  const [hoverXY, setHoverXY] = useState<{ x: number; y: number } | null>(null)
-  const stepRanges = useMemo(() => (record ? reconstructRanges(record, stepIdx) : {}), [record?.id, stepIdx])
-  // Reference range = each player's range at the END of pre-flop (their plausible
-  // starting range). Lets the heatmap tell apart hands ABANDONED in-hand (were in the
-  // pre-flop range, the line cut them) from hands OUT from the start (never in range).
-  const startRanges = useMemo(() => {
-    if (!record) return {}
-    const flop = record.actions.findIndex(a => a.seatIdx === -1 && a.phase === 'flop')
-    return reconstructRanges(record, flop >= 0 ? flop : record.actions.length - 1)
-  }, [record?.id])
-
-  useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight
-    }
-  }, [stepIdx, selectedId])
-
-  if (!record) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:'rgba(0,0,0,0.85)'}}>
-        <div className="bg-[#070d1a] border border-white/10 rounded-2xl p-8 text-center">
-          <p className="text-white/60 mb-4">{t('sess.noHistory')}</p>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-white/10 text-white/70 hover:bg-white/15">{t('sess.closeBtn')}</button>
-        </div>
-      </div>
-    )
-  }
-
-  const isEnd = stepIdx >= record.actions.length - 1
-  const stepState = computeStepState(record, stepIdx)
-
-  // Position players around mini ellipse (hero at bottom)
-  const CX = 50, CY = 46, RX = 38, RY = 30
-  const heroIdx = record.players.findIndex(p => p.isHero)
-  const n = record.players.length
-
-  function getPlayerPos(playerArrayIdx: number): {x:number; y:number} {
-    const offset = heroIdx >= 0 ? playerArrayIdx - heroIdx : playerArrayIdx
-    const angle = (offset / n) * 2 * Math.PI + Math.PI / 2
-    return {
-      x: CX + RX * Math.cos(angle),
-      y: CY + RY * Math.sin(angle),
-    }
-  }
-
-  // Action log entries up to stepIdx
-  const visibleActions = record.actions.slice(0, stepIdx + 1)
-
-  return (
-    <div className={`fixed inset-0 z-[110] flex items-center justify-center ${isPhone?'p-0':'p-3'}`} style={{background:'rgba(0,0,0,0.9)'}}>
-      <RotateGate onQuit={onClose} />
-      <motion.div initial={{opacity:0,scale:0.94,y:16}} animate={{opacity:1,scale:1,y:0}}
-        className={`w-full flex flex-col border border-white/10 overflow-hidden ${isPhone?'h-full rounded-none':'max-w-[1480px] h-[94vh] rounded-2xl'}`}
-        style={{background:'#070d1a'}}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-white/70 uppercase tracking-widest">{t(titleKey ?? 'sess.handHistory')}</span>
-            <span className="text-sm text-[#c9a227] font-bold">{records.length} main{records.length>1?'s':''}</span>
-            <span className="text-[10px] text-[#c9a227]/70 hidden md:inline">👁 survole un joueur → sa range</span>
-            <span className="text-[10px] text-white/30 hidden lg:inline">{t('sess.replayHint')}</span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            {/* Revive: re-create THIS exact spot as a playable sandbox. Opponents'
-                cards are re-drawn from the range their line implies at this step. */}
-            {onRevive && (
-              <button onClick={() => onRevive(record, stepIdx)}
-                title={t('sess.reviveTip')}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl font-black uppercase tracking-[0.18em] text-[11px] transition-all hover:scale-[1.03]"
-                style={{ background: 'linear-gradient(135deg,#a78bff,#6d4ed6,#3c2a72)', color: '#0a0716', boxShadow: '0 0 22px rgba(140,110,255,0.45)' }}>
-                ⚡ Revive situation
-              </button>
-            )}
-            <button onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 text-lg">
-              ✕
-            </button>
-          </div>
-        </div>
-
-        <div className={`flex-1 min-h-0 ${isPhone?'flex flex-col overflow-y-auto':'flex'}`}>
-
-          {/* Hand list — left column on desktop, horizontal scroll strip on phone.
-              `relative z-20` keeps it above any player badge that the table area
-              positions near its edge, so every hand row stays clickable. */}
-          <div className={`relative z-20 ${isPhone
-            ? 'flex-shrink-0 flex overflow-x-auto border-b border-white/8'
-            : 'w-52 flex-shrink-0 border-r border-white/8 overflow-y-auto'}`}>
-            {[...records].reverse().map(r => {
-              const profit = r.heroProfit
-              return (
-                <button key={r.id} ref={r.id === selectedId ? selectedRowRef : undefined} onClick={() => { stopAuto(); setSelectedId(r.id) }}
-                  className={`text-left transition-all ${isPhone
-                    ? `flex-shrink-0 px-3 py-2 border-r border-white/8 ${r.id===selectedId?'bg-[#c9a227]/15 border-b-2 border-b-[#c9a227]':''}`
-                    : `w-full px-4 py-3 border-b border-white/5 ${r.id===selectedId?'bg-[#c9a227]/10 border-l-2 border-l-[#c9a227]':'hover:bg-white/5'}`}`}>
-                  <div className="text-[13px] font-bold text-white/80">Main #{r.handNum}</div>
-                  <div className={`text-xs font-mono font-bold ${profit>0?'text-emerald-400':profit<0?'text-red-400':'text-white/30'}`}>
-                    {profit>0?'+':''}{profit} BB
-                  </div>
-                  <div className="text-[10px] text-white/30">{r.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Main content — table + action log side-by-side on desktop, stacked on phone */}
-          <div className={`flex-1 min-w-0 min-h-0 ${isPhone?'flex flex-col':'flex'}`}>
-
-            {/* Mini table view */}
-            <div className={`relative flex-1 flex flex-col min-w-0 gap-3 ${isPhone?'p-3':'p-5'}`}>
-              <div className="text-xs font-bold text-white/50 uppercase tracking-widest">
-                Main #{record.handNum} — {record.date.toLocaleDateString('fr')} {record.date.toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}
-              </div>
-
-              {/* Table area */}
-              <div className="relative flex-1 min-h-0" style={{minHeight:isPhone?190:360}}>
-                {/* Table SVG bg — decorative, never intercept pointer events */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div style={{width:'100%',maxWidth:900,opacity:0.78}}>
-                    <TableSVG/>
-                  </div>
-                </div>
-
-                {/* Players */}
-                {record.players.map((pl, i) => {
-                  const pos = getPlayerPos(i)
-                  const stepPl = stepState.players.find(sp => sp.idx === pl.idx)
-                  const isFolded = stepPl?.isFolded ?? false
-                  // At the final step show the real end stack (includes winnings);
-                  // mid-replay show the reconstructed committed stack.
-                  const stack = isEnd ? pl.endStack : (stepPl?.stack ?? pl.startStack)
-                  const isWinner = isEnd && pl.isWinner
-                  const showCards = pl.isHero || isEnd
-
-                  const inHand = !isFolded && (pl.holeCards[0] !== null || pl.holeCards[1] !== null)
-                  return (
-                    <div key={pl.idx}
-                      className={`absolute flex flex-col items-center transition-all duration-300 ${isFolded?'opacity-30 grayscale':''} ${inHand?'cursor-help':''}`}
-                      style={{
-                        left: `${pos.x}%`,
-                        top: `${pos.y}%`,
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 10,
-                      }}
-                      onMouseEnter={!isPhone && inHand ? (e) => { setHoverIdx(pl.idx); setHoverXY({ x: e.clientX, y: e.clientY }) } : undefined}
-                      onMouseLeave={!isPhone && inHand ? () => { setHoverIdx(null); setHoverXY(null) } : undefined}
-                      onClick={isPhone && inHand ? (e) => { e.stopPropagation(); setHoverIdx(h => h===pl.idx?null:pl.idx); setHoverXY({ x: e.clientX, y: e.clientY }) } : undefined}>
-                      {/* Cards */}
-                      {(pl.holeCards[0] || pl.holeCards[1]) && (
-                        <div className="flex gap-0.5 mb-1">
-                          {[0,1].map(ci => {
-                            const card = pl.holeCards[ci as 0|1]
-                            if (!card) return null
-                            if (showCards && card) {
-                              return <PlayingCard key={ci} rank={card.rank} suit={card.suit as Suit} w={isPhone?34:54} h={isPhone?48:76}/>
-                            }
-                            return <FaceDown key={ci} w={isPhone?28:46} h={isPhone?40:64}/>
-                          })}
-                        </div>
-                      )}
-                      {/* Name badge */}
-                      <div className={`px-2.5 py-0.5 rounded-lg border text-[12.5px] font-bold whitespace-nowrap flex items-center gap-1.5
-                        ${pl.isHero?'border-[#00d4ff]/50 bg-[#00d4ff]/10 text-[#00d4ff]'
-                        :isWinner?'border-[#c9a227]/60 bg-[#c9a227]/10 text-[#c9a227]'
-                        :'border-white/10 bg-black/40 text-white/70'}`}>
-                        {pl.isHero ? t('sess.youShort') : pl.name}
-                        {pl.position && <span className="text-[8px] font-black px-1 rounded bg-[#c9a227]/15 text-[#c9a227]/90 border border-[#c9a227]/25 uppercase tracking-wider">{pl.position}</span>}
-                      </div>
-                      <div className="text-[12px] font-bold text-emerald-300/90 font-mono mt-0.5">
-                        {isEnd && isWinner
-                          ? <>{!curIsSuffix() && curSymbol()}<CountUp from={stepPl?.stack ?? pl.startStack} to={pl.endStack} />{curIsSuffix() && ` ${curSymbol()}`}</>
-                          : money(stack)}
-                      </div>
-                      {isWinner && <motion.div initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: 0.5, type: 'spring', stiffness: 300, damping: 14 }} className="text-lg">🏆</motion.div>}
-                    </div>
-                  )
-                })}
-
-                {/* Dealer button — show the BTN so the position is clear in the replay too */}
-                {(() => {
-                  const di = record.players.findIndex(p => p.position === 'BTN' || p.position === 'BTN/SB')
-                  if (di < 0) return null
-                  const dp = getPlayerPos(di)
-                  const ox = dp.x < 50 ? 5 : -5
-                  const oy = dp.y < 46 ? 4 : -4
-                  return (
-                    <div className="absolute pointer-events-none" style={{ left: `${dp.x + ox}%`, top: `${dp.y + oy}%`, transform: 'translate(-50%,-50%)', zIndex: 14 }}>
-                      <DealerButtonToken size={isPhone ? 16 : 24}/>
-                    </div>
-                  )
-                })()}
-
-                {/* Live bets in front of players (re-enacted street by street). Hidden
-                    at the end — the chips have been swept into the pot → winner. */}
-                {!isEnd && record.players.map((pl, i) => {
-                  const amt = stepState.streetBets[pl.idx] ?? 0
-                  if (amt <= 0) return null
-                  const pos = getPlayerPos(i)
-                  const off = betOffset(pos.x, pos.y)
-                  return (
-                    <div key={`bet-${pl.idx}`} className="absolute pointer-events-none flex flex-col items-center gap-0.5"
-                      style={{ left: `${pos.x + off.x}%`, top: `${pos.y + off.y}%`, transform: 'translate(-50%,-50%)', zIndex: 12 }}>
-                      <ChipStack amount={amt} sz={16} maxVisible={5}/>
-                      <span className="text-[10px] font-mono text-[#c9a227] font-bold bg-black/55 px-1 rounded">${amt}</span>
-                    </div>
-                  )
-                })}
-
-                {/* Board cards */}
-                <div className="absolute left-1/2 -translate-x-1/2" style={{top:'41%',transform:'translate(-50%,-50%)'}}>
-                  <div className="flex gap-1.5 items-center">
-                    {stepState.board.map((card, i) => (
-                      <div key={i}>
-                        {card
-                          ? <PlayingCard rank={card.rank} suit={card.suit as Suit} w={isPhone?38:48} h={isPhone?54:68}/>
-                          : <EmptySlot w={isPhone?38:48} h={isPhone?54:68}/>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Pot — hidden once the hand ends (the chips sweep to the winner instead) */}
-                {!isEnd && (
-                  <div className="absolute left-1/2 top-[59%] -translate-x-1/2 -translate-y-1/2">
-                    <div className="flex items-center gap-2 bg-black/65 border border-[#c9a227]/30 rounded-lg px-4 py-1.5">
-                      <span className="text-[11px] text-white/45 uppercase tracking-wide">Pot</span>
-                      <span className="text-base font-bold text-[#c9a227] font-mono">{money(stepState.pot)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* End of hand: sweep the pot chips to the winner(s), like the live table */}
-                {isEnd && record.players.some(p => p.isWinner) && (() => {
-                  const winners = record.players.map((pl, i) => ({ pl, i })).filter(w => w.pl.isWinner)
-                  const share = Math.max(1, Math.round(record.finalPot / winners.length))
-                  return winners.map(w => {
-                    const to = getPlayerPos(w.i)
-                    return (
-                      <motion.div key={`win-${w.pl.idx}`} className="absolute pointer-events-none"
-                        initial={{ left: '50%', top: '59%', opacity: 0, scale: 0.45 }}
-                        animate={{ left: `${to.x}%`, top: `${to.y}%`, opacity: [0, 1, 1, 0], scale: [0.45, 1.05, 1, 0.7] }}
-                        transition={{ duration: 0.95, delay: 0.2, ease: [0.4, 0, 0.2, 1], times: [0, 0.2, 0.8, 1] }}
-                        style={{ transform: 'translate(-50%,-50%)', zIndex: 30, filter: 'drop-shadow(0 4px 10px rgba(201,162,39,0.5))' }}>
-                        <FlyingStack amount={share} sz={20} />
-                      </motion.div>
-                    )
-                  })
-                })()}
-
-                {/* End-of-hand result — FLOATS in the felt's bottom-left corner so it
-                    never reflows the layout: the table stays static when the hand ends,
-                    and the won board/cards stay fully visible behind it. */}
-                {isEnd && (
-                  <div className="absolute bottom-1.5 left-1.5 z-30 rounded-xl border border-[#c9a227]/25 bg-[#070d1a]/90 backdrop-blur px-3 py-2 shadow-xl shadow-black/50 flex flex-col gap-1">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-[8px] text-white/40 uppercase tracking-wide">Gagnant</span>
-                      <span className="text-[11.5px] font-bold text-[#c9a227]">{record.winnerNames.join(', ')}</span>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-[8px] text-white/40 uppercase tracking-wide">Pot</span>
-                      <span className="text-[11.5px] font-bold text-white/70">{money(record.finalPot)}</span>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-[8px] text-white/40 uppercase tracking-wide">{t('sess.yourResult')}</span>
-                      <span className={`text-[11.5px] font-bold ${record.heroProfit>0?'text-emerald-400':record.heroProfit<0?'text-red-400':'text-white/50'}`}>
-                        {record.heroProfit>0?'+':''}{record.heroProfit} BB
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Step controls */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Auto-replay toggle: relance le coup depuis le début / stoppe */}
-                <button onClick={() => { if (autoPlay) setAutoPlay(false); else { setStepIdx(0); setAutoPlay(true) } }}
-                  title={autoPlay ? t('sess.replayStop') : t('sess.replayStart')}
-                  className="px-3 py-1.5 rounded border text-sm font-bold transition-all"
-                  style={autoPlay
-                    ? { background: 'rgba(201,162,39,0.18)', borderColor: 'rgba(201,162,39,0.6)', color: '#f0d98a' }
-                    : { background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>
-                  {autoPlay ? '⏸ Replay' : '↻ Replay'}
-                </button>
-                <button onClick={() => { stopAuto(); setStepIdx(0) }}
-                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
-                  disabled={stepIdx===0}>|◀</button>
-                <button onClick={() => { stopAuto(); setStepIdx(s => Math.max(0, s-1)) }}
-                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
-                  disabled={stepIdx===0}>◀</button>
-                <div className="flex-1 h-2 bg-white/8 rounded-full overflow-hidden cursor-pointer"
-                  onClick={e => {
-                    stopAuto()
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    const ratio = (e.clientX - rect.left) / rect.width
-                    setStepIdx(Math.round(ratio * (record.actions.length - 1)))
-                  }}>
-                  <div className="h-full bg-[#c9a227] rounded-full transition-all"
-                    style={{width:`${record.actions.length>1?(stepIdx/(record.actions.length-1))*100:100}%`}}/>
-                </div>
-                <button onClick={() => { stopAuto(); setStepIdx(s => Math.min(record.actions.length-1, s+1)) }}
-                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
-                  disabled={isEnd}>▶</button>
-                <button onClick={() => { stopAuto(); setStepIdx(record.actions.length-1) }}
-                  className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 disabled:opacity-30"
-                  disabled={isEnd}>▶|</button>
-                <span className="text-xs text-white/40 font-mono">{stepIdx+1}/{record.actions.length}</span>
-              </div>
-
-              {/* Coach verdict — FLOATS over the table column (absolute) so it never
-                  reflows the layout: the table no longer jumps when you judge a move.
-                  Trigger = a small corner button; the verdict = a centred overlay card
-                  shown in full (its own scroll only if the reasoning is very long). */}
-              {(() => {
-                const a = record.actions[stepIdx]
-                if (!a || a.seatIdx < 0 || !a.isHero || a.actionType === 'SB' || a.actionType === 'BB') return null
-                if (!critique) {
-                  return (
-                    <button onClick={() => { stopAuto(); setCritique(critiqueHeroMove(record, stepIdx)) }}
-                      className="absolute top-1 right-1 z-30 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#c9a227]/45 bg-[#070d1a]/90 backdrop-blur text-[#c9a227] font-bold text-[11px] uppercase tracking-widest hover:bg-[#c9a227]/20 transition-all shadow-xl shadow-black/50">
-                      👁 {t('sess.judgeMove')}
-                    </button>
-                  )
-                }
-                const vc = critique.verdict === 'good' ? '#34d399' : critique.verdict === 'mistake' ? '#f87171' : '#e8c547'
-                return (
-                  <div className="absolute inset-0 z-40 flex items-center justify-center p-3" onClick={() => setCritique(null)}>
-                    <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" />
-                    <div onClick={e => e.stopPropagation()}
-                      className="relative w-full max-w-[560px] max-h-full overflow-y-auto rounded-2xl border p-4 shadow-2xl shadow-black/60"
-                      style={{
-                        background: critique.verdict === 'good' ? 'rgba(8,22,15,0.98)' : critique.verdict === 'mistake' ? 'rgba(26,10,10,0.98)' : 'rgba(22,18,8,0.98)',
-                        borderColor: critique.verdict === 'good' ? 'rgba(31,157,94,0.55)' : critique.verdict === 'mistake' ? 'rgba(192,57,49,0.55)' : 'rgba(201,162,39,0.45)',
-                      }}>
-                      <div className="flex items-center justify-between mb-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg">{critique.verdict === 'good' ? '✅' : critique.verdict === 'mistake' ? '❌' : '⚠️'}</span>
-                          <span className="text-sm font-black uppercase tracking-wide" style={{ color: vc }}>{critique.headline}</span>
-                        </div>
-                        <button onClick={() => setCritique(null)} className="text-white/45 hover:text-white text-base leading-none">✕</button>
-                      </div>
-                      {critique.reasoning && <EquityReasoningBlock r={critique.reasoning} />}
-                      <div className="space-y-1.5">
-                        {critique.lines.map((l, i) => (
-                          <p key={i} className="text-[12.5px] text-white/85 leading-relaxed flex gap-1.5">
-                            <span className="mt-0.5" style={{ color: '#c9a227' }}>▸</span>{l}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-
-            {/* Action log — right column on desktop, full-width block on phone */}
-            <div className={isPhone
-              ? 'w-full flex-shrink-0 border-t border-white/8 flex flex-col max-h-[34vh]'
-              : 'w-72 flex-shrink-0 border-l border-white/8 flex flex-col min-h-0'}>
-              <div className="px-4 py-3 border-b border-white/8 flex-shrink-0">
-                <span className="text-xs font-bold text-white/50 uppercase tracking-widest">{t('sess.actionLog')}</span>
-              </div>
-              <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-1">
-                {visibleActions.map((a, i) => {
-                  const isCurrentStep = i === stepIdx
-                  if (a.seatIdx === -1) {
-                    // Phase divider
-                    return (
-                      <div key={i} className={`text-center py-1.5 ${isCurrentStep?'text-[#c9a227]':'text-white/30'}`}>
-                        <span className="text-[10px] font-bold uppercase tracking-widest border-t border-b border-current px-2">
-                          — {t('phase.' + a.phase)} —
-                        </span>
-                      </div>
-                    )
-                  }
-                  const pl = record.players.find(p => p.idx === a.seatIdx)
-                  const isHero = pl?.isHero ?? false
-                  return (
-                    <div key={i} onClick={() => setStepIdx(i)}
-                      className={`px-2.5 py-1.5 rounded-lg cursor-pointer transition-all text-[12px] flex items-center gap-2
-                        ${isCurrentStep?'bg-[#c9a227]/15 border border-[#c9a227]/30':'hover:bg-white/5 border border-transparent'}`}>
-                      <span className={`font-bold truncate max-w-[90px] ${isHero?'text-[#00d4ff]':'text-white/70'}`}>
-                        {pl?.name ?? `Seat${a.seatIdx}`}
-                      </span>
-                      <span className={`font-bold uppercase
-                        ${a.actionType==='FOLD'?'text-red-400/70'
-                        :a.actionType==='RAISE'||a.actionType==='BET'||a.actionType==='ALL-IN'?'text-yellow-300'
-                        :a.actionType==='CHECK'?'text-sky-400'
-                        :'text-emerald-400'}`}>
-                        {a.actionType}
-                      </span>
-                      {a.amount > 0 && <span className="text-white/50 font-mono">{money(a.amount)}</span>}
-                      <span className="ml-auto text-white/25 font-mono text-[10px]">pot {money(a.potAfter)}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Range Vision popup in the replay (fixed + clamped to the viewport) */}
-      {hoverIdx !== null && hoverXY && stepRanges[hoverIdx] && (() => {
-        const pl = record.players.find(p => p.idx === hoverIdx)
-        if (!pl) return null
-        const view = rangeView(stepRanges[hoverIdx])
-        const meta = playerLastMeta(record, hoverIdx, stepIdx)
-        const heroKey = pl.isHero && pl.holeCards[0] && pl.holeCards[1] ? handKeyFromCards(pl.holeCards[0], pl.holeCards[1]) : null
-        const W = 312, H = 372
-        let x = hoverXY.x + 18, y = hoverXY.y - H / 2
-        if (x + W > window.innerWidth - 8) x = hoverXY.x - W - 18
-        if (x < 8) x = 8
-        if (y + H > window.innerHeight - 8) y = window.innerHeight - H - 8
-        if (y < 8) y = 8
-        return (
-          <div className="fixed z-[60] pointer-events-none"
-            style={isPhone ? { left: '50%', top: '50%', transform: 'translate(-50%,-50%) scale(0.72)', transformOrigin: 'center' } : { left: x, top: y }}>
-            <RangeHeatmap view={view} startView={startRanges[hoverIdx] ? rangeView(startRanges[hoverIdx]) : undefined} move={meta.move} effect={meta.effect}
-              name={pl.isHero ? t('sess.youRepRange') : pl.name} heroKey={heroKey}/>
-          </div>
-        )
-      })()}
-    </div>
-  )
-}
 
 // Angry Coach: collapse an action to its strategic CLASS so we only scold real
 // disagreements (FOLD vs CALL), not sizing nuances (RAISE vs ALL-IN are both "aggro").
@@ -1474,6 +378,12 @@ export default function GamePage(): JSX.Element {
   const randomDealer = () => Math.floor(Math.random() * Math.max(1, numPlayers))
   const slots = cfg.slots ?? Array.from({length: numPlayers - 1}, () => ({type:'bot', level:2}))
   const decisionTimer = cfg.decisionTimer && cfg.decisionTimer > 0 ? cfg.decisionTimer : 25
+  // Table pacing from the setup: the bots think longer (slow) or snappier (fast). The
+  // accelerator/turbo override it entirely, so this only shapes NORMAL-speed play.
+  const speedMul = cfg.gameSpeed === 'slow' ? 1.6 : cfg.gameSpeed === 'fast' ? 0.55 : 1
+  // Anonymous table → the hero sits under a neutral name instead of their account name
+  // (so a screenshot / stream never leaks it).
+  const heroName = cfg.anonymousMode ? 'Hero' : displayName
 
   // ─── Tournament (MTT) — escalating blinds + field model ────────────────────
   const tournament = cfg.tournament
@@ -1954,7 +864,7 @@ export default function GamePage(): JSX.Element {
       let seatType: 'bot' | 'human' = 'bot'
 
       if (isHero) {
-        name = displayName
+        name = heroName
         level = 0
       } else {
         const slotIdx = i < selectedSeat ? i : i - 1
@@ -2184,6 +1094,10 @@ export default function GamePage(): JSX.Element {
       human: seat.seatType === 'human',
       mood: moodRef.current[seatIdx] ?? 0,
       priorRaises: raisesSoFar,  // # of raises this player faced (0/1/2/≥3) → open/3-bet/4-bet logic
+      // The PRICE in big blinds — a jam is a call-off, not a flat-call. The bots already
+      // decide on it (preflopProbs priceBB); without it here the SHOWN range stayed wide
+      // on exactly the spots that matter most (a 100bb shove).
+      priceBB: preflop && bbAmt > 0 ? toCall / bbAmt : 0,
       // size of a BET or RAISE as a fraction of the pot before it → a big size polarizes
       // the read (medium hands cut), a small one merges it (thin value included).
       betFrac: !preflop && cat === 'aggr' && (currentGs.pot - seat.bet) > 0 ? seat.bet / (currentGs.pot - seat.bet) : undefined,
@@ -2460,7 +1374,9 @@ export default function GamePage(): JSX.Element {
       const rs = revealAllInCards(state)
       if (rs !== state) { setGs(rs); gsRef.current = rs }
       const gen = flowGenRef.current
-      if (rs.phase === 'river') setTimeout(() => { if (flowGenRef.current !== gen) return; showdown(rs) }, fastFwdRef.current ? 50 : 400)
+      // scheduleFlow (not a bare timer): a PAUSE must hold the showdown here as well,
+      // otherwise an all-in river run-out resolves under the player's feet.
+      if (rs.phase === 'river') scheduleFlow(gen, fastFwdRef.current ? 50 : 400, () => showdown(rs))
       else {
         const nextPhase: Phase =
           rs.phase === 'preflop' ? 'flop' :
@@ -2596,7 +1512,7 @@ export default function GamePage(): JSX.Element {
   function scheduleAutoNext(state: GState, delay: number) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (state.paused || manualModeRef.current) return  // manual mode never auto-advances
-    delay = fastFwdRef.current ? 20 : delay
+    delay = fastFwdRef.current ? 20 : Math.round(delay * speedMul)
 
     timeoutRef.current = setTimeout(() => {
       const cur = gsRef.current
@@ -2647,7 +1563,7 @@ export default function GamePage(): JSX.Element {
 
     // Bot's turn
     activatePlayer(nextIdx)
-    const botDelay = fastFwdRef.current ? 20 : 600 + Math.random() * 800
+    const botDelay = fastFwdRef.current ? 20 : Math.round((600 + Math.random() * 800) * speedMul)
 
     timeoutRef.current = setTimeout(() => {
       const cur = gsRef.current
@@ -4600,7 +3516,7 @@ export default function GamePage(): JSX.Element {
       {/* ── HERO CONTROLS ── floats over the bottom of the felt (no solid bar) so the
           table gets the full height and the back players stay visible. ── */}
       {gs.phase !== 'idle' && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none"
+        <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none safe-pb"
           style={{
             background: 'linear-gradient(to top, rgba(3,6,13,0.92) 45%, rgba(3,6,13,0.4) 78%, rgba(3,6,13,0))',
             paddingTop: compactTable ? 18 : 30

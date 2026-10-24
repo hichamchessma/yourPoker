@@ -1,11 +1,32 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>YourPoker — Elite Poker Coaching</title>
     <meta name="description" content="YourPoker — your real-time AI poker coach, trainer, simulation lab and hand replay. Train, simulate and master poker your way. Coaching, not real-money gambling." />
+    <link rel="canonical" href="https://your-poker.vercel.app/" />
+
+    <!-- Link previews (TikTok bio, Instagram, Reddit, Discord, X). Scrapers do NOT run
+         JS, so everything they need has to live in this static shell. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="YourPoker" />
+    <meta property="og:title" content="YourPoker — your real-time poker coach" />
+    <meta property="og:description" content="Play, and a coach explains every decision: equity vs pot odds, your opponent's range narrowing hand by hand, and the line a pro would announce. Training, not real-money gambling." />
+    <meta property="og:url" content="https://your-poker.vercel.app/" />
+    <meta property="og:image" content="https://your-poker.vercel.app/pwa-512x512.png" />
+    <meta property="og:image:alt" content="YourPoker — poker coaching app" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="YourPoker — your real-time poker coach" />
+    <meta name="twitter:description" content="A coach that explains every decision — equity, ranges, and the pro line. Training, not real-money gambling." />
+    <meta name="twitter:image" content="https://your-poker.vercel.app/pwa-512x512.png" />
+
+    <!-- The webfont is an external request on the critical path — warm the connection
+         up front so it doesn't serialise behind the HTML parse. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <!-- Mobile / PWA (installable web app) -->
     <meta name="theme-color" content="#0a1120" />
     <meta name="mobile-web-app-capable" content="yes" />

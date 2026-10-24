@@ -1,22 +1,43 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import AuthPage from './pages/AuthPage'
-import LandingPage from './pages/LandingPage'
-import LobbyPage from './pages/LobbyPage'
-import HandTrainerPage from './pages/HandTrainerPage'
-import ProfilePage from './pages/ProfilePage'
-import HistoryPage from './pages/HistoryPage'
-import TrainingSetupPage from './pages/TrainingSetupPage'
-import TournamentSetupPage from './pages/TournamentSetupPage'
-import SetupPositionPage from './pages/SetupPositionPage'
-import SimulationPage from './pages/SimulationPage'
-import LeaderboardPage from './pages/LeaderboardPage'
-import PricingPage from './pages/PricingPage'
-import GamePage from './pages/GamePage'
 import AppLayout from './layouts/AppLayout'
 import ProGate from './components/ProGate'
 import { useAuthStore } from './store/authStore'
 import { useIsPro } from './lib/entitlements'
+
+// ─── Route-level code splitting ──────────────────────────────────────────────
+// EAGER: the three surfaces a first-time visitor actually sees (landing → auth →
+// lobby). Everything else is a separate chunk fetched on navigation, so arriving
+// on a shared link no longer downloads the game engine, the simulation lab and
+// the trainers before painting anything.
+import LandingPage from './pages/LandingPage'
+import AuthPage from './pages/AuthPage'
+import LobbyPage from './pages/LobbyPage'
+
+// LAZY: the heavy surfaces. GamePage is by far the biggest module and is also
+// pulled in by History/Simulation (they reuse its replay modal), so Rollup emits
+// it as a shared chunk loaded only when one of those routes is opened.
+const GamePage = lazy(() => import('./pages/GamePage'))
+const HistoryPage = lazy(() => import('./pages/HistoryPage'))
+const SimulationPage = lazy(() => import('./pages/SimulationPage'))
+const HandTrainerPage = lazy(() => import('./pages/HandTrainerPage'))
+const TrainingSetupPage = lazy(() => import('./pages/TrainingSetupPage'))
+const TournamentSetupPage = lazy(() => import('./pages/TournamentSetupPage'))
+const SetupPositionPage = lazy(() => import('./pages/SetupPositionPage'))
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+const PricingPage = lazy(() => import('./pages/PricingPage'))
+
+// Shown while a route chunk is in flight — same spinner as the auth boot screen,
+// so a navigation never flashes a blank page.
+function RouteFallback(): JSX.Element {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-poker-darker">
+      <div className="w-8 h-8 border-2 border-poker-teal border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
 
 // Gates a Pro-only page: the wrapped page only mounts when the user is Pro (keeps the
 // page's own hooks isolated), otherwise the upgrade wall is shown.
@@ -43,6 +64,7 @@ function App(): JSX.Element {
   }
 
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Public marketing landing — the first thing a logged-out visitor sees. */}
       <Route path="/welcome" element={session ? <Navigate to="/lobby" replace /> : <LandingPage />} />
@@ -66,6 +88,7 @@ function App(): JSX.Element {
       </Route>
       <Route path="*" element={<Navigate to={session ? '/lobby' : '/welcome'} replace />} />
     </Routes>
+    </Suspense>
   )
 }
 

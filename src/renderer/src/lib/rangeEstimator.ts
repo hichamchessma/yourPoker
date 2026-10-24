@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import i18n from '../i18n'
+import { diagnoseSpot } from './postflopAdvisor'
 const tt = (k: string, o?: Record<string, unknown>) => i18n.t(k, o) as string
 
 export const RANKS = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
@@ -40,56 +41,59 @@ const HANDS: HandType[] = (() => {
 })()
 export const HAND_KEYS = HANDS.map(h => h.key)
 
-// ── Poker evaluation (group-size tiebreak, wheel handling) ───────────────────
-function evalFive(cards: Card[]): number {
-  const rv = cards.map(c => RV[c.rank] ?? 2)
-  const sv = cards.map(c => c.suit)
-  const isF = sv.every(s => s === sv[0])
-  const u = [...new Set(rv)].sort((a, b) => b - a)
-  const wheel = u.length === 5 && u[0] === 14 && u[1] === 5 && u[2] === 4 && u[3] === 3 && u[4] === 2
-  const isS = (u.length === 5 && u[0] - u[4] === 4) || wheel
-  const cnt: Record<number, number> = {}; rv.forEach(r => (cnt[r] = (cnt[r] ?? 0) + 1))
-  const cv = Object.values(cnt).sort((a, b) => b - a)
-  let rank = 0
-  if (isF && isS) rank = 8; else if (cv[0] === 4) rank = 7; else if (cv[0] === 3 && cv[1] === 2) rank = 6
-  else if (isF) rank = 5; else if (isS) rank = 4; else if (cv[0] === 3) rank = 3
-  else if (cv[0] === 2 && cv[1] === 2) rank = 2; else if (cv[0] === 2) rank = 1
-  if (isS) return rank * 15 ** 5 + (wheel ? 5 : u[0])
-  const tb: number[] = []
-  Object.keys(cnt).map(Number).sort((a, b) => cnt[b] - cnt[a] || b - a).forEach(r => { for (let k = 0; k < cnt[r]; k++) tb.push(r) })
-  return rank * 15 ** 5 + (tb[0] ?? 0) * 15 ** 4 + (tb[1] ?? 0) * 15 ** 3 + (tb[2] ?? 0) * 15 ** 2 + (tb[3] ?? 0) * 15 + (tb[4] ?? 0)
-}
-function best7(cards: Card[]): number {
-  if (cards.length <= 5) { const p = [...cards]; while (p.length < 5) p.push({ rank: '2', suit: '♠' }); return evalFive(p) }
-  let best = 0
-  const n = cards.length
-  for (let a = 0; a < n - 4; a++) for (let b = a + 1; b < n - 3; b++) for (let c = b + 1; c < n - 2; c++)
-    for (let d = c + 1; d < n - 1; d++) for (let e = d + 1; e < n; e++) {
-      const s = evalFive([cards[a], cards[b], cards[c], cards[d], cards[e]]); if (s > best) best = s
-    }
-  return best
-}
 const CAT_STRENGTH = [0.08, 0.42, 0.68, 0.80, 0.86, 0.91, 0.96, 0.99, 1.0]
+// CANONICAL made-hand strength (0..1) — the single source used by the live bots, the
+// sim bots AND the range estimator, so a hand is never worth more to one than the other.
+// It uses the coach's DEMOTED read (diagnoseSpot): a hand that lives entirely on the
+// BOARD — trips on a 9-9-9 flop, a two pair leaning on the board's pair — is SHARED by
+// everyone (a chop), not strength. Without the demotion every bot "has the board",
+// clears the value-raise bar, and they jam a chopped hand into each other.
+// Memo: the estimator evaluates all 169 representative hands on EVERY observed action,
+// while the board only changes once per street → after the first action of a street every
+// lookup is a cache hit. Keyed by board+hand, and the function is pure, so the cache can
+// never hand back a wrong answer (it's reset as soon as the board differs).
+let msBoardKey = ''
+let msCache = new Map<string, number>()
 export function madeStrength(hole: Card[], board: Card[]): number {
-  const cat = Math.floor(best7([...hole, ...board]) / 15 ** 5)
-  if (cat !== 1) return CAT_STRENGTH[cat] ?? 0.08
-  const bR = board.map(c => RV[c.rank]).sort((a, b) => b - a)
-  const hR = hole.map(c => RV[c.rank])
-  const pocket = hole[0].rank === hole[1].rank
-  if (pocket && hR[0] > (bR[0] ?? 0)) return 0.62
-  if (hR.includes(bR[0] ?? -1)) return 0.55
-  if (bR[1] !== undefined && hR.includes(bR[1])) return 0.42
-  return 0.32
+  if (hole.length < 2) return 0.08
+  const bKey = board.map(c => c.rank + c.suit).join('')
+  if (bKey !== msBoardKey) { msBoardKey = bKey; msCache = new Map() }
+  const hKey = hole[0].rank + hole[0].suit + hole[1].rank + hole[1].suit
+  const hit = msCache.get(hKey)
+  if (hit !== undefined) return hit
+  const d = diagnoseSpot(hole, board)
+  // PLAYING THE BOARD at the river (the hole cards add nothing) → it's a chop, no edge:
+  // never value-bet/raise it. diagnoseSpot demotes board pairs/trips/fulls but NOT board
+  // straights/flushes, so those are covered by its playsBoard flag (already computed there
+  // — recomputing best7 here doubled the cost of the hottest loop in the app).
+  const v = d.playsBoard ? 0.20
+    : d.effCat !== 1 ? (CAT_STRENGTH[d.effCat] ?? 0.08)
+    // One pair → refine by overpair / top / second / weak.
+    : d.effPair === 'overpair' ? 0.62 : d.effPair === 'top' ? 0.55 : d.effPair === 'second' ? 0.42 : 0.32
+  msCache.set(hKey, v)
+  return v
 }
 export function hasStrongDraw(hole: Card[], board: Card[]): boolean {
   if (board.length >= 5 || board.length < 3) return false
   const all = [...hole, ...board]
   const bs: Record<string, number> = {}; all.forEach(c => (bs[c.suit] = (bs[c.suit] ?? 0) + 1))
-  if (Object.values(bs).some(n => n === 4)) return true
+  // A flush DRAW requires the HAND to hold a card of that suit — 4 of a suit sitting
+  // ENTIRELY on the board is a board flush, not this hand's draw (phantom-draw bug:
+  // every player 'had a draw' on a 4-flush board and semi-bluffed/called with air).
+  if (Object.entries(bs).some(([s, n]) => n === 4 && hole.some(h => h.suit === s))) return true
   const vals = new Set(all.map(c => RV[c.rank])); if (vals.has(14)) vals.add(1)
   for (let lo = 1; lo <= 10; lo++) { let c = 0; for (let k = lo; k < lo + 5; k++) if (vals.has(k)) c++; if (c === 4 && (!vals.has(lo) || !vals.has(lo + 4))) return true }
   return false
 }
+// Position bonus feeding preflopProbs' open width (openTh). When folded to, the SB is
+// a STEAL seat (only the BB behind + dead money), so it opens nearly as wide as the
+// button -- not like an early seat. Single source for the bots, the sim and the
+// replay critique, which each used to carry their own copy.
+export const POS_BONUS: Record<string, number> = {
+  'BTN': 1.00, 'BTN/SB': 1.00, 'CO': 0.88, 'HJ': 0.78,
+  'MP': 0.72, 'MP+1': 0.72, 'UTG': 0.62, 'UTG+1': 0.65, 'SB': 0.95, 'BB': 0.82,
+}
+
 // Chen formula — a fine-grained, widely-used preflop hand ranking (~ -1 … 20).
 // Far more resolution than a coarse chart, so position-based thresholds map to
 // realistic range widths. MUST stay identical to the copy in GamePage.tsx.
@@ -201,8 +205,11 @@ export function preflopProbs(psv: number, posBonus: number, priorRaises: number,
 }
 
 // ── Probability of each action category for a given hand strength ────────────
-function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: number, potOdds: number, posBonus: number, tier: number, p: PolicyParams, priorRaises: number, betFrac = 0.66): Record<ActCat, number> {
-  if (preflop) return preflopProbs(strength, posBonus, priorRaises, tier, toCall)
+function actionProbs(preflop: boolean, strength: number, draw: boolean, toCall: number, potOdds: number, posBonus: number, tier: number, p: PolicyParams, priorRaises: number, betFrac = 0.66, priceBB = 0): Record<ActCat, number> {
+  // priceBB (the price in big blinds) is what tells a flat-call from a CALL-OFF: without
+  // it the estimator showed a bot calling a 100bb jam with its whole opening range while
+  // the bot itself (which does pass priceBB) only continues with premiums.
+  if (preflop) return preflopProbs(strength, posBonus, priorRaises, tier, toCall, priceBB)
   if (toCall <= 0) {
     // SIZE-AWARE betting range. A BIG bet is POLARIZED — strong value + bluffs, the
     // MEDIUM made hands check (pot control). A SMALL bet is MERGED — medium hands bet
@@ -240,6 +247,8 @@ export interface ActionCtx {
   priorRaises: number  // preflop: # of raises made before this player acted (0/1/2/≥3)
   betFrac?: number     // postflop: size of the BET this player made (fraction of pot) —
                        // a big bet POLARIZES the read (medium hands cut), small MERGES it
+  priceBB?: number     // preflop: the price this player faced, in BB → a jam is a CALL-OFF
+                       // (premiums only), not a flat-call of the whole opening range
 }
 
 const RANK_BLOCK = (board: Card[]) => {
@@ -252,16 +261,25 @@ const RANK_BLOCK = (board: Card[]) => {
 export function applyAction(range: RangeWeights, observed: ActCat, ctx: ActionCtx): RangeWeights {
   const p = policyFor(ctx.tier, ctx.human, ctx.mood)
   const out: RangeWeights = {}
+  let total = 0, had = 0
   for (const h of HANDS) {
     const w = range[h.key] ?? 0
     if (w <= 0) { out[h.key] = 0; continue }
+    had += w
     const [a, b] = h.rep
     // Pre-flop: raw chart value (1..10); post-flop: made-hand strength (0..1).
     const strength = ctx.preflop ? preflopStrength(a, b) : madeStrength([a, b], ctx.board)
     const draw = ctx.preflop ? false : hasStrongDraw([a, b], ctx.board)
-    const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, p, ctx.priorRaises, ctx.betFrac)
-    out[h.key] = w * probs[observed]
+    const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, p, ctx.priorRaises, ctx.betFrac, ctx.priceBB)
+    const nw = w * probs[observed]
+    out[h.key] = nw; total += nw
   }
+  // DEGENERATE OBSERVATION: the policy gives this action probability 0 for EVERY hand
+  // still in range (e.g. a pot-committed player paying a 100bb jam with trash — the model
+  // says nobody flat-calls there). Zeroing the range would blank the heatmap and destroy
+  // everything we had learned. An action the model can't explain carries NO information,
+  // so keep the range as it stood instead of collapsing it to nothing.
+  if (total <= 0 && had > 0) return { ...range }
   return out
 }
 
@@ -301,7 +319,7 @@ export function explainHandStep(handKey: string, observed: ActCat, ctx: ActionCt
   const pol = policyFor(ctx.tier, ctx.human, ctx.mood)
   const strength = ctx.preflop ? preflopStrength(a, b) : madeStrength([a, b], ctx.board)
   const draw = ctx.preflop ? false : hasStrongDraw([a, b], ctx.board)
-  const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, pol, ctx.priorRaises, ctx.betFrac)
+  const probs = actionProbs(ctx.preflop, strength, draw, ctx.toCall, ctx.potOdds, ctx.posBonus, ctx.tier, pol, ctx.priorRaises, ctx.betFrac, ctx.priceBB)
   const prob = probs[observed]
   const pc = (x: number) => `${Math.round(x * 100)}%`
   let reason = ''

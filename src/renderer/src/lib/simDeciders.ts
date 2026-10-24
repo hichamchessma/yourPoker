@@ -2,12 +2,11 @@
 // decideBotAction; the COACH decider reuses the REAL coach brain (buildRangeMap /
 // buildJamCallMap pre-flop, getPostflopAdvice post-flop) with the same context the
 // live coach reconstructs — so the sim measures the actual coach, not an approximation.
-import { preflopProbs, policyFor, madeStrength, preflopStrength, hasStrongDraw } from './rangeEstimator'
+import { preflopProbs, policyFor, madeStrength, preflopStrength, hasStrongDraw, POS_BONUS } from './rangeEstimator'
 import { getPostflopAdvice, type VillainTier } from './postflopAdvisor'
 import { buildRangeMap, buildJamCallMap, handKeyFromCards, type Scenario } from './preflopRanges'
 import type { SimSeat, HandState, SimDecision, Decider } from './simEngine'
 
-const POS_BONUS: Record<string, number> = { BTN: 1.0, CO: 0.88, HJ: 0.78, MP: 0.72, 'MP+1': 0.72, UTG: 0.62, 'UTG+1': 0.65, SB: 0.95, BB: 0.82 }
 
 const totalPot = (hs: HandState) => hs.pot + hs.seats.reduce((a, s) => a + s.bet, 0)
 const liveSeats = (hs: HandState) => hs.seats.filter(s => s.inHand && !s.folded)

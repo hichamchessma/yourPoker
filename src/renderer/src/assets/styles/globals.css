@@ -29,6 +29,21 @@
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     user-select: none;
+    /* iOS Safari INFLATES text in landscape by default. This layout is tuned down to
+       8px labels on a compact table, so auto-inflation wrecks it — pin it to 100%. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* No rubber-band / pull-to-refresh while playing: dragging the felt must never
+       bounce the page or reload the table mid-hand. */
+    overscroll-behavior: none;
+  }
+
+  /* Touch behaviour for every control: `manipulation` removes the ~300 ms tap delay
+     AND double-tap-to-zoom (a mis-tap on the raise presets used to zoom the table),
+     while still allowing pinch-zoom. The tap highlight is Android's grey flash. */
+  button, a, input, select, [role='button'] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   ::-webkit-scrollbar {
@@ -52,6 +67,16 @@
 @layer utilities {
   .app-drag { -webkit-app-region: drag; }
   .app-drag-none { -webkit-app-region: no-drag; }
+
+  /* ── Notch / home-indicator safe areas (index.html sets viewport-fit=cover) ──
+     The table is played in LANDSCAPE on a phone, where the notch eats the LEFT
+     edge and the home indicator the BOTTOM — exactly where the menu tab and the
+     action bar live. These resolve to 0 on every device without insets. */
+  .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-px {
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+  }
 }
 
 /* Decision-clock bar (freezable via animation-play-state when paused). */

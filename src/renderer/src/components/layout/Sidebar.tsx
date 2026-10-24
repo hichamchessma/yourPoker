@@ -317,8 +317,8 @@ export default function Sidebar({ activeItem, autoHide = false, drawer = false, 
       <>
         {leaveModal}
         <button onClick={() => setRevealed(true)} aria-label="Menu"
-          className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-7 h-14 rounded-r-xl bg-poker-teal/20 border border-l-0 border-poker-teal/45 text-poker-teal active:bg-poker-teal/35"
-          style={{ boxShadow: '0 0 14px -4px rgba(0,212,255,0.6)' }}>
+          className="fixed top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-7 h-14 rounded-r-xl bg-poker-teal/20 border border-l-0 border-poker-teal/45 text-poker-teal active:bg-poker-teal/35"
+          style={{ boxShadow: '0 0 14px -4px rgba(0,212,255,0.6)', left: 'env(safe-area-inset-left)' }}>
           <ChevronRight size={16} />
         </button>
         <AnimatePresence>

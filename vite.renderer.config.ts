@@ -57,7 +57,20 @@ export default defineConfig({
   // rewrites are needed, so the output deploys as-is to any static host (Vercel/Netlify).
   build: {
     outDir: resolve(__dirname, 'dist-web'),
-    emptyOutDir: true
+    emptyOutDir: true,
+    // Split the long-lived vendor libraries out of the app bundle: they change far
+    // less often than our code, so a redeploy no longer invalidates ~400 KB of
+    // React/framer/supabase in every visitor's cache.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          motion: ['framer-motion'],
+          supabase: ['@supabase/supabase-js'],
+          i18n: ['i18next', 'react-i18next']
+        }
+      }
+    }
   },
   server: {
     port: 5173

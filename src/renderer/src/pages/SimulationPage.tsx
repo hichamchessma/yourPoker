@@ -6,7 +6,8 @@ import { playTournament, playMTT, type BlindLevel, type TourConfig, type MTTConf
 import { makeSimDecider } from '../lib/simDeciders'
 import { fieldRemaining, placesPaid, payoutTable, prizeForPlace } from '../lib/tournament'
 import { simulateTournament, isInterestingHand, buildLevels, type SimTourResult } from '../lib/simReplay'
-import { HandHistoryModal, type HandHistoryRecord } from './GamePage'
+import HandHistoryModal from '../components/HandHistoryModal'
+import type { HandHistoryRecord } from '../lib/handTypes'
 
 function genLevels(startStack: number): BlindLevel[] {
   const lv: BlindLevel[] = []

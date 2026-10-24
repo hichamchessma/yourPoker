@@ -74,36 +74,6 @@ export function prizeForPlace(place: number, table: PayoutSpot[]): number {
   return table.find(p => p.place === place)?.amount ?? 0
 }
 
-// ── ICM (Independent Chip Model) ─────────────────────────────────────────────
-// Each player's $EV given chip stacks and remaining payouts (Malmuth-Harville:
-// P(i is next to finish 1st) = stack_i / total, then recurse). Exponential, so we
-// model only the largest CAP stacks precisely — enough for bubble / final-table.
-export function icm(stacks: number[], payouts: number[], cap = 8): number[] {
-  const n = stacks.length
-  const ev = new Array(n).fill(0)
-  if (n === 0 || payouts.length === 0) return ev
-  // Reduce to the top `cap` stacks (the ones whose ICM actually moves).
-  const order = stacks.map((_, i) => i).sort((a, b) => stacks[b] - stacks[a]).slice(0, cap)
-
-  function rec(idxs: number[], payIdx: number): Record<number, number> {
-    const out: Record<number, number> = {}
-    const tot = idxs.reduce((s, i) => s + stacks[i], 0)
-    const pay = payouts[payIdx] ?? 0
-    if (idxs.length === 0 || tot <= 0) return out
-    if (idxs.length === 1) { out[idxs[0]] = pay; return out }
-    for (const i of idxs) {
-      const p = stacks[i] / tot
-      out[i] = (out[i] ?? 0) + p * pay
-      const sub = rec(idxs.filter(j => j !== i), payIdx + 1)
-      for (const k in sub) out[+k] = (out[+k] ?? 0) + p * sub[+k]
-    }
-    return out
-  }
-  const res = rec(order, 0)
-  for (const k in res) ev[+k] = res[+k]
-  return ev
-}
-
 // ── Field model — how many players remain at a given level progress (level index
 //    + fraction through it). The field shrinks faster as blinds rise; tuned so a
 //    typical field reaches the final table over ~15-18 levels.

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { History, Medal, Coins, Trash2, Play, Calendar } from 'lucide-react'
-import { loadSessions, deleteSession, type SessionKind, type SavedSession } from '../lib/historyStore'
+import { loadSessions, deleteSession, HISTORY_SYNCED_EVENT, type SessionKind, type SavedSession } from '../lib/historyStore'
 import { setCurrency, setMoneyLocale } from '../lib/money'
-import { HandHistoryModal } from './GamePage'
+import HandHistoryModal from '../components/HandHistoryModal'
 
 export default function HistoryPage() {
   const { t, i18n } = useTranslation()
@@ -13,6 +13,12 @@ export default function HistoryPage() {
   const [open, setOpen] = useState<SavedSession | null>(null)
 
   function switchKind(k: SessionKind) { setKind(k); setSessions(loadSessions(k)) }
+  // The cloud pull runs right after sign-in and can land while this page is open.
+  useEffect(() => {
+    const onSynced = () => setSessions(loadSessions(kind))
+    window.addEventListener(HISTORY_SYNCED_EVENT, onSynced)
+    return () => window.removeEventListener(HISTORY_SYNCED_EVENT, onSynced)
+  }, [kind])
   function remove(id: number) { deleteSession(kind, id); setSessions(loadSessions(kind)) }
 
   return (

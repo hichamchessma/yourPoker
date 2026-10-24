@@ -1,13 +1,22 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { HashRouter } from 'react-router-dom'
+import { BrowserRouter, HashRouter } from 'react-router-dom'
 import App from './App'
-import './i18n'
+import { i18nReady } from './i18n'
 import './assets/styles/globals.css'
 import { supabase } from './lib/supabase'
-import { isWeb } from './lib/platform'
+import { isWeb, isElectron } from './lib/platform'
+
 import { useAuthStore } from './store/authStore'
 import { refreshProFromServer } from './lib/entitlements'
+import { pullSessionsFromCloud } from './lib/historyStore'
+import { pullPerfsFromCloud } from './lib/perfStore'
+// Clean URLs on the WEB (/welcome, not /#/welcome): shareable, canonical-able and
+// prerender-able later — vercel.json already rewrites every non-/api path to
+// index.html. Electron loads from file:// where only the hash router works.
+// Every OAuth redirect targets the ORIGIN (never a hash path), so both are safe.
+const Router = isElectron ? HashRouter : BrowserRouter
+
 
 // Register the auth listener FIRST so no event is missed during the callback exchange.
 supabase.auth.onAuthStateChange((event, session) => {
@@ -17,8 +26,14 @@ supabase.auth.onAuthStateChange((event, session) => {
     useAuthStore.getState().setPasswordRecovery(true)
   }
   useAuthStore.getState().setSession(session)
-  // Sync the real Pro status from the server whenever a session is present.
-  if (session) refreshProFromServer()
+  // Sync the real Pro status from the server whenever a session is present, and pull
+  // back the account's progression (history + perf scores) so a fresh device / cleared
+  // browser recovers everything instead of starting from zero.
+  if (session) {
+    refreshProFromServer()
+    void pullSessionsFromCloud()
+    void pullPerfsFromCloud()
+  }
 })
 
 // Safety: never get stuck on the loading spinner if no auth event ever arrives.
@@ -60,7 +75,7 @@ if (isWeb) {
         // Strip callback params so a refresh doesn't re-trigger, and hand a clean hash
         // route to the router.
         const recovery = useAuthStore.getState().passwordRecovery
-        window.history.replaceState({}, document.title, window.location.origin + (recovery ? '/#/auth' : '/#/'))
+        window.history.replaceState({}, document.title, window.location.origin + (recovery ? '/auth' : '/'))
       } catch (err) {
         console.error('[auth] web callback exchange failed:', err)
       } finally {
@@ -103,10 +118,14 @@ window.api?.onAuthDeepLink?.(async (deepLinkUrl: string) => {
   }
 })
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
-  </React.StrictMode>
-)
+// Mount only once the visitor's locale bundle has landed (see i18n/index.ts): the
+// locales are fetched on demand now, so rendering earlier would flash raw keys.
+void i18nReady.then(() => {
+  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+    <React.StrictMode>
+      <Router>
+        <App />
+      </Router>
+    </React.StrictMode>
+  )
+})

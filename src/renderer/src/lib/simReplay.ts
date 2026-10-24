@@ -5,7 +5,7 @@
 // UI as the live game, so each hand is fully analysable. The aggregate sim engine
 // (simEngine.playTournament) only measures outcomes; this one keeps the full story.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { HandHistoryRecord, HistoryAction } from '../pages/GamePage'
+import type { HandHistoryRecord, HistoryAction } from './handTypes'
 import { playHand, type SimSeat, type HandState, type BlindLevel } from './simEngine'
 import { makeSimDecider } from './simDeciders'
 import { fieldRemaining } from './tournament'

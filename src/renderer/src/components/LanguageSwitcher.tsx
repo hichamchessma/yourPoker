@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Globe, Check } from 'lucide-react'
-import { LANGS } from '../i18n'
+import { LANGS, setLanguage, type LangCode } from '../i18n'
 
 // Real SVG flags — emoji flags don't render on Windows (they show "FR"/"GB"/"ES").
 export function Flag({ code, size = 18 }: { code: string; size?: number }) {
@@ -60,7 +60,7 @@ export default function LanguageSwitcher({ className = '', up = false }: { class
             style={{ top: pos.top, right: pos.right, transform: up ? 'translateY(-100%)' : undefined }}>
             {LANGS.map(l => (
               <button key={l.code}
-                onClick={() => { i18n.changeLanguage(l.code); setOpen(false) }}
+                onClick={() => { void setLanguage(l.code as LangCode); setOpen(false) }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-white/5 transition-colors">
                 <Flag code={l.code} size={20} />
                 <span className="text-[12px] text-white/75 flex-1">{l.label}</span>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://your-poker.vercel.app/sitemap.xml

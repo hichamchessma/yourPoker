@@ -1083,6 +1083,7 @@ export interface SpotDiagnosis {
   effCat: number     // demoted made-hand category (0 high card … 8)
   effPair: PairKind  // demoted pair class
   strongDraw: boolean
+  playsBoard: boolean // river: the hole cards add nothing → it's a chop, no edge
 }
 export function diagnoseSpot(hole: Card[], board: Card[]): SpotDiagnosis {
   const { cat, pair, name } = analyseMade(hole, board)
@@ -1115,5 +1116,5 @@ export function diagnoseSpot(hole: Card[], board: Card[]): SpotDiagnosis {
   else if (effCat === 1) bucket = 'bluffcatch'                 // 2nd / weak / under pair
   else if (strongDraw) bucket = 'draw'
   else bucket = 'air'
-  return { bucket, madeName: name, draws, wetness, paired, effCat, effPair, strongDraw }
+  return { bucket, madeName: name, draws, wetness, paired, effCat, effPair, strongDraw, playsBoard }
 }
