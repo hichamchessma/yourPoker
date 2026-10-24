@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import AppLayout from './layouts/AppLayout'
@@ -39,6 +39,44 @@ function RouteFallback(): JSX.Element {
   )
 }
 
+// ─── Stale-deploy guard ──────────────────────────────────────────────────────
+// Route chunks are fetched on demand, and the PWA service worker deletes the old
+// ones as soon as a new version is deployed (cleanupOutdatedCaches + skipWaiting).
+// So a tab left open across a deploy can ask for a chunk filename that no longer
+// exists — the dynamic import rejects and, without this, the screen goes blank.
+//
+// A failed chunk load just means "this tab is running stale code": reload once to
+// pick up the new build. The sessionStorage flag makes it strictly once, so a real
+// network outage can never turn into a reload loop.
+const RELOADED_FLAG = 'yourpoker_chunk_reload'
+
+function isChunkLoadError(err: unknown): boolean {
+  const msg = err instanceof Error ? `${err.name} ${err.message}` : String(err)
+  return /ChunkLoadError|Loading chunk|dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg)
+}
+
+class ChunkErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, _info: ErrorInfo): void {
+    if (!isChunkLoadError(error)) return
+    let already = false
+    try { already = sessionStorage.getItem(RELOADED_FLAG) === '1' } catch { /* ignore */ }
+    if (already) return
+    try { sessionStorage.setItem(RELOADED_FLAG, '1') } catch { /* ignore */ }
+    window.location.reload()
+  }
+
+  render(): ReactNode {
+    if (this.state.failed) return <RouteFallback />
+    return this.props.children
+  }
+}
+
 // Gates a Pro-only page: the wrapped page only mounts when the user is Pro (keeps the
 // page's own hooks isolated), otherwise the upgrade wall is shown.
 function Gated({ titleKey, descKey, children }: { titleKey: string; descKey: string; children: JSX.Element }): JSX.Element {
@@ -64,6 +102,7 @@ function App(): JSX.Element {
   }
 
   return (
+    <ChunkErrorBoundary>
     <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Public marketing landing — the first thing a logged-out visitor sees. */}
@@ -89,6 +128,7 @@ function App(): JSX.Element {
       <Route path="*" element={<Navigate to={session ? '/lobby' : '/welcome'} replace />} />
     </Routes>
     </Suspense>
+    </ChunkErrorBoundary>
   )
 }
 
